@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { axe } from "jest-axe";
+import { runAxe } from "../test/axe-helper";
 import { describe, expect, it, vi } from "vitest";
 import { Table } from "./Table";
 
@@ -78,6 +78,6 @@ describe("Table", () => {
         }}
       />,
     );
-    expect(await axe(container)).toHaveNoViolations();
+    expect(await runAxe(container)).toHaveNoViolations();
   });
 });

@@ -3,6 +3,7 @@ import {
   type IconProps,
   type TopNavigationProps as CloudscapeTopNavigationProps,
 } from "@cloudscape-design/components";
+import type { ReactNode } from "react";
 
 /** Araf icon name vocabulary. Maps to Cloudscape icon names internally. */
 export type TopNavigationIconName = "notification" | "settings" | "user-profile" | "help" | "menu";
@@ -37,7 +38,8 @@ export interface TopNavigationProps {
     readonly onPress?: () => void;
   };
   readonly utilities?: readonly TopNavigationUtility[];
-  readonly search?: React.ReactNode;
+  readonly search?: ReactNode;
+  readonly searchAriaLabel?: string;
 }
 
 function mapUtilities(
@@ -58,7 +60,12 @@ function mapUtilities(
   }));
 }
 
-export function TopNavigation({ identity, utilities, search }: TopNavigationProps) {
+export function TopNavigation({
+  identity,
+  utilities,
+  search,
+  searchAriaLabel = "Search",
+}: TopNavigationProps) {
   const cloudscapeIdentity: CloudscapeTopNavigationProps["identity"] = {
     title: identity.title,
     href: identity.href,
@@ -76,7 +83,7 @@ export function TopNavigation({ identity, utilities, search }: TopNavigationProp
       identity={cloudscapeIdentity}
       utilities={utilities ? mapUtilities(utilities) : undefined}
       search={search}
-      i18nStrings={{ searchIconAriaLabel: "Search" }}
+      i18nStrings={{ searchIconAriaLabel: searchAriaLabel }}
     />
   );
 }

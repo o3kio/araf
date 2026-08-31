@@ -11,6 +11,19 @@ export interface AppLayoutProps {
   readonly maxContentWidth?: number;
 }
 
+const defaultAriaLabels: CloudscapeAppLayoutProps["ariaLabels"] = {
+  navigation: "Navigation drawer",
+  navigationClose: "Close navigation drawer",
+  navigationToggle: "Open navigation drawer",
+  notifications: "Notifications",
+  tools: "Tools drawer",
+  toolsClose: "Close tools drawer",
+  toolsToggle: "Open tools drawer",
+  drawers: "Drawers",
+  drawersOverflow: "Overflow drawers",
+  drawersOverflowWithBadge: "Overflow drawers (Unread notifications)",
+};
+
 export function AppLayout({
   navigation,
   content,
@@ -30,6 +43,7 @@ export function AppLayout({
       breadcrumbs={breadcrumbs ? <>{breadcrumbs}</> : undefined}
       minContentWidth={minContentWidth}
       maxContentWidth={maxContentWidth}
+      ariaLabels={defaultAriaLabels}
     />
   );
 }

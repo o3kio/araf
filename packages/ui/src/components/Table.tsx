@@ -10,10 +10,10 @@ export interface TableColumnDefinition<T> {
   readonly isRowHeader?: boolean;
 }
 
-export interface TableAriaLabels {
+export interface TableAriaLabels<T> {
   readonly selectionGroupLabel?: string;
   readonly allItemsSelectionLabel?: string;
-  readonly itemSelectionLabel?: (item: unknown) => string;
+  readonly itemSelectionLabel?: (item: T) => string;
   readonly tableLabel?: string;
 }
 
@@ -30,7 +30,7 @@ export interface TableProps<T> {
   readonly wrapLines?: boolean;
   readonly loading?: boolean;
   readonly loadingText?: string;
-  readonly ariaLabels?: TableAriaLabels;
+  readonly ariaLabels?: TableAriaLabels<T>;
 }
 
 export function Table<T>({

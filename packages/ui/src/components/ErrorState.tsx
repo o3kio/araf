@@ -17,9 +17,7 @@ export function ErrorState({ title = "Error", message, onRetry, correlationId }:
       <SpaceBetween size="xs" direction="vertical">
         {message ? <span>{message}</span> : null}
         {correlationId ? (
-          <span style={{ fontFamily: "monospace", fontSize: "0.75rem" }}>
-            Correlation ID: {correlationId}
-          </span>
+          <span className="araf-correlation-id">Correlation ID: {correlationId}</span>
         ) : null}
       </SpaceBetween>
     </Alert>

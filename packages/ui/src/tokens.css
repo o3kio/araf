@@ -29,6 +29,7 @@
   --araf-font-family:
     system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
     sans-serif;
+  --araf-font-family-monospace: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --araf-font-size-body-s: var(--font-size-body-s);
   --araf-font-size-body-m: var(--font-size-body-m);
   --araf-font-size-heading-s: var(--font-size-heading-s);
@@ -54,4 +55,10 @@
 .araf-theme *:focus-visible {
   outline: var(--araf-focus-outline);
   outline-offset: var(--araf-focus-outline-offset);
+}
+
+/* Diagnostic metadata (e.g. correlation IDs) — token-driven, CSP-safe. */
+.araf-correlation-id {
+  font-family: var(--araf-font-family-monospace);
+  font-size: var(--araf-font-size-body-s);
 }

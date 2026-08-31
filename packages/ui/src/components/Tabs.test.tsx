@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { axe } from "jest-axe";
+import { runAxe } from "../test/axe-helper";
 import { describe, expect, it, vi } from "vitest";
 import { Tabs } from "./Tabs";
 
@@ -32,6 +32,6 @@ describe("Tabs", () => {
     const { container } = render(
       <Tabs tabs={tabs} activeTabId="overview" onChange={vi.fn()} ariaLabel="Sections" />,
     );
-    expect(await axe(container)).toHaveNoViolations();
+    expect(await runAxe(container)).toHaveNoViolations();
   });
 });

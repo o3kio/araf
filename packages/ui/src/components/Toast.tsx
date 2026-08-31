@@ -23,36 +23,45 @@ const typeMap: Record<ArafToastType, FlashbarProps["items"][number]["type"]> = {
   info: "info",
 };
 
-function toFlashbarItem(item: ToastItem): FlashbarProps["items"][number] {
+function toFlashbarItem(
+  item: ToastItem,
+  onDismiss: ToastProps["onDismiss"],
+  dismissLabel: string,
+): FlashbarProps["items"][number] {
   return {
     id: item.id,
     type: typeMap[item.type],
     content: item.message,
     header: item.header,
-    dismissible: true,
-    dismissLabel: "Dismiss notification",
+    dismissible: onDismiss != null,
+    dismissLabel,
     buttonText: item.action?.label,
     onButtonClick: item.action?.onPress,
+    onDismiss: onDismiss
+      ? () => {
+          onDismiss(item.id);
+        }
+      : undefined,
   };
 }
 
 export interface ToastProps {
   readonly items: readonly ToastItem[];
   readonly onDismiss?: (id: string) => void;
+  readonly notificationsLabel?: string;
+  readonly dismissLabel?: string;
 }
 
-export function Toast({ items, onDismiss }: ToastProps) {
-  const flashbarItems = items.map((item) => ({
-    ...toFlashbarItem(item),
-    onDismiss: onDismiss
-      ? () => {
-          onDismiss(item.id);
-        }
-      : undefined,
-  }));
+export function Toast({
+  items,
+  onDismiss,
+  notificationsLabel = "Notifications",
+  dismissLabel = "Dismiss notification",
+}: ToastProps) {
+  const flashbarItems = items.map((item) => toFlashbarItem(item, onDismiss, dismissLabel));
 
   return (
-    <section aria-label="Notifications">
+    <section aria-label={notificationsLabel}>
       <Flashbar items={flashbarItems} />
     </section>
   );

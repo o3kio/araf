@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { axe } from "jest-axe";
+import { runAxe } from "../test/axe-helper";
 import { describe, expect, it } from "vitest";
 import { LoadingState } from "./LoadingState";
 
@@ -21,6 +21,6 @@ describe("LoadingState", () => {
 
   it("has no accessibility violations", async () => {
     const { container } = render(<LoadingState message="Fetching data..." />);
-    expect(await axe(container)).toHaveNoViolations();
+    expect(await runAxe(container)).toHaveNoViolations();
   });
 });

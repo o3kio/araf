@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { axe } from "jest-axe";
+import { runAxe } from "../test/axe-helper";
 import { describe, expect, it } from "vitest";
 import { FormField } from "./FormField";
 
@@ -28,6 +28,6 @@ describe("FormField", () => {
         <input id="project" type="text" />
       </FormField>,
     );
-    expect(await axe(container)).toHaveNoViolations();
+    expect(await runAxe(container)).toHaveNoViolations();
   });
 });

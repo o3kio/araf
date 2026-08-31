@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { axe } from "jest-axe";
+import { runAxe } from "../test/axe-helper";
 import { describe, expect, it } from "vitest";
 import { Header } from "./Header";
 
@@ -21,6 +21,6 @@ describe("Header", () => {
 
   it("has no accessibility violations", async () => {
     const { container } = render(<Header description="Manage resources">Resources</Header>);
-    expect(await axe(container)).toHaveNoViolations();
+    expect(await runAxe(container)).toHaveNoViolations();
   });
 });

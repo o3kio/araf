@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { axe } from "jest-axe";
+import { runAxe } from "../test/axe-helper";
 import { describe, expect, it, vi } from "vitest";
 import { Toast } from "./Toast";
 
@@ -41,6 +41,6 @@ describe("Toast", () => {
     const { container } = render(
       <Toast items={[{ id: "1", type: "info", message: "Note" }]} onDismiss={vi.fn()} />,
     );
-    expect(await axe(container)).toHaveNoViolations();
+    expect(await runAxe(container)).toHaveNoViolations();
   });
 });

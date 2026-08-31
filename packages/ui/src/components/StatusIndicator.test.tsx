@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { axe } from "jest-axe";
+import { runAxe } from "../test/axe-helper";
 import { describe, expect, it } from "vitest";
 import { StatusIndicator } from "./StatusIndicator";
 
@@ -13,6 +13,6 @@ describe("StatusIndicator", () => {
 
   it("has no accessibility violations", async () => {
     const { container } = render(<StatusIndicator type="success">Healthy</StatusIndicator>);
-    expect(await axe(container)).toHaveNoViolations();
+    expect(await runAxe(container)).toHaveNoViolations();
   });
 });

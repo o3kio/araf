@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { runAxe } from "../test/axe-helper";
 
 import { BootstrapSurface } from "./BootstrapSurface";
 
@@ -24,5 +25,12 @@ describe("BootstrapSurface", () => {
     );
 
     expect(screen.getByRole("main")).toHaveTextContent("extra");
+  });
+
+  it("has no accessibility violations", async () => {
+    const { container } = render(
+      <BootstrapSurface title="Araf Tenant Console" description="Self-service surface" />,
+    );
+    expect(await runAxe(container)).toHaveNoViolations();
   });
 });
