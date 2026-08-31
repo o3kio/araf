@@ -28,6 +28,48 @@ The product may expose different capabilities per deployment, but it must not fo
 - Provider details are visible to operators when required and hidden from ordinary tenants.
 - WCAG 2.2 AA target for production-critical workflows.
 
+## Development
+
+### Toolchains (pinned)
+
+- **Node.js 22 LTS** (`.nvmrc`: 22.23.2, `engines` range `>=22.12.0 <23`)
+- **pnpm 10.14.0** (`packageManager` field, enabled via `corepack enable`)
+- **Rust 1.95.0** (`rust-toolchain.toml`, with `rustfmt` and `clippy`)
+
+### Layout
+
+- `apps/tenant-console`, `apps/operator-console` — separate React/Vite surfaces (ADR 0001)
+- `packages/*` — shared UI/runtime platform; `@araf/ui` is the only package allowed to import an underlying component library (ADR 0004)
+- `backend/*` — Rust BFF workspace (`console-bff-core`, `tenant-bff`, `operator-bff`)
+
+### Commands
+
+```bash
+corepack enable
+pnpm install
+
+pnpm format:check   # prettier --check
+pnpm lint           # eslint (type-aware, strict)
+pnpm typecheck      # tsc project builds
+pnpm test           # vitest unit/component tests
+pnpm build          # production builds of both consoles
+
+cd backend
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo check --workspace --all-targets --all-features
+cargo test --workspace --all-features
+```
+
+Run locally:
+
+```bash
+pnpm --filter @araf/tenant-console dev     # http://localhost:5173
+pnpm --filter @araf/operator-console dev   # http://localhost:5174
+cargo run -p tenant-bff                    # http://localhost:8080/healthz
+cargo run -p operator-bff                  # http://localhost:8081/healthz
+```
+
 ## Planning status
 
 The repository planning pack defines two delivery gates:
