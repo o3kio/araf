@@ -32,14 +32,19 @@ export default tseslint.config(
   {
     files: ["apps/tenant-console/**/*.{ts,tsx}"],
     rules: {
-      // ADR 0001: console surfaces must not import each other.
       "no-restricted-imports": [
         "error",
         {
           patterns: [
+            // ADR 0001: console surfaces must not import each other.
             {
               group: ["@araf/operator-console", "**/apps/operator-console/**"],
               message: "Tenant Console must not import the Operator Console surface.",
+            },
+            // ADR 0004: Cloudscape is confined to packages/ui.
+            {
+              group: ["@cloudscape-design/**"],
+              message: "Cloudscape imports are confined to packages/ui (ADR 0004).",
             },
           ],
         },
@@ -49,14 +54,37 @@ export default tseslint.config(
   {
     files: ["apps/operator-console/**/*.{ts,tsx}"],
     rules: {
-      // ADR 0001: console surfaces must not import each other.
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            // ADR 0001: console surfaces must not import each other.
+            {
+              group: ["@araf/tenant-console", "**/apps/tenant-console/**"],
+              message: "Operator Console must not import the Tenant Console surface.",
+            },
+            // ADR 0004: Cloudscape is confined to packages/ui.
+            {
+              group: ["@cloudscape-design/**"],
+              message: "Cloudscape imports are confined to packages/ui (ADR 0004).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // ADR 0004: third-party component primitives are confined to packages/ui.
+    files: ["packages/**/*.{ts,tsx}"],
+    ignores: ["packages/ui/**/*.{ts,tsx}"],
+    rules: {
       "no-restricted-imports": [
         "error",
         {
           patterns: [
             {
-              group: ["@araf/tenant-console", "**/apps/tenant-console/**"],
-              message: "Operator Console must not import the Tenant Console surface.",
+              group: ["@cloudscape-design/**"],
+              message: "Cloudscape imports are confined to packages/ui (ADR 0004).",
             },
           ],
         },
@@ -76,8 +104,6 @@ export default tseslint.config(
   },
   {
     // ADR 0004: third-party component primitives are confined to packages/ui.
-    // No underlying enterprise component library is imported yet (M1); this
-    // rule is the enforcement point once one is adopted.
     files: ["packages/ui/**/*.{ts,tsx}"],
     rules: {},
   },
