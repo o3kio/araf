@@ -17,11 +17,22 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.6",
+    "@types/jest-axe": "^3.5.9",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
+    "jest-axe": "^11.0.0",
     "jsdom": "^26.1.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "vitest": "^3.2.4"
-  }
+  },
+  "dependencies": {
+    "@cloudscape-design/components": "^3.0.1357",
+    "@cloudscape-design/design-tokens": "^3.0.110",
+    "@cloudscape-design/global-styles": "^1.0.67"
+  },
+  "sideEffects": [
+    "*.css"
+  ]
 }
