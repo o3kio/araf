@@ -1,0 +1,31 @@
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# JavaScript / TypeScript
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Rust
+/target/
+**/target/
+
+# Local tooling
+.tmp/
+tmp/
+.cache/
