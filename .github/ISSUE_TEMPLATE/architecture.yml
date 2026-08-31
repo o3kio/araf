@@ -1,0 +1,35 @@
+name: Architecture / contract proposal
+description: Propose a change to an Araf architecture boundary or public contract.
+title: "[Architecture] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What architectural or product problem requires a change?
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current contract / ADR
+      description: Identify the current Araf and authoritative O3K contracts involved.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Security, compatibility and migration impact
+      description: Include Tenant/Operator boundaries, API parity, manifests, providers, and backward compatibility where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

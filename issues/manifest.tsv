@@ -1,0 +1,16 @@
+code	title	body_file
+M0	[M0] Repository bootstrap and deterministic quality gates	issues/M0.md
+M1	[M1] Araf design system foundation	issues/M1.md
+M2	[M2] Tenant/Operator shells and explicit scope context	issues/M2.md
+M3	[M3] Rust BFF boundary and deterministic O3K contract harness	issues/M3.md
+M4	[M4] Generic resource list/detail/relationship runtime	issues/M4.md
+M5	[M5] Schema-driven create/edit/action flows	issues/M5.md
+M6	[M6] First-class Operations UX and prototype gate	issues/M6.md
+M7	[M7] Real O3K tenant core-service integration	issues/M7.md
+M8	[M8] Tenant governance, access, quota and audit	issues/M8.md
+M9	[M9] Operator platform, regions and provider health	issues/M9.md
+M10	[M10] ServiceManifest catalog and capability-driven integration	issues/M10.md
+M11	[M11] Usage, quota and bounded cost awareness	issues/M11.md
+M12	[M12] Production authentication and security hardening	issues/M12.md
+M13	[M13] Accessibility, i18n, density and cross-browser closure	issues/M13.md
+M14	[M14] End-to-end MVP acceptance and release candidate	issues/M14.md
