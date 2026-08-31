@@ -20,6 +20,13 @@ Expected shape:
 
 Exact Node/Rust versions should be pinned to currently supported stable/LTS toolchains during M0 after checking ecosystem compatibility.
 
+M0 pins (verified against ecosystem compatibility at implementation time):
+
+- Node.js **22 LTS** (22.23.2 via `.nvmrc`; Node 20 reached end of life in April 2026),
+- pnpm **10.14.0** via Corepack (`packageManager`),
+- Rust **1.95.0** stable via `rust-toolchain.toml` with `rustfmt`/`clippy` components,
+- TypeScript ~5.9, Vite 7, Vitest 3, React 19, axum 0.8/tokio 1 — locked by `pnpm-lock.yaml`/`Cargo.lock`.
+
 ## 3. Required CI categories
 
 Every PR should run applicable gates:
