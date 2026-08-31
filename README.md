@@ -35,6 +35,8 @@ The repository planning pack defines two delivery gates:
 1. **Prototype gate** — prove the shared design system, separate shells, generic resource runtime, schema-driven actions and Operation UX using contract fixtures.
 2. **MVP gate** — connect the architecture to real supported O3K native APIs, add production authentication/session boundaries, tenant/operator workflows, service discovery, usage visibility, security hardening and release gates.
 
+Live tracking starts at **epic #2**; the committed roadmap index is in `issues/README.md`.
+
 See:
 
 - `docs/product/mvp-prototype.md`
@@ -45,6 +47,7 @@ See:
 - `docs/security/threat-model.md`
 - `docs/engineering/quality-gates.md`
 - `docs/roadmap.md`
+- `issues/README.md`
 - `prompts/README.md`
 
 ## Non-goals for the first MVP
