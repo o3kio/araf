@@ -22,11 +22,13 @@
   --araf-status-pending: var(--color-text-status-inactive);
 
   /* Focus ring (WCAG 2.2 visible focus) */
-  --araf-focus-outline: 2px solid var(--color-border-focused);
+  --araf-focus-outline: 2px solid var(--color-border-item-focused);
   --araf-focus-outline-offset: 2px;
 
-  /* Araf typography — calm enterprise scale */
-  --araf-font-family: "Amazon Ember", "Helvetica Neue", Roboto, Arial, sans-serif;
+  /* Araf typography — calm enterprise scale, provider-neutral */
+  --araf-font-family:
+    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
   --araf-font-size-body-s: var(--font-size-body-s);
   --araf-font-size-body-m: var(--font-size-body-m);
   --araf-font-size-heading-s: var(--font-size-heading-s);
@@ -48,9 +50,8 @@
   --araf-density-section-gap: var(--space-scaled-m);
 }
 
-/* Visible focus for keyboard navigation. */
-.araf-density-compact *:focus-visible,
-*:focus-visible {
+/* Visible focus for keyboard navigation, scoped to Araf-themed subtrees. */
+.araf-theme *:focus-visible {
   outline: var(--araf-focus-outline);
   outline-offset: var(--araf-focus-outline-offset);
 }

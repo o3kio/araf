@@ -64,7 +64,7 @@ export function App() {
 
   return (
     <ArafThemeProvider density={density}>
-      <div style={{ padding: "24px" }}>
+      <main style={{ padding: "var(--space-scaled-xl, 24px)" }}>
         <BreadcrumbGroup
           items={[
             { text: "Home", href: "/" },
@@ -148,11 +148,10 @@ export function App() {
           onCancel={() => {
             setShowDelete(false);
           }}
-          danger
         >
           <p>This action cannot be undone.</p>
         </ConfirmModal>
-      </div>
+      </main>
     </ArafThemeProvider>
   );
 }

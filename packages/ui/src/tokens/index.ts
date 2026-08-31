@@ -10,6 +10,7 @@ import {
   borderRadiusInput,
   borderRadiusItem,
   borderRadiusContainer,
+  colorBorderItemFocused,
   colorTextStatusError,
   colorTextStatusInactive,
   colorTextStatusInfo,
@@ -50,7 +51,7 @@ export const DENSITY_CLASS = {
 export const COLOR_MODE_CLASS = {
   light: "",
   dark: "araf-color-mode-dark",
-} as const satisfies Record<string, string>;
+} as const satisfies Record<ArafTheme["colorMode"], string>;
 
 /**
  * Araf semantic status colors. Backed by Cloudscape design tokens but
@@ -106,7 +107,7 @@ export const fontWeight = {
 export const borderRadius = {
   none: "0",
   xs: borderRadiusInput,
-  s: "var(--border-radius-control, 6px)",
+  s: "6px",
   m: borderRadiusItem,
   l: borderRadiusContainer,
   pill: "9999px",
@@ -116,7 +117,7 @@ export const borderRadius = {
  * Araf focus ring style (visible keyboard focus per WCAG 2.2).
  */
 export const focus = {
-  outline: "2px solid var(--color-border-focused, #0972d3)",
+  outline: `2px solid ${colorBorderItemFocused}`,
   outlineOffset: "2px",
 } as const;
 

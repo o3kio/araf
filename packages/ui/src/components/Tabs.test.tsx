@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { axe } from "jest-axe";
 import { describe, expect, it, vi } from "vitest";
 import { Tabs } from "./Tabs";
 
@@ -25,5 +26,12 @@ describe("Tabs", () => {
     render(<Tabs tabs={tabs} activeTabId="overview" onChange={onChange} />);
     await userEvent.click(screen.getByRole("tab", { name: "Configuration" }));
     expect(onChange).toHaveBeenCalledWith("config");
+  });
+
+  it("has no accessibility violations", async () => {
+    const { container } = render(
+      <Tabs tabs={tabs} activeTabId="overview" onChange={vi.fn()} ariaLabel="Sections" />,
+    );
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

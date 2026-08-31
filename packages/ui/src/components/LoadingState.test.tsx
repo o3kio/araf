@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { axe } from "jest-axe";
 import { describe, expect, it } from "vitest";
 import { LoadingState } from "./LoadingState";
 
@@ -16,5 +17,10 @@ describe("LoadingState", () => {
   it("announces loading as a status region", () => {
     render(<LoadingState message="Fetching data..." />);
     expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("has no accessibility violations", async () => {
+    const { container } = render(<LoadingState message="Fetching data..." />);
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

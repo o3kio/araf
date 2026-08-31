@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { axe } from "jest-axe";
 import { describe, expect, it, vi } from "vitest";
 import { BreadcrumbGroup } from "./BreadcrumbGroup";
 
@@ -26,5 +27,10 @@ describe("BreadcrumbGroup", () => {
   it("exposes a navigation landmark", () => {
     render(<BreadcrumbGroup items={items} />);
     expect(screen.getByRole("navigation")).toBeVisible();
+  });
+
+  it("has no accessibility violations", async () => {
+    const { container } = render(<BreadcrumbGroup items={items} />);
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { axe } from "jest-axe";
 import { describe, expect, it } from "vitest";
 import { StatusIndicator } from "./StatusIndicator";
 
@@ -10,8 +11,8 @@ describe("StatusIndicator", () => {
     });
   }
 
-  it("has a status role for screen readers", () => {
-    render(<StatusIndicator type="success">Healthy</StatusIndicator>);
-    expect(screen.getByText("Healthy")).toBeVisible();
+  it("has no accessibility violations", async () => {
+    const { container } = render(<StatusIndicator type="success">Healthy</StatusIndicator>);
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

@@ -66,7 +66,7 @@ export function App() {
 
   return (
     <ArafThemeProvider density={density}>
-      <div style={{ padding: "24px" }}>
+      <main style={{ padding: "var(--space-scaled-xl, 24px)" }}>
         <BreadcrumbGroup
           items={[
             { text: "Platform", href: "/" },
@@ -150,11 +150,10 @@ export function App() {
           onCancel={() => {
             setShowPause(false);
           }}
-          danger
         >
           <p>Traffic will be drained from this provider.</p>
         </ConfirmModal>
-      </div>
+      </main>
     </ArafThemeProvider>
   );
 }

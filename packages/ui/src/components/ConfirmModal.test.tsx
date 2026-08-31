@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { axe } from "jest-axe";
 import { describe, expect, it, vi } from "vitest";
 import { ConfirmModal } from "./ConfirmModal";
 
@@ -35,5 +36,14 @@ describe("ConfirmModal", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("has no accessibility violations", async () => {
+    const { container } = render(
+      <ConfirmModal open title="Delete?" onConfirm={vi.fn()} onCancel={vi.fn()}>
+        <p>Are you sure?</p>
+      </ConfirmModal>,
+    );
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

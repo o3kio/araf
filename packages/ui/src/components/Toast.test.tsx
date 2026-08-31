@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { axe } from "jest-axe";
 import { describe, expect, it, vi } from "vitest";
 import { Toast } from "./Toast";
 
@@ -34,5 +35,12 @@ describe("Toast", () => {
       <Toast items={[{ id: "1", type: "warning", message: "Caution" }]} onDismiss={vi.fn()} />,
     );
     expect(screen.getByRole("region")).toBeVisible();
+  });
+
+  it("has no accessibility violations", async () => {
+    const { container } = render(
+      <Toast items={[{ id: "1", type: "info", message: "Note" }]} onDismiss={vi.fn()} />,
+    );
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

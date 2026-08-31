@@ -9,10 +9,10 @@ describe("TopNavigation", () => {
     expect(screen.getByRole("link", { name: "Araf" })).toHaveAttribute("href", "/");
   });
 
-  it("calls onFollow when identity is activated", async () => {
-    const onFollow = vi.fn();
-    render(<TopNavigation identity={{ title: "Araf", href: "/", onFollow }} />);
+  it("calls onPress when identity is activated", async () => {
+    const onPress = vi.fn();
+    render(<TopNavigation identity={{ title: "Araf", href: "/", onPress }} />);
     await userEvent.click(screen.getByRole("link", { name: "Araf" }));
-    expect(onFollow).toHaveBeenCalledTimes(1);
+    expect(onPress).toHaveBeenCalledTimes(1);
   });
 });

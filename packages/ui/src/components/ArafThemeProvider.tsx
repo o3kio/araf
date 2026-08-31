@@ -1,47 +1,39 @@
 import { useEffect, type ReactNode } from "react";
+import "@cloudscape-design/global-styles/index.css";
 import "../tokens.css";
 import type { ArafDensity } from "../tokens";
-import { COLOR_MODE_CLASS, DENSITY_CLASS } from "../tokens";
+import { DENSITY_CLASS } from "../tokens";
 
 export interface ArafThemeProviderProps {
   readonly density?: ArafDensity;
-  readonly colorMode?: "light" | "dark";
   readonly children: ReactNode;
 }
+
+const ARAF_THEME_CLASS = "araf-theme";
 
 /**
  * Applies Araf theme classes to the document body and renders children.
  * Must be mounted once near the application root.
  */
-export function ArafThemeProvider({
-  density = "comfortable",
-  colorMode = "light",
-  children,
-}: ArafThemeProviderProps) {
+export function ArafThemeProvider({ density = "comfortable", children }: ArafThemeProviderProps) {
   useEffect(() => {
-    const prevBodyClasses = Array.from(document.body.classList);
-    const prevRootClasses = Array.from(document.documentElement.classList);
+    const body = document.body;
+    const html = document.documentElement;
 
-    const apply = (element: Element, value: string, map: Readonly<Record<string, string>>) => {
-      for (const className of Object.values(map)) {
-        if (className) {
-          element.classList.remove(className);
-        }
-      }
-      const next = map[value];
-      if (next) {
-        element.classList.add(next);
-      }
-    };
+    html.classList.add(ARAF_THEME_CLASS);
 
-    apply(document.body, density, DENSITY_CLASS);
-    apply(document.documentElement, colorMode, COLOR_MODE_CLASS);
+    const densityClass = DENSITY_CLASS[density];
+    if (densityClass) {
+      body.classList.add(densityClass);
+    }
 
     return () => {
-      document.body.className = prevBodyClasses.join(" ");
-      document.documentElement.className = prevRootClasses.join(" ");
+      html.classList.remove(ARAF_THEME_CLASS);
+      if (densityClass) {
+        body.classList.remove(densityClass);
+      }
     };
-  }, [density, colorMode]);
+  }, [density]);
 
   return <>{children}</>;
 }

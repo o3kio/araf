@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { axe } from "jest-axe";
 import { describe, expect, it, vi } from "vitest";
 import { EmptyState } from "./EmptyState";
 
@@ -20,5 +21,16 @@ describe("EmptyState", () => {
   it("is polite live region", () => {
     render(<EmptyState title="No resources" />);
     expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("has no accessibility violations", async () => {
+    const { container } = render(
+      <EmptyState
+        title="No resources"
+        description="Create your first resource."
+        action={{ label: "Create", onPress: vi.fn() }}
+      />,
+    );
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

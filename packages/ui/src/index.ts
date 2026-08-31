@@ -17,7 +17,11 @@ export { AppLayout } from "./components/AppLayout";
 export type { AppLayoutProps } from "./components/AppLayout";
 
 export { TopNavigation } from "./components/TopNavigation";
-export type { TopNavigationProps } from "./components/TopNavigation";
+export type {
+  TopNavigationProps,
+  TopNavigationUtility,
+  TopNavigationIconName,
+} from "./components/TopNavigation";
 
 export { Header } from "./components/Header";
 export type { HeaderProps } from "./components/Header";
@@ -26,7 +30,7 @@ export { StatusIndicator } from "./components/StatusIndicator";
 export type { StatusIndicatorProps } from "./components/StatusIndicator";
 
 export { Table } from "./components/Table";
-export type { TableProps, TableColumnDefinition } from "./components/Table";
+export type { TableProps, TableColumnDefinition, TableAriaLabels } from "./components/Table";
 
 export { EmptyState } from "./components/EmptyState";
 export type { EmptyStateProps } from "./components/EmptyState";

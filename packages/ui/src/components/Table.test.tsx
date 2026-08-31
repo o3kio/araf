@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { axe } from "jest-axe";
 import { describe, expect, it, vi } from "vitest";
 import { Table } from "./Table";
 
@@ -28,21 +29,20 @@ describe("Table", () => {
   });
 
   it("uses trackingId as trackBy for selection keys", () => {
-    const onSelectionChange = vi.fn();
     render(
       <Table
         items={items}
         columnDefinitions={columnDefinitions}
         trackingId="id"
-        onSelectionChange={onSelectionChange}
+        onSelectionChange={vi.fn()}
       />,
     );
     const rows = screen.getAllByRole("row");
-    // Skip header row; each data row should have a checkbox.
-    expect(rows.length).toBeGreaterThanOrEqual(3);
+    // Header + 2 data rows.
+    expect(rows).toHaveLength(3);
   });
 
-  it("notifies selection changes", async () => {
+  it("notifies selection changes with the selected item", async () => {
     const onSelectionChange = vi.fn();
     render(
       <Table
@@ -58,5 +58,26 @@ describe("Table", () => {
       await userEvent.click(checkboxes[0]);
     }
     expect(onSelectionChange).toHaveBeenCalled();
+    const firstCall = onSelectionChange.mock.calls[0];
+    expect(firstCall).toBeDefined();
+    if (firstCall) {
+      expect(firstCall[0]).toContainEqual(items[0]);
+    }
+  });
+
+  it("has no accessibility violations", async () => {
+    const { container } = render(
+      <Table
+        items={items}
+        columnDefinitions={columnDefinitions}
+        trackingId="id"
+        ariaLabels={{
+          selectionGroupLabel: "Resource selection",
+          allItemsSelectionLabel: "Select all resources",
+          itemSelectionLabel: () => "Select resource",
+        }}
+      />,
+    );
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

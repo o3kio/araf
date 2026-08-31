@@ -10,7 +10,6 @@ export interface ConfirmModalProps {
   readonly onConfirm: () => void;
   readonly onCancel: () => void;
   readonly loading?: boolean;
-  readonly danger?: boolean;
 }
 
 export function ConfirmModal({
@@ -22,17 +21,16 @@ export function ConfirmModal({
   onConfirm,
   onCancel,
   loading = false,
-  danger = false,
 }: ConfirmModalProps) {
   return (
-    <Modal visible={open} onDismiss={onCancel} header={title}>
+    <Modal visible={open} onDismiss={onCancel} header={title} closeAriaLabel="Close dialog">
       <SpaceBetween size="m" direction="vertical">
         {children}
         <SpaceBetween size="xs" direction="horizontal">
           <Button variant="link" onClick={onCancel} disabled={loading}>
             {cancelLabel}
           </Button>
-          <Button variant={danger ? "primary" : "primary"} onClick={onConfirm} loading={loading}>
+          <Button variant="primary" onClick={onConfirm} loading={loading}>
             {confirmLabel}
           </Button>
         </SpaceBetween>

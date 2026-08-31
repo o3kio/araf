@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { axe } from "jest-axe";
 import { describe, expect, it, vi } from "vitest";
 import { DensityMode } from "./DensityMode";
 
@@ -19,5 +20,10 @@ describe("DensityMode", () => {
     render(<DensityMode density="comfortable" onChange={onChange} />);
     await userEvent.click(screen.getByRole("checkbox"));
     expect(onChange).toHaveBeenCalledWith("compact");
+  });
+
+  it("has no accessibility violations", async () => {
+    const { container } = render(<DensityMode density="comfortable" onChange={vi.fn()} />);
+    expect(await axe(container)).toHaveNoViolations();
   });
 });
