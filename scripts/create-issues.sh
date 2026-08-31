@@ -4,14 +4,39 @@ set -euo pipefail
 repo="${1:-o3kio/araf}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-echo "Creating Araf planning issues in $repo"
-echo "Requires: gh authenticated with issue-write access to the target repository."
+command -v gh >/dev/null 2>&1 || {
+  echo "error: GitHub CLI (gh) is required" >&2
+  exit 1
+}
 
-epic_url=$(gh issue create --repo "$repo" --title "[EPIC] Araf MVP — O3K next-generation cloud console" --body-file "$root/issues/EPIC.md")
-echo "EPIC: $epic_url"
+echo "Synchronizing Araf planning issues in $repo"
+echo "Existing exact-title matches are never recreated."
 
-while IFS=$'\t' read -r code title body_file; do
+while IFS=$'\t' read -r code expected_number title body_file; do
   [[ "$code" == "code" ]] && continue
-  url=$(gh issue create --repo "$repo" --title "$title" --body-file "$root/$body_file")
-  echo "$code: $url"
+
+  existing_number="$(gh issue list \
+    --repo "$repo" \
+    --state all \
+    --limit 200 \
+    --json number,title \
+    --jq ".[] | select(.title == \"$title\") | .number" \
+    | head -n1)"
+
+  if [[ -n "$existing_number" ]]; then
+    if [[ -n "$expected_number" && "$existing_number" != "$expected_number" ]]; then
+      echo "warning: $code expected #$expected_number but exact title exists as #$existing_number" >&2
+    fi
+    echo "$code: exists as #$existing_number"
+    continue
+  fi
+
+  tmp_body="$(mktemp)"
+  trap 'rm -f "$tmp_body"' EXIT
+  awk 'NR == 1 && /^# / { next } { print }' "$root/$body_file" > "$tmp_body"
+
+  url="$(gh issue create --repo "$repo" --title "$title" --body-file "$tmp_body")"
+  echo "$code: created $url"
+  rm -f "$tmp_body"
+  trap - EXIT
 done < "$root/issues/manifest.tsv"
