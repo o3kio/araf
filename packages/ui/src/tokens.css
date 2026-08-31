@@ -1,0 +1,56 @@
+/**
+ * Araf design tokens as CSS custom properties.
+ *
+ * This file imports Cloudscape global styles and defines Araf-specific
+ * CSS custom properties for density, status, focus and typography.
+ * Application code must not import Cloudscape directly (ADR 0004).
+ */
+
+@import "@cloudscape-design/global-styles/index.css";
+
+:root {
+  /* Density */
+  --araf-density-row-padding: var(--space-scaled-m);
+  --araf-density-cell-padding: var(--space-scaled-s);
+  --araf-density-section-gap: var(--space-scaled-l);
+
+  /* Semantic status colors */
+  --araf-status-success: var(--color-text-status-success);
+  --araf-status-error: var(--color-text-status-error);
+  --araf-status-warning: var(--color-text-status-warning);
+  --araf-status-info: var(--color-text-status-info);
+  --araf-status-pending: var(--color-text-status-inactive);
+
+  /* Focus ring (WCAG 2.2 visible focus) */
+  --araf-focus-outline: 2px solid var(--color-border-focused);
+  --araf-focus-outline-offset: 2px;
+
+  /* Araf typography — calm enterprise scale */
+  --araf-font-family: "Amazon Ember", "Helvetica Neue", Roboto, Arial, sans-serif;
+  --araf-font-size-body-s: var(--font-size-body-s);
+  --araf-font-size-body-m: var(--font-size-body-m);
+  --araf-font-size-heading-s: var(--font-size-heading-s);
+  --araf-font-size-heading-m: var(--font-size-heading-m);
+  --araf-font-size-heading-l: var(--font-size-heading-l);
+  --araf-font-size-heading-xl: var(--font-size-heading-xl);
+  --araf-font-size-display-l: var(--font-size-display-l);
+
+  /* Motion */
+  --araf-motion-fast: 90ms;
+  --araf-motion-normal: 135ms;
+  --araf-motion-slow: 180ms;
+  --araf-motion-easing: ease-in-out;
+}
+
+.araf-density-compact {
+  --araf-density-row-padding: var(--space-scaled-xs);
+  --araf-density-cell-padding: var(--space-scaled-xs);
+  --araf-density-section-gap: var(--space-scaled-m);
+}
+
+/* Visible focus for keyboard navigation. */
+.araf-density-compact *:focus-visible,
+*:focus-visible {
+  outline: var(--araf-focus-outline);
+  outline-offset: var(--araf-focus-outline-offset);
+}

@@ -7,7 +7,12 @@ describe("BootstrapSurface", () => {
   it("renders an accessible heading and description", () => {
     render(<BootstrapSurface title="Araf Tenant Console" description="Self-service surface" />);
 
-    expect(screen.getByRole("heading", { level: 1, name: "Araf Tenant Console" })).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: "Araf Tenant Console",
+      }),
+    ).toBeVisible();
     expect(screen.getByText("Self-service surface")).toBeVisible();
   });
 
