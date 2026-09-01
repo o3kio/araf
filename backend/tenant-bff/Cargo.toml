@@ -8,5 +8,7 @@ description = "Araf Tenant Console BFF — confidential gateway in front of the 
 
 [dependencies]
 axum.workspace = true
-console-bff-core = { path = "../console-bff-core" }
+console-bff-core.workspace = true
 tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
