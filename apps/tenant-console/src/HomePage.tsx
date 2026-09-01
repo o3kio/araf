@@ -15,7 +15,8 @@ export function HomePage() {
   const { scope } = useScope();
   const project = scope.projectName ?? scope.projectId ?? "No project selected";
   const region = scope.regionName ?? scope.regionId ?? "Global";
-  const organization = scope.organizationName ?? scope.organizationId ?? "Current organization";
+  const organization =
+    scope.organizationName ?? scope.organizationId ?? "Current organization";
 
   return (
     <SpaceBetween size="l">
