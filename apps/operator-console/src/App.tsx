@@ -1,159 +1,197 @@
-import { useState } from "react";
-import {
-  ArafThemeProvider,
-  BreadcrumbGroup,
-  ConfirmModal,
-  DensityMode,
-  EmptyState,
-  ErrorState,
-  FormField,
-  FormSection,
-  Header,
-  LoadingState,
-  StatusIndicator,
-  Table,
-  Tabs,
-  Toast,
-  type ArafDensity,
-  type TableColumnDefinition,
-  type ToastItem,
-} from "@araf/ui";
+import { ArafThemeProvider } from "@araf/ui";
+import { FixtureIdentityProvider, OperatorShell, type OperatorNavigationItem } from "@araf/shell";
+import { useState, type ReactNode } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from "react-router";
 
-interface Provider {
-  id: string;
-  name: string;
-  kind: string;
-  region: string;
-  health: "healthy" | "degraded" | "critical";
-}
-
-const providers: Provider[] = [
-  { id: "p1", name: "core-eu", kind: "Compute", region: "eu-west", health: "healthy" },
-  { id: "p2", name: "net-us", kind: "Network", region: "us-east", health: "degraded" },
-];
-
-const columns: TableColumnDefinition<Provider>[] = [
-  { id: "name", header: "Name", cell: (item) => item.name },
-  { id: "kind", header: "Kind", cell: (item) => item.kind },
-  { id: "region", header: "Region", cell: (item) => item.region },
+const navigationItems: OperatorNavigationItem[] = [
   {
-    id: "health",
-    header: "Health",
-    cell: (item) => (
-      <StatusIndicator
-        type={
-          item.health === "healthy" ? "success" : item.health === "degraded" ? "warning" : "error"
-        }
-      >
-        {item.health}
-      </StatusIndicator>
-    ),
+    id: "platform",
+    type: "section",
+    text: "Platform",
+    items: [
+      { id: "overview", type: "link", text: "Overview", href: "/platform/overview" },
+      { id: "regions", type: "link", text: "Regions", href: "/platform/regions" },
+      { id: "health", type: "link", text: "Health", href: "/platform/health" },
+      { id: "capacity", type: "link", text: "Capacity", href: "/platform/capacity" },
+    ],
+  },
+  {
+    id: "customers",
+    type: "section",
+    text: "Customers",
+    items: [
+      { id: "accounts", type: "link", text: "Accounts", href: "/customers/accounts" },
+      { id: "projects", type: "link", text: "Projects", href: "/customers/projects" },
+    ],
+  },
+  {
+    id: "services",
+    type: "section",
+    text: "Services",
+    items: [
+      { id: "catalog", type: "link", text: "Catalog", href: "/services/catalog" },
+      { id: "installed", type: "link", text: "Installed Services", href: "/services/installed" },
+    ],
+  },
+  {
+    id: "infrastructure",
+    type: "section",
+    text: "Infrastructure",
+    items: [
+      {
+        id: "compute-providers",
+        type: "link",
+        text: "Compute Providers",
+        href: "/infrastructure/compute",
+      },
+      {
+        id: "network-providers",
+        type: "link",
+        text: "Network Providers",
+        href: "/infrastructure/network",
+      },
+      {
+        id: "storage-providers",
+        type: "link",
+        text: "Storage Providers",
+        href: "/infrastructure/storage",
+      },
+    ],
+  },
+  {
+    id: "operations",
+    type: "section",
+    text: "Operations",
+    items: [{ id: "operations-list", type: "link", text: "Operations", href: "/operations" }],
+  },
+  {
+    id: "governance",
+    type: "section",
+    text: "Governance",
+    items: [
+      { id: "iam", type: "link", text: "IAM", href: "/governance/iam" },
+      { id: "quotas", type: "link", text: "Quotas", href: "/governance/quotas" },
+      { id: "metering", type: "link", text: "Metering", href: "/governance/metering" },
+      { id: "audit", type: "link", text: "Audit", href: "/governance/audit" },
+    ],
   },
 ];
 
-const tabs = [
-  { id: "platform", label: "Platform", content: <p>Platform-wide health and capacity.</p> },
-  { id: "customers", label: "Customers", content: <p>Accounts and organizations.</p> },
-];
+function OverviewPage() {
+  return (
+    <section>
+      <h1>Platform overview</h1>
+      <p>Operator view of the O3K platform.</p>
+    </section>
+  );
+}
+
+function PlaceholderPage({ title }: { title: string }) {
+  return (
+    <section>
+      <h1>{title}</h1>
+      <p>This page will be implemented in later milestones.</p>
+    </section>
+  );
+}
+
+function NotFound() {
+  return (
+    <section>
+      <h1>Not found</h1>
+      <p>The requested operator page does not exist.</p>
+      <Link to="/platform/overview">Go to overview</Link>
+    </section>
+  );
+}
+
+function OperatorRouterShell({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  return (
+    <OperatorShell navigationItems={navigationItems} activeHref={location.pathname}>
+      {children}
+    </OperatorShell>
+  );
+}
 
 export function App() {
-  const [density, setDensity] = useState<ArafDensity>("compact");
-  const [activeTab, setActiveTab] = useState("platform");
-  const [showPause, setShowPause] = useState(false);
-  const [toasts, setToasts] = useState<ToastItem[]>([
-    { id: "o1", type: "warning", message: "Operator console loaded" },
-  ]);
+  const [density] = useState<"comfortable" | "compact">("compact");
 
   return (
     <ArafThemeProvider density={density}>
-      <main style={{ padding: "var(--space-scaled-xl, 24px)" }}>
-        <BreadcrumbGroup
-          items={[
-            { text: "Platform", href: "/" },
-            { text: "Operator Console", href: "/operator" },
-          ]}
-        />
-
-        <Header variant="h1" description="Management console for O3K platform operators.">
-          Araf Operator Console
-        </Header>
-
-        <DensityMode density={density} onChange={setDensity} />
-
-        <Tabs
-          tabs={tabs}
-          activeTabId={activeTab}
-          onChange={setActiveTab}
-          ariaLabel="Operator sections"
-        />
-
-        <FormSection title="Region action" description="Apply a controlled change to a region.">
-          <FormField label="Region" id="region">
-            <select id="region">
-              <option>eu-west</option>
-              <option>us-east</option>
-            </select>
-          </FormField>
-          <FormField label="Reason" id="reason">
-            <input id="reason" type="text" placeholder="Maintenance reference" />
-          </FormField>
-        </FormSection>
-
-        <Header variant="h2">Providers</Header>
-        <Table<Provider>
-          items={providers}
-          columnDefinitions={columns}
-          trackingId="id"
-          header={<Header variant="h3">Infrastructure providers</Header>}
-          empty={<EmptyState title="No providers" description="No provider data is available." />}
-        />
-
-        <Header variant="h2">States</Header>
-        <LoadingState message="Loading platform diagnostics..." />
-        <ErrorState
-          title="Capacity feed unavailable"
-          message="The capacity service did not respond."
-          correlationId="txn-operator-7"
-          onRetry={() => {
-            setToasts((prev) => [
-              ...prev,
-              { id: String(Date.now()), type: "info", message: "Retry requested" },
-            ]);
-          }}
-        />
-
-        <Toast
-          items={toasts}
-          onDismiss={(id) => {
-            setToasts((prev) => prev.filter((t) => t.id !== id));
-          }}
-        />
-
-        <button
-          type="button"
-          onClick={() => {
-            setShowPause(true);
-          }}
-        >
-          Open operator confirm modal
-        </button>
-        <ConfirmModal
-          open={showPause}
-          title="Pause provider?"
-          onConfirm={() => {
-            setShowPause(false);
-            setToasts((prev) => [
-              ...prev,
-              { id: String(Date.now()), type: "success", message: "Provider paused" },
-            ]);
-          }}
-          onCancel={() => {
-            setShowPause(false);
-          }}
-        >
-          <p>Traffic will be drained from this provider.</p>
-        </ConfirmModal>
-      </main>
+      <FixtureIdentityProvider
+        initialIdentity={{ userId: "fixture-operator", userName: "Platform Operator" }}
+      >
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Navigate to="/platform/overview" replace />} />
+            <Route
+              path="/platform/overview"
+              element={
+                <OperatorRouterShell>
+                  <OverviewPage />
+                </OperatorRouterShell>
+              }
+            />
+            <Route
+              path="/platform/*"
+              element={
+                <OperatorRouterShell>
+                  <PlaceholderPage title="Platform" />
+                </OperatorRouterShell>
+              }
+            />
+            <Route
+              path="/customers/*"
+              element={
+                <OperatorRouterShell>
+                  <PlaceholderPage title="Customers" />
+                </OperatorRouterShell>
+              }
+            />
+            <Route
+              path="/services/*"
+              element={
+                <OperatorRouterShell>
+                  <PlaceholderPage title="Services" />
+                </OperatorRouterShell>
+              }
+            />
+            <Route
+              path="/infrastructure/*"
+              element={
+                <OperatorRouterShell>
+                  <PlaceholderPage title="Infrastructure" />
+                </OperatorRouterShell>
+              }
+            />
+            <Route
+              path="/operations"
+              element={
+                <OperatorRouterShell>
+                  <PlaceholderPage title="Operations" />
+                </OperatorRouterShell>
+              }
+            />
+            <Route
+              path="/governance/*"
+              element={
+                <OperatorRouterShell>
+                  <PlaceholderPage title="Governance" />
+                </OperatorRouterShell>
+              }
+            />
+            <Route
+              path="*"
+              element={
+                <OperatorRouterShell>
+                  <NotFound />
+                </OperatorRouterShell>
+              }
+            />
+          </Routes>
+        </BrowserRouter>
+      </FixtureIdentityProvider>
     </ArafThemeProvider>
   );
 }

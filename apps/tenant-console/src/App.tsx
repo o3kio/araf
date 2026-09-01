@@ -1,157 +1,209 @@
-import { useState } from "react";
+import { ArafThemeProvider } from "@araf/ui";
 import {
-  ArafThemeProvider,
-  BreadcrumbGroup,
-  ConfirmModal,
-  DensityMode,
-  EmptyState,
-  ErrorState,
-  FormField,
-  FormSection,
-  Header,
-  LoadingState,
-  StatusIndicator,
-  Table,
-  Tabs,
-  Toast,
-  type ArafDensity,
-  type TableColumnDefinition,
-  type ToastItem,
-} from "@araf/ui";
+  FixtureIdentityProvider,
+  FixtureScopeProvider,
+  TenantShell,
+  TenantRouteGuard,
+  type TenantNavigationItem,
+  type ProjectOption,
+  type RegionOption,
+} from "@araf/shell";
+import { useState, type ReactNode } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from "react-router";
 
-interface Resource {
-  id: string;
-  name: string;
-  type: string;
-  region: string;
-  status: "ready" | "busy" | "error";
-}
-
-const resources: Resource[] = [
-  { id: "r1", name: "web-fe", type: "Compute", region: "eu-west", status: "ready" },
-  { id: "r2", name: "api-db", type: "Database", region: "us-east", status: "busy" },
+const projects: ProjectOption[] = [
+  { id: "project-alpha", name: "Alpha", organizationId: "org-acme" },
+  { id: "project-beta", name: "Beta", organizationId: "org-acme" },
 ];
 
-const columns: TableColumnDefinition<Resource>[] = [
-  { id: "name", header: "Name", cell: (item) => item.name },
-  { id: "type", header: "Type", cell: (item) => item.type },
-  { id: "region", header: "Region", cell: (item) => item.region },
+const regions: RegionOption[] = [
+  { id: "eu-west", name: "EU West" },
+  { id: "us-east", name: "US East" },
+  { id: "ap-south", name: "AP South" },
+];
+
+const navigationItems: TenantNavigationItem[] = [
+  { id: "home", type: "link", text: "Home", href: "/" },
   {
-    id: "status",
-    header: "Status",
-    cell: (item) => (
-      <StatusIndicator
-        type={item.status === "ready" ? "success" : item.status === "busy" ? "pending" : "error"}
-      >
-        {item.status}
-      </StatusIndicator>
-    ),
+    id: "services",
+    type: "section",
+    text: "Services",
+    items: [
+      { id: "compute", type: "link", text: "Compute", href: "/services/compute" },
+      { id: "networking", type: "link", text: "Networking", href: "/services/networking" },
+      { id: "storage", type: "link", text: "Storage", href: "/services/storage" },
+      { id: "images", type: "link", text: "Images", href: "/services/images" },
+    ],
+  },
+  {
+    id: "manage",
+    type: "section",
+    text: "Manage",
+    items: [
+      { id: "operations", type: "link", text: "Operations", href: "/operations" },
+      { id: "resources", type: "link", text: "Resources", href: "/resources" },
+      { id: "usage", type: "link", text: "Usage & Cost", href: "/usage" },
+    ],
+  },
+  {
+    id: "organization",
+    type: "section",
+    text: "Organization",
+    items: [
+      { id: "projects", type: "link", text: "Projects", href: "/organization/projects" },
+      { id: "users", type: "link", text: "Users & Access", href: "/organization/users" },
+      { id: "quotas", type: "link", text: "Quotas", href: "/organization/quotas" },
+      { id: "audit", type: "link", text: "Audit", href: "/organization/audit" },
+    ],
+  },
+  {
+    id: "developer",
+    type: "section",
+    text: "Developer",
+    items: [{ id: "api", type: "link", text: "API & CLI", href: "/developer/api" }],
   },
 ];
 
-const tabs = [
-  { id: "resources", label: "Resources", content: <p>Resource list for the selected project.</p> },
-  { id: "usage", label: "Usage", content: <p>Usage summary for the current billing period.</p> },
-];
+function HomePage() {
+  return (
+    <section>
+      <h1>Tenant home</h1>
+      <p>Welcome to the Araf Tenant Console.</p>
+    </section>
+  );
+}
+
+function PlaceholderPage({ title }: { title: string }) {
+  return (
+    <section>
+      <h1>{title}</h1>
+      <p>This page will be implemented in later milestones.</p>
+    </section>
+  );
+}
+
+function NotFound() {
+  return (
+    <section>
+      <h1>Not found</h1>
+      <p>The requested tenant page does not exist.</p>
+      <Link to="/">Go home</Link>
+    </section>
+  );
+}
+
+function TenantRouterShell({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  return (
+    <TenantShell
+      navigationItems={navigationItems}
+      activeHref={location.pathname}
+      projects={projects}
+      regions={regions}
+    >
+      {children}
+    </TenantShell>
+  );
+}
 
 export function App() {
-  const [density, setDensity] = useState<ArafDensity>("comfortable");
-  const [activeTab, setActiveTab] = useState("resources");
-  const [showDelete, setShowDelete] = useState(false);
-  const [toasts, setToasts] = useState<ToastItem[]>([
-    { id: "t1", type: "info", message: "Tenant console loaded" },
-  ]);
+  const [density] = useState<"comfortable" | "compact">("comfortable");
 
   return (
     <ArafThemeProvider density={density}>
-      <main style={{ padding: "var(--space-scaled-xl, 24px)" }}>
-        <BreadcrumbGroup
-          items={[
-            { text: "Home", href: "/" },
-            { text: "Tenant Console", href: "/tenant" },
-          ]}
-        />
-
-        <Header variant="h1" description="Self-service console for O3K tenants.">
-          Araf Tenant Console
-        </Header>
-
-        <DensityMode density={density} onChange={setDensity} />
-
-        <Tabs
-          tabs={tabs}
-          activeTabId={activeTab}
-          onChange={setActiveTab}
-          ariaLabel="Tenant sections"
-        />
-
-        <FormSection title="Create resource" description="Enter the required resource details.">
-          <FormField label="Resource name" id="name">
-            <input id="name" type="text" placeholder="e.g. web-fe" />
-          </FormField>
-          <FormField label="Region" id="region">
-            <select id="region">
-              <option>eu-west</option>
-              <option>us-east</option>
-            </select>
-          </FormField>
-        </FormSection>
-
-        <Header variant="h2">Resources</Header>
-        <Table<Resource>
-          items={resources}
-          columnDefinitions={columns}
-          trackingId="id"
-          header={<Header variant="h3">Recent resources</Header>}
-          empty={<EmptyState title="No resources" description="Create your first resource." />}
-        />
-
-        <Header variant="h2">States</Header>
-        <LoadingState message="Loading resource counts..." />
-        <ErrorState
-          title="Unable to load quotas"
-          message="The quota service returned a transient error."
-          correlationId="txn-tenant-42"
-          onRetry={() => {
-            setToasts((prev) => [
-              ...prev,
-              { id: String(Date.now()), type: "success", message: "Retry requested" },
-            ]);
-          }}
-        />
-
-        <Toast
-          items={toasts}
-          onDismiss={(id) => {
-            setToasts((prev) => prev.filter((t) => t.id !== id));
-          }}
-        />
-
-        <button
-          type="button"
-          onClick={() => {
-            setShowDelete(true);
+      <FixtureIdentityProvider
+        initialIdentity={{ userId: "fixture-tenant", userName: "Tenant User" }}
+      >
+        <FixtureScopeProvider
+          initialScope={{
+            organizationId: "org-acme",
+            organizationName: "Acme Corp",
+            projectId: "project-alpha",
+            projectName: "Alpha",
+            regionId: "global",
+            regionName: "Global",
           }}
         >
-          Open confirm modal
-        </button>
-        <ConfirmModal
-          open={showDelete}
-          title="Delete resource?"
-          onConfirm={() => {
-            setShowDelete(false);
-            setToasts((prev) => [
-              ...prev,
-              { id: String(Date.now()), type: "success", message: "Resource deleted" },
-            ]);
-          }}
-          onCancel={() => {
-            setShowDelete(false);
-          }}
-        >
-          <p>This action cannot be undone.</p>
-        </ConfirmModal>
-      </main>
+          <BrowserRouter>
+            <TenantRouteGuard
+              fallback={
+                <main style={{ padding: "2rem" }}>
+                  <h1>Operator routes are not available in the tenant console</h1>
+                  <p>This session cannot access operator-only surfaces.</p>
+                </main>
+              }
+            >
+              <Routes>
+                <Route
+                  path="/"
+                  element={
+                    <TenantRouterShell>
+                      <HomePage />
+                    </TenantRouterShell>
+                  }
+                />
+                <Route
+                  path="/services/*"
+                  element={
+                    <TenantRouterShell>
+                      <PlaceholderPage title="Services" />
+                    </TenantRouterShell>
+                  }
+                />
+                <Route
+                  path="/operations"
+                  element={
+                    <TenantRouterShell>
+                      <PlaceholderPage title="Operations" />
+                    </TenantRouterShell>
+                  }
+                />
+                <Route
+                  path="/resources"
+                  element={
+                    <TenantRouterShell>
+                      <PlaceholderPage title="Resources" />
+                    </TenantRouterShell>
+                  }
+                />
+                <Route
+                  path="/usage"
+                  element={
+                    <TenantRouterShell>
+                      <PlaceholderPage title="Usage & Cost" />
+                    </TenantRouterShell>
+                  }
+                />
+                <Route
+                  path="/organization/*"
+                  element={
+                    <TenantRouterShell>
+                      <PlaceholderPage title="Organization" />
+                    </TenantRouterShell>
+                  }
+                />
+                <Route
+                  path="/developer/*"
+                  element={
+                    <TenantRouterShell>
+                      <PlaceholderPage title="Developer" />
+                    </TenantRouterShell>
+                  }
+                />
+                <Route path="/operator/*" element={<Navigate to="/" replace />} />
+                <Route
+                  path="*"
+                  element={
+                    <TenantRouterShell>
+                      <NotFound />
+                    </TenantRouterShell>
+                  }
+                />
+              </Routes>
+            </TenantRouteGuard>
+          </BrowserRouter>
+        </FixtureScopeProvider>
+      </FixtureIdentityProvider>
     </ArafThemeProvider>
   );
 }
