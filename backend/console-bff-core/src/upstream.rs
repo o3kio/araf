@@ -8,11 +8,13 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 
+use time::OffsetDateTime;
+
 use crate::{
     error::ApiError,
     model::{
-        ActionRequest, CreateResourceRequest, Operation, PaginatedCollection, Resource,
-        ServiceDescriptor, SessionContext, SortDirection,
+        ActionRequest, CreateResourceRequest, Operation, OperationState, PaginatedCollection,
+        Resource, ServiceDescriptor, SessionContext, SortDirection,
     },
     request::RequestContext,
 };
@@ -30,6 +32,24 @@ pub struct ListResourcesParams {
     pub filters: HashMap<String, String>,
     pub sort_field: Option<String>,
     pub sort_direction: SortDirection,
+}
+
+/// Parameters for listing operations.
+///
+/// Operation collections have their own filter surface (state, action, scope,
+/// time bounds) so they are modelled separately from `ListResourcesParams`.
+#[derive(Clone, Debug, Default)]
+pub struct ListOperationsParams {
+    pub page: u32,
+    pub page_size: u32,
+    pub state: Option<OperationState>,
+    pub action: Option<String>,
+    pub resource_type: Option<String>,
+    pub resource_id: Option<String>,
+    pub project_id: Option<String>,
+    pub region_id: Option<String>,
+    pub since: Option<OffsetDateTime>,
+    pub until: Option<OffsetDateTime>,
 }
 
 /// Abstract upstream dependency for BFF handlers.
@@ -85,8 +105,7 @@ pub trait Upstream: Send + Sync + 'static {
     async fn list_operations(
         &self,
         ctx: &RequestContext,
-        page: u32,
-        page_size: u32,
+        params: ListOperationsParams,
     ) -> Result<PaginatedCollection<Operation>, ApiError>;
 
     /// Get a single Operation by id.

@@ -208,6 +208,7 @@ pub struct Operation {
     pub updated_at: Option<OffsetDateTime>,
     pub correlation_id: String,
     pub error: Option<OperationError>,
+    pub events: Vec<OperationEvent>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -225,6 +226,30 @@ pub struct OperationError {
     pub code: String,
     pub title: String,
     pub detail: String,
+}
+
+/// A single event in an Operation's lifecycle timeline.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationEvent {
+    pub id: String,
+    pub state: OperationState,
+    pub occurred_at: OffsetDateTime,
+    pub message: String,
+    pub correlation_id: String,
+}
+
+impl OperationEvent {
+    /// Build the initial `Pending` event for a newly created operation.
+    pub fn initial(operation: &Operation) -> Self {
+        Self {
+            id: format!("{}-pending", operation.id),
+            state: OperationState::Pending,
+            occurred_at: operation.started_at.unwrap_or_else(OffsetDateTime::now_utc),
+            message: "Operation created and pending".to_string(),
+            correlation_id: operation.correlation_id.clone(),
+        }
+    }
 }
 
 /// Request to perform an action on a resource.

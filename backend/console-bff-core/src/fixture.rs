@@ -6,8 +6,9 @@
 //! `Upstream` but has no O3K client, URLs, or credentials.
 
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
+    collections::{hash_map::DefaultHasher, HashMap, HashSet},
     hash::{Hash, Hasher},
+    sync::{Arc, Mutex},
 };
 
 use async_trait::async_trait;
@@ -18,12 +19,12 @@ use crate::{
     model::{
         ActionDescriptor, ActionRequest, ActionRiskClass, Capability, ColumnDescriptor,
         CreateResourceRequest, DetailsSectionDescriptor, FilterDescriptor, FilterKind, JsonSchema,
-        Operation, OperationError, OperationState, PaginatedCollection, RelationshipDescriptor,
-        RelationshipDirection, Resource, ResourceStatus, ResourceTypeDescriptor, ServiceDescriptor,
-        SessionContext, SortDirection,
+        Operation, OperationError, OperationEvent, OperationState, PaginatedCollection,
+        RelationshipDescriptor, RelationshipDirection, Resource, ResourceStatus,
+        ResourceTypeDescriptor, ServiceDescriptor, SessionContext, SortDirection,
     },
     request::RequestContext,
-    upstream::{ListResourcesParams, Upstream},
+    upstream::{ListOperationsParams, ListResourcesParams, Upstream},
 };
 
 /// Total number of synthetic resources in the fixture universe.
@@ -35,15 +36,43 @@ pub const FIXTURE_VPC_TOTAL: u64 = 1_000;
 /// Total number of synthetic volume resources.
 pub const FIXTURE_VOLUME_TOTAL: u64 = 5_000;
 
+/// Seconds before a Pending fixture operation transitions to Running.
+const PENDING_TO_RUNNING_SECS: i64 = 1;
+
+/// Seconds before a Running fixture operation transitions to Succeeded or Failed.
+const RUNNING_TO_TERMINAL_SECS: i64 = 3;
+
+/// In-memory operation store for the fixture adapter.
+///
+/// Stored operations survive page reloads and can be retrieved by id. They are
+/// deliberately isolated to this adapter instance; the fixture does not claim
+/// to be a persistent cloud control plane.
+#[derive(Debug, Default)]
+struct OperationStore {
+    operations: Vec<Operation>,
+}
+
 /// Fixture adapter configured for a specific BFF surface.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct FixtureAdapter {
     surface: &'static str,
+    store: Arc<Mutex<OperationStore>>,
+}
+
+impl std::fmt::Debug for FixtureAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FixtureAdapter")
+            .field("surface", &self.surface)
+            .finish_non_exhaustive()
+    }
 }
 
 impl FixtureAdapter {
     pub fn new(surface: &'static str) -> Self {
-        Self { surface }
+        Self {
+            surface,
+            store: Arc::new(Mutex::new(OperationStore::default())),
+        }
     }
 
     fn seed_from_id(id: u64) -> u64 {
@@ -287,6 +316,81 @@ impl FixtureAdapter {
             ),
             correlation_id: format!("corr-{id}"),
             error,
+            events: vec![],
+        }
+    }
+
+    /// Deterministically decide whether an operation id should eventually
+    /// succeed or fail. The result is stable for a given id so tests can rely
+    /// on it without mocking a cloud control plane.
+    fn is_success_id(id: &str) -> bool {
+        let mut hasher = DefaultHasher::new();
+        id.hash(&mut hasher);
+        hasher.finish() % 2 == 0
+    }
+
+    /// Advance a single stored operation through its deterministic lifecycle.
+    ///
+    /// - Pending -> Running after `PENDING_TO_RUNNING_SECS`.
+    /// - Running -> Succeeded/Failed after `RUNNING_TO_TERMINAL_SECS`.
+    fn advance_operation(op: &mut Operation, now: OffsetDateTime) {
+        let started_at = op.started_at.unwrap_or(now);
+        let elapsed = now - started_at;
+
+        match op.state {
+            OperationState::Pending => {
+                if elapsed >= time::Duration::seconds(PENDING_TO_RUNNING_SECS) {
+                    op.state = OperationState::Running;
+                    op.updated_at = Some(now);
+                    op.events.push(OperationEvent {
+                        id: format!("{}-running", op.id),
+                        state: OperationState::Running,
+                        occurred_at: now,
+                        message: "Operation started running".to_string(),
+                        correlation_id: op.correlation_id.clone(),
+                    });
+                }
+            }
+            OperationState::Running => {
+                if elapsed >= time::Duration::seconds(RUNNING_TO_TERMINAL_SECS) {
+                    let success = Self::is_success_id(&op.id);
+                    if success {
+                        op.state = OperationState::Succeeded;
+                        op.updated_at = Some(now);
+                        op.events.push(OperationEvent {
+                            id: format!("{}-succeeded", op.id),
+                            state: OperationState::Succeeded,
+                            occurred_at: now,
+                            message: "Operation completed successfully".to_string(),
+                            correlation_id: op.correlation_id.clone(),
+                        });
+                    } else {
+                        op.state = OperationState::Failed;
+                        op.updated_at = Some(now);
+                        op.error = Some(OperationError {
+                            code: "fixture-failure".to_string(),
+                            title: "Fixture operation failed".to_string(),
+                            detail: "Deterministic failure for this operation id.".to_string(),
+                        });
+                        op.events.push(OperationEvent {
+                            id: format!("{}-failed", op.id),
+                            state: OperationState::Failed,
+                            occurred_at: now,
+                            message: "Operation failed deterministically".to_string(),
+                            correlation_id: op.correlation_id.clone(),
+                        });
+                    }
+                }
+            }
+            OperationState::Succeeded | OperationState::Failed => {}
+        }
+    }
+
+    /// Advance every stored operation to its current deterministic state.
+    fn advance_operations(&self, now: OffsetDateTime) {
+        let mut store = self.store.lock().expect("fixture operation store poisoned");
+        for op in &mut store.operations {
+            Self::advance_operation(op, now);
         }
     }
 
@@ -793,13 +897,23 @@ impl Upstream for FixtureAdapter {
                 .unwrap_or(0),
         );
         let mut op = Self::operation_at(seed % FIXTURE_RESOURCE_TOTAL);
+        let now = OffsetDateTime::now_utc();
         op.action = request.action_id;
         op.resource_id = Some(id.to_string());
         op.resource_type = Some(resource_type.to_string());
         op.project_id = Some(resource.project_id);
         op.region_id = Some(resource.region_id);
         op.state = OperationState::Pending;
+        op.started_at = Some(now);
+        op.updated_at = Some(now);
         op.correlation_id = ctx.correlation_id().to_string();
+        op.events = vec![OperationEvent::initial(&op)];
+
+        self.store
+            .lock()
+            .expect("fixture operation store poisoned")
+            .operations
+            .push(op.clone());
         Ok(op)
     }
 
@@ -836,7 +950,7 @@ impl Upstream for FixtureAdapter {
         let resource_id = format!("resource-{numeric_id:010}");
         let now = OffsetDateTime::now_utc();
 
-        Ok(Operation {
+        let mut op = Operation {
             id: format!("op-{resource_id}"),
             action: "create".to_string(),
             state: OperationState::Pending,
@@ -857,42 +971,109 @@ impl Upstream for FixtureAdapter {
             updated_at: Some(now),
             correlation_id: ctx.correlation_id().to_string(),
             error: None,
-        })
+            events: vec![],
+        };
+        op.events = vec![OperationEvent::initial(&op)];
+
+        self.store
+            .lock()
+            .expect("fixture operation store poisoned")
+            .operations
+            .push(op.clone());
+        Ok(op)
     }
 
     async fn list_operations(
         &self,
         _ctx: &RequestContext,
-        page: u32,
-        page_size: u32,
+        params: ListOperationsParams,
     ) -> Result<PaginatedCollection<Operation>, ApiError> {
-        let page_size = page_size.clamp(1, 100);
-        let total = 1_000_u64;
-        let offset = (page as u64).saturating_mul(page_size as u64);
+        let now = OffsetDateTime::now_utc();
+        self.advance_operations(now);
 
-        if offset >= total {
-            return Ok(PaginatedCollection {
-                items: vec![],
-                total,
-                page,
-                page_size,
-                has_more: false,
+        let page_size = params.page_size.clamp(1, 100);
+
+        // Merge stored operations with deterministic synthetic ones. Stored
+        // operations take precedence for the same id; synthetic ids already in
+        // the store are skipped so the total stays predictable when the store
+        // is empty (the existing contract tests assert total == 1_000).
+        let mut all_operations: Vec<Operation> = Vec::new();
+        let stored_ids: HashSet<String> = {
+            let store = self.store.lock().expect("fixture operation store poisoned");
+            all_operations.extend(store.operations.clone());
+            store.operations.iter().map(|o| o.id.clone()).collect()
+        };
+        for id in 0..1_000_u64 {
+            let op_id = format!("op-{id:010}");
+            if !stored_ids.contains(&op_id) {
+                all_operations.push(Self::operation_at(id));
+            }
+        }
+
+        if let Some(state) = params.state {
+            all_operations.retain(|o| o.state == state);
+        }
+        if let Some(action) = params.action {
+            all_operations.retain(|o| o.action == action);
+        }
+        if let Some(resource_type) = params.resource_type {
+            all_operations.retain(|o| o.resource_type.as_ref() == Some(&resource_type));
+        }
+        if let Some(resource_id) = params.resource_id {
+            all_operations.retain(|o| o.resource_id.as_ref() == Some(&resource_id));
+        }
+        if let Some(project_id) = params.project_id {
+            all_operations.retain(|o| o.project_id.as_ref() == Some(&project_id));
+        }
+        if let Some(region_id) = params.region_id {
+            all_operations.retain(|o| o.region_id.as_ref() == Some(&region_id));
+        }
+        if let Some(since) = params.since {
+            all_operations.retain(|o| {
+                o.started_at
+                    .map(|started| started >= since)
+                    .unwrap_or(false)
+            });
+        }
+        if let Some(until) = params.until {
+            all_operations.retain(|o| {
+                o.started_at
+                    .map(|started| started <= until)
+                    .unwrap_or(false)
             });
         }
 
-        let end = (offset + page_size as u64).min(total);
-        let items: Vec<Operation> = (offset..end).map(Self::operation_at).collect();
+        let total = all_operations.len() as u64;
+        let offset = (params.page as u64).saturating_mul(page_size as u64);
+        let items = if offset >= total {
+            vec![]
+        } else {
+            let end = (offset + page_size as u64).min(total) as usize;
+            all_operations[offset as usize..end].to_vec()
+        };
 
         Ok(PaginatedCollection {
             items,
             total,
-            page,
+            page: params.page,
             page_size,
-            has_more: end < total,
+            has_more: offset + (page_size as u64) < total,
         })
     }
 
     async fn get_operation(&self, _ctx: &RequestContext, id: &str) -> Result<Operation, ApiError> {
+        let now = OffsetDateTime::now_utc();
+        self.advance_operations(now);
+
+        {
+            let store = self.store.lock().expect("fixture operation store poisoned");
+            if let Some(op) = store.operations.iter().find(|o| o.id == id).cloned() {
+                return Ok(op);
+            }
+        }
+
+        // Fallback to deterministic synthetic operation for backward-compatible
+        // tests that request ids in the fixture universe.
         let numeric_id = id
             .strip_prefix("op-")
             .and_then(|s| s.parse::<u64>().ok())
@@ -945,5 +1126,86 @@ impl SessionContext {
             capabilities,
             ..base
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pending_operation(id: &str, started_at: OffsetDateTime) -> Operation {
+        let mut op = Operation {
+            id: id.to_string(),
+            action: "create".to_string(),
+            state: OperationState::Pending,
+            resource_id: None,
+            resource_type: None,
+            project_id: None,
+            region_id: None,
+            initiated_by: None,
+            started_at: Some(started_at),
+            updated_at: Some(started_at),
+            correlation_id: "corr-test".to_string(),
+            error: None,
+            events: vec![],
+        };
+        op.events = vec![OperationEvent::initial(&op)];
+        op
+    }
+
+    #[test]
+    fn operation_transitions_pending_to_running_to_succeeded() {
+        let success_id = (0..100)
+            .map(|i| format!("op-{i:010}"))
+            .find(|id| FixtureAdapter::is_success_id(id))
+            .expect("at least one id should hash to success");
+
+        let started_at = OffsetDateTime::now_utc();
+        let mut op = pending_operation(&success_id, started_at);
+
+        FixtureAdapter::advance_operation(&mut op, started_at);
+        assert_eq!(op.state, OperationState::Pending);
+
+        FixtureAdapter::advance_operation(
+            &mut op,
+            started_at + time::Duration::seconds(PENDING_TO_RUNNING_SECS),
+        );
+        assert_eq!(op.state, OperationState::Running);
+        assert!(op.events.iter().any(|e| e.state == OperationState::Running));
+
+        FixtureAdapter::advance_operation(
+            &mut op,
+            started_at + time::Duration::seconds(RUNNING_TO_TERMINAL_SECS),
+        );
+        assert_eq!(op.state, OperationState::Succeeded);
+        assert!(op
+            .events
+            .iter()
+            .any(|e| e.state == OperationState::Succeeded));
+    }
+
+    #[test]
+    fn operation_transitions_pending_to_running_to_failed() {
+        let failure_id = (0..100)
+            .map(|i| format!("op-{i:010}"))
+            .find(|id| !FixtureAdapter::is_success_id(id))
+            .expect("at least one id should hash to failure");
+
+        let started_at = OffsetDateTime::now_utc();
+        let mut op = pending_operation(&failure_id, started_at);
+
+        FixtureAdapter::advance_operation(
+            &mut op,
+            started_at + time::Duration::seconds(PENDING_TO_RUNNING_SECS),
+        );
+        assert_eq!(op.state, OperationState::Running);
+
+        FixtureAdapter::advance_operation(
+            &mut op,
+            started_at + time::Duration::seconds(RUNNING_TO_TERMINAL_SECS),
+        );
+        assert_eq!(op.state, OperationState::Failed);
+        assert!(op.error.is_some());
+        assert!(op.events.iter().any(|e| e.state == OperationState::Failed));
     }
 }

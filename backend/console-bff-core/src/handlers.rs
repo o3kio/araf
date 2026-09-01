@@ -14,11 +14,11 @@ use tracing::info;
 use crate::{
     error::{ApiError, BffError},
     model::{
-        ActionRequest, CreateResourceRequest, Operation, PaginatedCollection, Resource,
-        ServiceDescriptor, SessionContext, SortDirection,
+        ActionRequest, CreateResourceRequest, Operation, OperationState, PaginatedCollection,
+        Resource, ServiceDescriptor, SessionContext, SortDirection,
     },
     request::RequestContext,
-    upstream::{ListResourcesParams, Upstream},
+    upstream::{ListOperationsParams, ListResourcesParams, Upstream},
 };
 
 /// Attach the request's correlation id to an upstream error so Problem Details
@@ -46,6 +46,23 @@ pub struct ListResourcesQuery {
     pub sort_field: Option<String>,
     #[serde(default)]
     pub sort_direction: SortDirection,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListOperationsQuery {
+    #[serde(default)]
+    pub page: u32,
+    #[serde(default = "default_page_size")]
+    pub page_size: u32,
+    pub state: Option<OperationState>,
+    pub action: Option<String>,
+    pub resource_type: Option<String>,
+    pub resource_id: Option<String>,
+    pub project_id: Option<String>,
+    pub region_id: Option<String>,
+    pub since: Option<time::OffsetDateTime>,
+    pub until: Option<time::OffsetDateTime>,
 }
 
 fn default_page_size() -> u32 {
@@ -171,12 +188,24 @@ pub async fn submit_action(
 
 pub async fn list_operations(
     State(state): State<AppState>,
-    Query(query): Query<ListResourcesQuery>,
+    Query(query): Query<ListOperationsQuery>,
     ctx: RequestContext,
 ) -> Result<Json<PaginatedCollection<Operation>>, BffError> {
+    let params = ListOperationsParams {
+        page: query.page,
+        page_size: query.page_size,
+        state: query.state,
+        action: query.action,
+        resource_type: query.resource_type,
+        resource_id: query.resource_id,
+        project_id: query.project_id,
+        region_id: query.region_id,
+        since: query.since,
+        until: query.until,
+    };
     let operations = state
         .upstream
-        .list_operations(&ctx, query.page, query.page_size)
+        .list_operations(&ctx, params)
         .await
         .map_err(|e| with_ctx(e, &ctx))?;
     Ok(Json(operations))
