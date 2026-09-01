@@ -11,6 +11,7 @@ async-trait.workspace = true
 axum.workspace = true
 http.workspace = true
 jsonschema.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -22,3 +23,4 @@ uuid.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
+wiremock = "0.6"

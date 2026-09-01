@@ -5,3 +5,4 @@ target
 pnpm-lock.yaml
 Cargo.lock
 *.md
+.o3k-rust

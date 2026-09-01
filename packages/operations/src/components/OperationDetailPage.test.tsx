@@ -128,6 +128,76 @@ describe("OperationDetailPage", () => {
     expect(screen.getByText("Deterministic failure for this operation id.")).toBeInTheDocument();
   });
 
+  it("derives a minimal timeline from timestamps when events are empty", async () => {
+    const operationWithoutEvents: Operation = {
+      ...pendingOperation,
+      events: [],
+      startedAt: "2024-01-01T00:00:00Z",
+      updatedAt: "2024-01-01T00:00:05Z",
+      state: "running",
+    };
+    const client: ArafClient = {
+      healthz: vi.fn(),
+      getContext: vi.fn(),
+      listServices: vi.fn(),
+      listResources: vi.fn(),
+      getResource: vi.fn(),
+      createResource: vi.fn(),
+      submitAction: vi.fn(),
+      listOperations: vi.fn(),
+      getOperation: vi.fn().mockResolvedValue(operationWithoutEvents),
+    };
+
+    render(
+      <TestWrapper client={client}>
+        <OperationDetailPage />
+      </TestWrapper>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Operation started running")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Operation created and pending")).toBeInTheDocument();
+  });
+
+  it("renders retryable and unknownOutcome states", async () => {
+    const retryableOperation: Operation = {
+      ...pendingOperation,
+      state: "retryable",
+      updatedAt: "2024-01-01T00:00:05Z",
+      error: {
+        code: "upstream-error",
+        title: "Upstream operation error",
+        detail: "transient provider failure",
+      },
+      events: [],
+    };
+    const client: ArafClient = {
+      healthz: vi.fn(),
+      getContext: vi.fn(),
+      listServices: vi.fn(),
+      listResources: vi.fn(),
+      getResource: vi.fn(),
+      createResource: vi.fn(),
+      submitAction: vi.fn(),
+      listOperations: vi.fn(),
+      getOperation: vi.fn().mockResolvedValue(retryableOperation),
+    };
+
+    render(
+      <TestWrapper client={client}>
+        <OperationDetailPage />
+      </TestWrapper>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Retryable").length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(screen.getAllByText(/transient provider failure/).length).toBeGreaterThanOrEqual(1);
+  });
+
   it("displays an error state when the operation cannot be loaded", async () => {
     const client: ArafClient = {
       healthz: vi.fn(),

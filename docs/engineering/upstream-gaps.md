@@ -102,3 +102,75 @@ Implementation phases must add new gaps here instead of inventing production O3K
 - **Current status:** Not available for M3.
 - **Blocked Araf feature:** Usage dashboards, quota surfaces, and long-term audit trails.
 - **Acceptable fallback:** Defer to M11/M12; fixture `Operation` objects provide synthetic correlation identifiers for UI development only.
+
+## M7-O3K-001: Native OpenAPI specification for `/o3k/v1`
+
+- **Gap id:** `M7-O3K-001`
+- **Required O3K contract:** A published OpenAPI or protobuf-based service definition for the native `/o3k/v1` HTTP surface so Araf can generate types and keep the BFF adapter in sync with authoritative O3K routes.
+- **Why Araf M7 needs it:** M7 requires a real O3K tenant adapter. The native routes are defined only in `crates/o3k-api/src/lib.rs` (`/o3k/v1/services`, `/o3k/v1/resource-types`, `/o3k/v1/compute/servers`, `/o3k/v1/operations/{id}`, generic `/{namespace}/{collection}`). Only `contracts/openapi/bootstrap.yaml` exists and it does not cover the native surface.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Generated native API client; guaranteed route/payload parity with O3K main.
+- **Acceptable fallback:** Hand-write a narrow O3K native client in the BFF based on direct inspection of `crates/o3k-api`, `crates/o3k-native-api`, and `contracts/native-resource-envelope-v1.schema.json`. Document every manually-derived type and keep the surface minimal.
+
+## M7-O3K-002: Operation list/search endpoint
+
+- **Gap id:** `M7-O3K-002`
+- **Required O3K contract:** A server-bounded `GET /o3k/v1/operations` endpoint that returns operations visible to the caller, filterable by state, action, resource type, resource id, scope, and time bounds.
+- **Why Araf M7 needs it:** Araf M6 built a global Operations list page (`OperationsListPage`) and the prototype gate requires global/resource operation navigation. The O3K native API only exposes `GET /o3k/v1/operations/{id}`.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Global Operations list backed by real O3K data.
+- **Acceptable fallback:** The M7 `O3kAdapter::list_operations` explicitly returns `501 Not Implemented` with a clear Problem Details message. Keep the global Operations list as a fixture-only page in M7 and document the gap; operation detail pages can use real `GET /o3k/v1/operations/{id}`.
+
+## M7-O3K-003: Operation event timeline
+
+- **Gap id:** `M7-O3K-003`
+- **Required O3K contract:** An authoritative Operation event stream or `events` array on the canonical `Operation` model that records state transitions, progress messages, and failure details with timestamps and correlation IDs.
+- **Why Araf M7 needs it:** Araf M6 renders an `OperationTimeline` from `OperationEvent[]`. O3K's canonical `Operation` (`crates/o3k-kernel/src/operation.rs`) only carries `created_at`, `started_at`, `finished_at`, and a single `error` string.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Rich, truthful operation progress timeline backed by O3K.
+- **Acceptable fallback:** Implemented in M7: the BFF derives a minimal `events` array from O3K timestamps and `error`, and the frontend `OperationTimeline` falls back to the same derivation when the BFF returns no events. No intermediate orchestration steps are invented; the derivation is surfaced as presentation translation, not authoritative events.
+
+## M7-O3K-004: Native resource list filtering and sorting
+
+- **Gap id:** `M7-O3K-004`
+- **Required O3K contract:** Native list endpoints that support server-side filtering by name/status/scope and stable sorting, returning bounded pages plus a total count.
+- **Why Araf M7 needs it:** Araf's generic `ResourceCollectionPage` exposes descriptor-driven filters and sortable columns. The native `/o3k/v1` surface uses cursor-based pagination (`limit`/`cursor`) with HMAC-authenticated opaque cursors, default limit 50, max 200, and no field filtering or sorting.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Server-bounded filtering/sorting in real O3K-backed resource grids.
+- **Acceptable fallback:** Implemented in M7: the adapter maps Araf `page`/`pageSize` to O3K `limit` cursor pagination, ignores unsupported filter/sort params, and returns a synthetic `total` (`items.len() + 1` when O3K provides a `next_cursor`). Continue using the fixture adapter to demonstrate full server-side filtering/sorting behavior.
+
+## M7-O3K-005: Native create/delete for volume and network
+
+- **Gap id:** `M7-O3K-005`
+- **Required O3K contract:** Concrete native routes for creating and deleting volumes and address-realms/networks that return canonical Operations.
+- **Why Araf M7 needs it:** M7 targets Compute, Network, and Volume. `crates/o3k-api/src/lib.rs` mounts only `list`/`show` for `/o3k/v1/volume/volumes` and `/o3k/v1/network/address-realms`. Create/delete must go through the generic manifest-driven `/{namespace}/{collection}` path, which requires correct `kind` and manifest registration.
+- **Current status:** Confirmed partially — concrete compute server create/delete routes exist; volume/network concrete routes are read-only and the generic manifest path is not validated end-to-end for Araf's use case.
+- **Blocked Araf feature:** Direct, type-safe create/delete UX for volume and network through the native API.
+- **Acceptable fallback:** Implement compute server create/delete as the primary real mutation in M7. Keep volume/network create/delete behind the fixture adapter for the prototype/MVP boundary until the native generic path is validated end-to-end. See also M7-O3K-008 for compute server start/stop.
+
+## M7-O3K-008: Native compute server start/stop routes
+
+- **Gap id:** `M7-O3K-008`
+- **Required O3K contract:** Concrete native routes for starting and stopping compute servers that return canonical Operations (e.g. `POST /o3k/v1/compute/servers/{id}/start` and `/stop`, or a generic action submission path).
+- **Why Araf M7 needs it:** Araf's descriptor for `compute.server` advertises `start` and `stop` actions. O3K's manifest defines `compute:StartServer` and `compute:StopServer` actions, but the native HTTP surface (`crates/o3k-api/src/lib.rs`) binds only `GET` and `DELETE` to `/o3k/v1/compute/servers/{id}`. There is no native start/stop endpoint.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Real O3K-backed start/stop actions in the tenant console.
+- **Acceptable fallback:** The M7 `O3kAdapter` returns `501 Not Implemented` for `start`/`stop` actions with a clear Problem Details message that references this gap. Users can still perform create/delete on compute servers. Start/stop remains available in the fixture adapter.
+
+## M7-O3K-006: Multi-region and availability zone enumeration
+
+- **Gap id:** `M7-O3K-006`
+- **Required O3K contract:** Dynamic endpoint to enumerate regions and availability zones available to the caller.
+- **Why Araf M7 needs it:** The tenant shell has a region selector. O3K's registry hard-codes `RegionOne` (`crates/o3k-kernel/src/registry.rs`) and there is no live enumeration API.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Live region/availability-zone selection.
+- **Acceptable fallback:** Continue using the fixture/static region list in the console for M7; document that region selection is presentation-only and O3K currently operates in a single region.
+
+## M7-O3K-007: IAM management endpoints
+
+- **Gap id:** `M7-O3K-007`
+- **Required O3K contract:** O3K endpoints to manage users, projects, roles, domains, and organization membership.
+- **Why Araf M7 needs it:** Future M8 governance work and operator platform work require project/user management. O3K identity routes are limited to token issue/validate/check and native `/identity/me`.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Tenant governance and operator identity management surfaces.
+- **Acceptable fallback:** Keep governance pages as placeholders/fixtures for M7; defer to M8 after confirming the upstream IAM contract.

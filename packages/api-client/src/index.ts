@@ -8,7 +8,8 @@
 
 export type ResourceStatus = "ready" | "busy" | "error" | "unknown";
 
-export type OperationState = "pending" | "running" | "succeeded" | "failed";
+export type OperationState =
+  "pending" | "running" | "succeeded" | "failed" | "retryable" | "unknownOutcome";
 
 export type SortDirection = "asc" | "desc";
 

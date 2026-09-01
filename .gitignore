@@ -29,3 +29,4 @@ test-results/
 .tmp/
 tmp/
 .cache/
+.o3k-rust/
