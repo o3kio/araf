@@ -1,0 +1,31 @@
+# Production deployment and security boundary
+
+## Configuration modes
+
+`ARAF_ENV` must be one of `development`, `test`, or `production`. Fixture
+adapters are available only outside production. In production,
+`ARAF_UPSTREAM_ADAPTER=o3k` is mandatory; an omitted, unknown, or fixture
+adapter causes the BFF to terminate during startup. This prevents a failed
+O3K configuration from silently presenting fixture cloud state.
+
+The production browser origin is HTTPS. TLS is terminated by the deployment's
+ingress or reverse proxy, which must forward `Host`, `X-Forwarded-Proto`, and
+the client IP chain. Only a deployment-controlled, allowlisted proxy may set
+these headers; the BFF must not be exposed directly to untrusted clients.
+
+The reference proxy should emit HSTS only when HTTPS is enforced for the full
+host, for example:
+
+```nginx
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+```
+
+The browser-facing API is same-origin under `/api/`. Session cookies must be
+opaque, `Secure`, `HttpOnly`, `SameSite=Lax` (or stricter where compatible),
+path-scoped, and cleared on logout. CSRF tokens are sent in a request header;
+state-changing requests without a valid token are rejected.
+
+The current MVP BFF still uses fixture session injection and in-memory session
+state. Therefore this document records the deployment boundary and fail-closed
+adapter behavior, but does not claim production identity/session readiness;
+that is a P2 dependency and must be completed before a production verdict.

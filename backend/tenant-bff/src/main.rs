@@ -16,7 +16,8 @@ async fn main() -> std::io::Result<()> {
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or(8080);
 
-    let config = BffConfig::from_env("tenant-bff");
+    let config = BffConfig::from_env("tenant-bff")
+        .map_err(|e| std::io::Error::other(format!("invalid production configuration: {e}")))?;
     let app = api_router_for_config(config)
         .map_err(|e| std::io::Error::other(format!("failed to build router: {e}")))?;
 

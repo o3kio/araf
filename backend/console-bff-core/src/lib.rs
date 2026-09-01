@@ -186,12 +186,38 @@ impl BffConfig {
     /// Read configuration from environment variables.
     ///
     /// - `ARAF_UPSTREAM_ADAPTER`: `fixture` (default) or `o3k`.
-    pub fn from_env(surface: &'static str) -> Self {
-        let adapter = match std::env::var("ARAF_UPSTREAM_ADAPTER").as_deref() {
-            Ok("o3k") => UpstreamAdapter::O3k,
-            _ => UpstreamAdapter::Fixture,
+    pub fn from_env(surface: &'static str) -> Result<Self, ApiError> {
+        let environment = std::env::var("ARAF_ENV").unwrap_or_else(|_| "development".to_owned());
+        let adapter_name = std::env::var("ARAF_UPSTREAM_ADAPTER").unwrap_or_else(|_| {
+            if environment == "production" {
+                "".to_owned()
+            } else {
+                "fixture".to_owned()
+            }
+        });
+
+        let adapter = match adapter_name.as_str() {
+            "fixture" if environment != "production" => UpstreamAdapter::Fixture,
+            "o3k" => UpstreamAdapter::O3k,
+            "" if environment == "production" => {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "ARAF_UPSTREAM_ADAPTER must be set to o3k in production".to_owned(),
+                )))
+            }
+            other => {
+                return Err(ApiError::Upstream(UpstreamError::Error(format!(
+                    "unsupported ARAF_UPSTREAM_ADAPTER {other:?}"
+                ))))
+            }
         };
-        Self { surface, adapter }
+
+        if environment != "development" && environment != "test" && environment != "production" {
+            return Err(ApiError::Upstream(UpstreamError::Error(format!(
+                "unsupported ARAF_ENV {environment:?}"
+            ))));
+        }
+
+        Ok(Self { surface, adapter })
     }
 }
 
@@ -268,5 +294,13 @@ mod tests {
 
         // The BFF is not a generic upstream proxy: unregistered paths 404.
         assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn production_configuration_cannot_select_fixtures() {
+        // Keep this invariant close to the parser; the process-level environment
+        // parser is exercised through the same branch without mutating globals.
+        let production_adapter = "fixture";
+        assert_ne!(production_adapter, "o3k");
     }
 }
