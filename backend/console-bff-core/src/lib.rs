@@ -239,13 +239,18 @@ impl BffConfig {
             )));
         }
         if environment == "production" {
+            let prefix = if surface == "operator-bff" {
+                "ARAF_OPERATOR_OIDC"
+            } else {
+                "ARAF_TENANT_OIDC"
+            };
             let required = [
-                "ARAF_OIDC_CLIENT_ID",
-                "ARAF_OIDC_CLIENT_SECRET",
-                "ARAF_OIDC_ISSUER_URL",
-                "ARAF_OIDC_REDIRECT_URI",
-                "ARAF_OIDC_AUTHORIZATION_URL",
-                "ARAF_OIDC_USERINFO_URL",
+                format!("{prefix}_CLIENT_ID"),
+                format!("{prefix}_CLIENT_SECRET"),
+                format!("{prefix}_ISSUER_URL"),
+                format!("{prefix}_REDIRECT_URI"),
+                format!("{prefix}_AUTHORIZATION_URL"),
+                format!("{prefix}_USERINFO_URL"),
             ];
             if let Some(name) = required
                 .iter()
@@ -255,7 +260,8 @@ impl BffConfig {
                     "{name} must be set in production"
                 )));
             }
-            if !std::env::var("ARAF_OIDC_REDIRECT_URI").is_ok_and(|uri| uri.starts_with("https://"))
+            if !std::env::var(format!("{prefix}_REDIRECT_URI"))
+                .is_ok_and(|uri| uri.starts_with("https://"))
             {
                 return Err(configuration_error(
                     "ARAF_OIDC_REDIRECT_URI must use HTTPS in production".to_owned(),

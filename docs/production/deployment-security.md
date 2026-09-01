@@ -8,11 +8,13 @@ adapters are available only outside production. In production,
 adapter causes the BFF to terminate during startup. This prevents a failed
 O3K configuration from silently presenting fixture cloud state.
 
-Production OIDC configuration must also provide `ARAF_OIDC_CLIENT_ID`,
-`ARAF_OIDC_CLIENT_SECRET`, `ARAF_OIDC_ISSUER_URL`,
-`ARAF_OIDC_REDIRECT_URI` (HTTPS), `ARAF_OIDC_AUTHORIZATION_URL`, and
-`ARAF_OIDC_USERINFO_URL`. Provider authorization and userinfo endpoints are
-explicit deployment inputs; the BFF does not invent or default them.
+Each surface has an independent OIDC client configuration. Tenant BFFs must
+provide `ARAF_TENANT_OIDC_CLIENT_ID`, `ARAF_TENANT_OIDC_CLIENT_SECRET`,
+`ARAF_TENANT_OIDC_ISSUER_URL`, `ARAF_TENANT_OIDC_REDIRECT_URI` (HTTPS),
+`ARAF_TENANT_OIDC_AUTHORIZATION_URL`, and `ARAF_TENANT_OIDC_USERINFO_URL`;
+Operator BFFs use the corresponding `ARAF_OPERATOR_OIDC_*` variables. Provider
+authorization and userinfo endpoints are explicit deployment inputs; the BFF
+does not invent or default them.
 
 The production browser origin is HTTPS. TLS is terminated by the deployment's
 ingress or reverse proxy, which must forward `Host`, `X-Forwarded-Proto`, and

@@ -40,30 +40,27 @@ pub struct OidcConfig {
 impl OidcConfig {
     /// Read OIDC configuration from environment.
     pub fn from_env(surface: &'static str) -> Result<Self, ApiError> {
-        let client_id = std::env::var("ARAF_OIDC_CLIENT_ID").map_err(|_| {
-            ApiError::Upstream(crate::error::UpstreamError::Error(
-                "ARAF_OIDC_CLIENT_ID not set".into(),
-            ))
+        let prefix = match surface {
+            "operator-bff" => "ARAF_OPERATOR_OIDC",
+            _ => "ARAF_TENANT_OIDC",
+        };
+        let required = |name: &str| {
+            std::env::var(format!("{prefix}_{name}")).map_err(|_| {
+                ApiError::Upstream(crate::error::UpstreamError::Error(format!(
+                    "{prefix}_{name} not set"
+                )))
+            })
+        };
+        let client_id = required("CLIENT_ID").map_err(|_| {
+            ApiError::Upstream(crate::error::UpstreamError::Error(format!(
+                "{prefix}_CLIENT_ID not set"
+            )))
         })?;
-        let client_secret = std::env::var("ARAF_OIDC_CLIENT_SECRET").map_err(|_| {
-            ApiError::Upstream(crate::error::UpstreamError::Error(
-                "ARAF_OIDC_CLIENT_SECRET not set".into(),
-            ))
-        })?;
-        let issuer_url = std::env::var("ARAF_OIDC_ISSUER_URL")
-            .unwrap_or_else(|_| "http://localhost:8080".into());
-        let redirect_uri = std::env::var("ARAF_OIDC_REDIRECT_URI")
-            .unwrap_or_else(|_| "http://localhost:3000/login/callback".into());
-        let authorization_url = std::env::var("ARAF_OIDC_AUTHORIZATION_URL").map_err(|_| {
-            ApiError::Upstream(crate::error::UpstreamError::Error(
-                "ARAF_OIDC_AUTHORIZATION_URL not set".into(),
-            ))
-        })?;
-        let userinfo_url = std::env::var("ARAF_OIDC_USERINFO_URL").map_err(|_| {
-            ApiError::Upstream(crate::error::UpstreamError::Error(
-                "ARAF_OIDC_USERINFO_URL not set".into(),
-            ))
-        })?;
+        let client_secret = required("CLIENT_SECRET")?;
+        let issuer_url = required("ISSUER_URL")?;
+        let redirect_uri = required("REDIRECT_URI")?;
+        let authorization_url = required("AUTHORIZATION_URL")?;
+        let userinfo_url = required("USERINFO_URL")?;
         Ok(Self {
             client_id,
             client_secret,
