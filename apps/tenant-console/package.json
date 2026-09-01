@@ -11,6 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@araf/api-client": "workspace:*",
+    "@araf/resources": "workspace:*",
     "@araf/ui": "workspace:*",
     "@araf/shell": "workspace:*",
     "react": "^19.1.1",
