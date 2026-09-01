@@ -14,13 +14,17 @@ use tracing::info;
 use crate::{
     error::{ApiError, BffError},
     model::{
-        ActionRequest, ApiCredential, AuditEvent, CreateApiCredentialRequest,
-        CreateResourceRequest, ListAuditEventsParams, Operation, OperationState,
-        PaginatedCollection, Project, ProjectMember, ProjectQuota, Resource, Role,
-        ServiceDescriptor, SessionContext, SortDirection, User,
+        ActionRequest, ApiCredential, AuditEvent, CapacitySummary, CreateApiCredentialRequest,
+        CreateResourceRequest, CustomerAccount, ListAuditEventsParams, Operation, OperationState,
+        OperatorAuditEvent, OperatorProject, PaginatedCollection, PlatformOverview, Project,
+        ProjectMember, ProjectQuota, ProviderHealth, Region, Resource, Role, ServiceDescriptor,
+        ServiceHealth, SessionContext, SortDirection, User,
     },
     request::RequestContext,
-    upstream::{ListOperationsParams, ListResourcesParams, Upstream},
+    upstream::{
+        ListOperationsParams, ListOperatorAuditEventsParams, ListOperatorOperationsParams,
+        ListResourcesParams, Upstream,
+    },
 };
 
 /// Attach the request's correlation id to an upstream error so Problem Details
@@ -410,4 +414,179 @@ pub async fn delete_api_credential(
         .await
         .map_err(|e| with_ctx(e, &ctx))?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListOperatorOperationsQuery {
+    #[serde(default)]
+    pub page: u32,
+    #[serde(default = "default_page_size")]
+    pub page_size: u32,
+    pub state: Option<OperationState>,
+    pub action: Option<String>,
+    pub resource_type: Option<String>,
+    pub region_id: Option<String>,
+    pub account_id: Option<String>,
+    pub since: Option<time::OffsetDateTime>,
+    pub until: Option<time::OffsetDateTime>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListOperatorAuditEventsQuery {
+    #[serde(default)]
+    pub page: u32,
+    #[serde(default = "default_page_size")]
+    pub page_size: u32,
+    pub action: Option<String>,
+    pub actor: Option<String>,
+    pub account_id: Option<String>,
+    pub since: Option<time::OffsetDateTime>,
+    pub until: Option<time::OffsetDateTime>,
+}
+
+pub async fn get_platform_overview(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+) -> Result<Json<PlatformOverview>, BffError> {
+    let overview = state
+        .upstream
+        .get_platform_overview(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(overview))
+}
+
+pub async fn list_regions(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+) -> Result<Json<Vec<Region>>, BffError> {
+    let regions = state
+        .upstream
+        .list_regions(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(regions))
+}
+
+pub async fn list_availability_zones(
+    State(state): State<AppState>,
+    Path(region_id): Path<String>,
+    ctx: RequestContext,
+) -> Result<Json<Vec<crate::model::AvailabilityZone>>, BffError> {
+    let zones = state
+        .upstream
+        .list_availability_zones(&ctx, &region_id)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(zones))
+}
+
+pub async fn list_provider_health(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+) -> Result<Json<Vec<ProviderHealth>>, BffError> {
+    let health = state
+        .upstream
+        .list_provider_health(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(health))
+}
+
+pub async fn list_service_health(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+) -> Result<Json<Vec<ServiceHealth>>, BffError> {
+    let health = state
+        .upstream
+        .list_service_health(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(health))
+}
+
+pub async fn get_capacity_summary(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+) -> Result<Json<Vec<CapacitySummary>>, BffError> {
+    let summary = state
+        .upstream
+        .get_capacity_summary(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(summary))
+}
+
+pub async fn list_customer_accounts(
+    State(state): State<AppState>,
+    Query(_query): Query<ListGovernanceQuery>,
+    ctx: RequestContext,
+) -> Result<Json<PaginatedCollection<CustomerAccount>>, BffError> {
+    let accounts = state
+        .upstream
+        .list_customer_accounts(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(accounts))
+}
+
+pub async fn list_operator_projects(
+    State(state): State<AppState>,
+    Path(account_id): Path<String>,
+    ctx: RequestContext,
+) -> Result<Json<PaginatedCollection<OperatorProject>>, BffError> {
+    let projects = state
+        .upstream
+        .list_operator_projects(&ctx, Some(&account_id))
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(projects))
+}
+
+pub async fn list_operator_operations(
+    State(state): State<AppState>,
+    Query(query): Query<ListOperatorOperationsQuery>,
+    ctx: RequestContext,
+) -> Result<Json<PaginatedCollection<Operation>>, BffError> {
+    let params = ListOperatorOperationsParams {
+        page: query.page,
+        page_size: query.page_size,
+        state: query.state,
+        action: query.action,
+        resource_type: query.resource_type,
+        region_id: query.region_id,
+        account_id: query.account_id,
+        since: query.since,
+        until: query.until,
+    };
+    let operations = state
+        .upstream
+        .list_operator_operations(&ctx, params)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(operations))
+}
+
+pub async fn list_operator_audit_events(
+    State(state): State<AppState>,
+    Query(query): Query<ListOperatorAuditEventsQuery>,
+    ctx: RequestContext,
+) -> Result<Json<PaginatedCollection<OperatorAuditEvent>>, BffError> {
+    let params = ListOperatorAuditEventsParams {
+        page: query.page,
+        page_size: query.page_size,
+        action: query.action,
+        actor: query.actor,
+        account_id: query.account_id,
+        since: query.since,
+        until: query.until,
+    };
+    let events = state
+        .upstream
+        .list_operator_audit_events(&ctx, params)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(events))
 }

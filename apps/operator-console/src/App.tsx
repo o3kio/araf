@@ -7,11 +7,19 @@ import {
   ResourceDetailPage,
   ResourceCreatePage,
 } from "@araf/resources";
+import { OperationsClientProvider, OperationDetailPage } from "@araf/operations";
 import {
-  OperationsClientProvider,
-  OperationsListPage,
-  OperationDetailPage,
-} from "@araf/operations";
+  OperatorPlatformClientProvider,
+  PlatformOverviewPage,
+  RegionsPage,
+  RegionDetailPage,
+  ProviderHealthPage,
+  CapacityPage,
+  AccountsPage,
+  AccountProjectsPage,
+  OperatorOperationsPage,
+  OperatorAuditPage,
+} from "@araf/operator-platform";
 import { createArafClient } from "@araf/api-client";
 import { useState, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useParams } from "react-router";
@@ -95,15 +103,6 @@ const navigationItems: OperatorNavigationItem[] = [
   },
 ];
 
-function OverviewPage() {
-  return (
-    <section>
-      <h1>Platform overview</h1>
-      <p>Operator view of the O3K platform.</p>
-    </section>
-  );
-}
-
 function PlaceholderPage({ title }: { title: string }) {
   return (
     <section>
@@ -147,6 +146,14 @@ function ResourceCreateRoute() {
   return <ResourceCreatePage resourceType={decodeURIComponent(resourceType ?? "")} />;
 }
 
+function RegionDetailRoute() {
+  return <RegionDetailPage />;
+}
+
+function AccountProjectsRoute() {
+  return <AccountProjectsPage />;
+}
+
 export function App() {
   const [density] = useState<"comfortable" | "compact">("compact");
 
@@ -157,123 +164,173 @@ export function App() {
       >
         <ResourceClientProvider client={arafClient}>
           <OperationsClientProvider client={arafClient}>
-            <BrowserRouter>
-              <Routes>
-                <Route path="/" element={<Navigate to="/platform/overview" replace />} />
-                <Route
-                  path="/platform/overview"
-                  element={
-                    <OperatorRouterShell>
-                      <OverviewPage />
-                    </OperatorRouterShell>
-                  }
-                />
-                <Route
-                  path="/platform/*"
-                  element={
-                    <OperatorRouterShell>
-                      <PlaceholderPage title="Platform" />
-                    </OperatorRouterShell>
-                  }
-                />
-                <Route
-                  path="/customers/*"
-                  element={
-                    <OperatorRouterShell>
-                      <PlaceholderPage title="Customers" />
-                    </OperatorRouterShell>
-                  }
-                />
-                <Route
-                  path="/services/catalog"
-                  element={
-                    <OperatorRouterShell>
-                      <PlaceholderPage title="Catalog" />
-                    </OperatorRouterShell>
-                  }
-                />
-                <Route
-                  path="/services/installed"
-                  element={
-                    <OperatorRouterShell>
-                      <PlaceholderPage title="Installed Services" />
-                    </OperatorRouterShell>
-                  }
-                />
-                <Route
-                  path="/resources"
-                  element={
-                    <OperatorRouterShell>
-                      <ResourceLandingPage />
-                    </OperatorRouterShell>
-                  }
-                />
-                <Route
-                  path="/resources/:resourceType"
-                  element={
-                    <OperatorRouterShell>
-                      <ResourceCollectionRoute />
-                    </OperatorRouterShell>
-                  }
-                />
-                <Route
-                  path="/resources/:resourceType/create"
-                  element={
-                    <OperatorRouterShell>
-                      <ResourceCreateRoute />
-                    </OperatorRouterShell>
-                  }
-                />
-                <Route
-                  path="/resources/:resourceType/:id"
-                  element={
-                    <OperatorRouterShell>
-                      <ResourceDetailRoute />
-                    </OperatorRouterShell>
-                  }
-                />
-                <Route
-                  path="/infrastructure/*"
-                  element={
-                    <OperatorRouterShell>
-                      <PlaceholderPage title="Infrastructure" />
-                    </OperatorRouterShell>
-                  }
-                />
-                <Route
-                  path="/operations"
-                  element={
-                    <OperatorRouterShell>
-                      <OperationsListPage />
-                    </OperatorRouterShell>
-                  }
-                />
-                <Route
-                  path="/operations/:id"
-                  element={
-                    <OperatorRouterShell>
-                      <OperationDetailPage />
-                    </OperatorRouterShell>
-                  }
-                />
-                <Route
-                  path="/governance/*"
-                  element={
-                    <OperatorRouterShell>
-                      <PlaceholderPage title="Governance" />
-                    </OperatorRouterShell>
-                  }
-                />
-                <Route
-                  path="*"
-                  element={
-                    <OperatorRouterShell>
-                      <NotFound />
-                    </OperatorRouterShell>
-                  }
-                />
-              </Routes>
-            </BrowserRouter>
+            <OperatorPlatformClientProvider client={arafClient}>
+              <BrowserRouter>
+                <Routes>
+                  <Route path="/" element={<Navigate to="/platform/overview" replace />} />
+                  <Route
+                    path="/platform/overview"
+                    element={
+                      <OperatorRouterShell>
+                        <PlatformOverviewPage />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/platform/regions"
+                    element={
+                      <OperatorRouterShell>
+                        <RegionsPage />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/platform/regions/:id"
+                    element={
+                      <OperatorRouterShell>
+                        <RegionDetailRoute />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/platform/health"
+                    element={
+                      <OperatorRouterShell>
+                        <ProviderHealthPage />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/platform/capacity"
+                    element={
+                      <OperatorRouterShell>
+                        <CapacityPage />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/customers/accounts"
+                    element={
+                      <OperatorRouterShell>
+                        <AccountsPage />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/customers/accounts/:id/projects"
+                    element={
+                      <OperatorRouterShell>
+                        <AccountProjectsRoute />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/customers/projects"
+                    element={
+                      <OperatorRouterShell>
+                        <PlaceholderPage title="Projects" />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/services/catalog"
+                    element={
+                      <OperatorRouterShell>
+                        <PlaceholderPage title="Catalog" />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/services/installed"
+                    element={
+                      <OperatorRouterShell>
+                        <PlaceholderPage title="Installed Services" />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/resources"
+                    element={
+                      <OperatorRouterShell>
+                        <ResourceLandingPage />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/resources/:resourceType"
+                    element={
+                      <OperatorRouterShell>
+                        <ResourceCollectionRoute />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/resources/:resourceType/create"
+                    element={
+                      <OperatorRouterShell>
+                        <ResourceCreateRoute />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/resources/:resourceType/:id"
+                    element={
+                      <OperatorRouterShell>
+                        <ResourceDetailRoute />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/infrastructure/*"
+                    element={
+                      <OperatorRouterShell>
+                        <PlaceholderPage title="Infrastructure" />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/operations"
+                    element={
+                      <OperatorRouterShell>
+                        <OperatorOperationsPage />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/operations/:id"
+                    element={
+                      <OperatorRouterShell>
+                        <OperationDetailPage />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/governance/audit"
+                    element={
+                      <OperatorRouterShell>
+                        <OperatorAuditPage />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="/governance/*"
+                    element={
+                      <OperatorRouterShell>
+                        <PlaceholderPage title="Governance" />
+                      </OperatorRouterShell>
+                    }
+                  />
+                  <Route
+                    path="*"
+                    element={
+                      <OperatorRouterShell>
+                        <NotFound />
+                      </OperatorRouterShell>
+                    }
+                  />
+                </Routes>
+              </BrowserRouter>
+            </OperatorPlatformClientProvider>
           </OperationsClientProvider>
         </ResourceClientProvider>
       </FixtureIdentityProvider>

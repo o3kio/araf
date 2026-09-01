@@ -245,6 +245,104 @@ export interface AuditEvent {
   correlationId: string;
 }
 
+// Operator platform types
+
+export type RegionStatus = "healthy" | "degraded" | "unavailable" | "maintenance";
+
+export type ProviderKind = "compute" | "network" | "storage";
+
+export type AlertSeverity = "info" | "warning" | "critical";
+
+export interface AvailabilityZone {
+  id: string;
+  name: string;
+  regionId: string;
+  status: RegionStatus;
+}
+
+export interface Region {
+  id: string;
+  name: string;
+  status: RegionStatus;
+  azs: AvailabilityZone[];
+  updatedAt: string;
+}
+
+export interface ProviderHealth {
+  id: string;
+  kind: ProviderKind;
+  name: string;
+  status: RegionStatus;
+  regionId: string;
+  lastSeenAt: string;
+  message: string;
+}
+
+export interface ServiceHealth {
+  id: string;
+  name: string;
+  lifecycleState: string;
+  readySince: string | null;
+}
+
+export interface CapacitySummary {
+  resourceClass: string;
+  total: number;
+  used: number;
+  available: number;
+  unit: string;
+  updatedAt: string;
+}
+
+export interface CustomerAccount {
+  id: string;
+  name: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface OperatorProject {
+  id: string;
+  name: string;
+  accountId: string;
+  regionId: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface OperatorAuditEvent {
+  id: string;
+  actor: string;
+  action: string;
+  resourceType: string | null;
+  resourceId: string | null;
+  accountId: string | null;
+  projectId: string | null;
+  outcome: string;
+  recordedAt: string;
+  correlationId: string;
+}
+
+export interface StatusCount {
+  status: RegionStatus;
+  count: number;
+}
+
+export interface PlatformAlert {
+  id: string;
+  severity: AlertSeverity;
+  message: string;
+  occurredAt: string;
+}
+
+export interface PlatformOverview {
+  regionStatusSummary: StatusCount[];
+  providerStatusSummary: StatusCount[];
+  activeOperationsCount: number;
+  recentAlerts: PlatformAlert[];
+  dataFreshnessAt: string;
+}
+
 export interface ApiCredential {
   id: string;
   name: string;
@@ -296,6 +394,28 @@ export interface ListAuditEventsQuery {
 export interface ListApiCredentialsQuery {
   page?: number;
   pageSize?: number;
+}
+
+export interface ListOperatorOperationsQuery {
+  page?: number;
+  pageSize?: number;
+  state?: OperationState;
+  action?: string;
+  resourceType?: string;
+  regionId?: string;
+  accountId?: string;
+  since?: string;
+  until?: string;
+}
+
+export interface ListOperatorAuditEventsQuery {
+  page?: number;
+  pageSize?: number;
+  action?: string;
+  actor?: string;
+  accountId?: string;
+  since?: string;
+  until?: string;
 }
 
 export class ArafApiError extends Error {
@@ -388,6 +508,22 @@ export interface ArafClient {
   listApiCredentials(query?: ListApiCredentialsQuery): Promise<PaginatedCollection<ApiCredential>>;
   createApiCredential(payload: CreateApiCredentialRequest): Promise<ApiCredential>;
   deleteApiCredential(id: string): Promise<void>;
+
+  // Operator platform
+  getPlatformOverview(): Promise<PlatformOverview>;
+  listRegions(): Promise<Region[]>;
+  listAvailabilityZones(regionId: string): Promise<AvailabilityZone[]>;
+  listProviderHealth(): Promise<ProviderHealth[]>;
+  listServiceHealth(): Promise<ServiceHealth[]>;
+  getCapacitySummary(): Promise<CapacitySummary[]>;
+  listCustomerAccounts(): Promise<PaginatedCollection<CustomerAccount>>;
+  listAccountProjects(accountId: string): Promise<PaginatedCollection<OperatorProject>>;
+  listOperatorOperations(
+    query?: ListOperatorOperationsQuery,
+  ): Promise<PaginatedCollection<Operation>>;
+  listOperatorAuditEvents(
+    query?: ListOperatorAuditEventsQuery,
+  ): Promise<PaginatedCollection<OperatorAuditEvent>>;
 }
 
 export function createArafClient(baseUrl: string | URL): ArafClient {
@@ -549,5 +685,55 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
         method: "DELETE",
       });
     },
+
+    // Operator platform
+    getPlatformOverview: () => request<PlatformOverview>("/api/v1/operator/platform/overview"),
+
+    listRegions: () => request<Region[]>("/api/v1/operator/regions"),
+
+    listAvailabilityZones: (regionId) =>
+      request<AvailabilityZone[]>(`/api/v1/operator/regions/${encodeURIComponent(regionId)}/zones`),
+
+    listProviderHealth: () => request<ProviderHealth[]>("/api/v1/operator/providers/health"),
+
+    listServiceHealth: () => request<ServiceHealth[]>("/api/v1/operator/services/health"),
+
+    getCapacitySummary: () => request<CapacitySummary[]>("/api/v1/operator/capacity"),
+
+    listCustomerAccounts: () =>
+      request<PaginatedCollection<CustomerAccount>>("/api/v1/operator/accounts"),
+
+    listAccountProjects: (accountId) =>
+      request<PaginatedCollection<OperatorProject>>(
+        `/api/v1/operator/accounts/${encodeURIComponent(accountId)}/projects`,
+      ),
+
+    listOperatorOperations: (query) =>
+      request<PaginatedCollection<Operation>>("/api/v1/operator/operations", {
+        query: {
+          page: query?.page,
+          pageSize: query?.pageSize,
+          state: query?.state,
+          action: query?.action,
+          resourceType: query?.resourceType,
+          regionId: query?.regionId,
+          accountId: query?.accountId,
+          since: query?.since,
+          until: query?.until,
+        },
+      }),
+
+    listOperatorAuditEvents: (query) =>
+      request<PaginatedCollection<OperatorAuditEvent>>("/api/v1/operator/audit-events", {
+        query: {
+          page: query?.page,
+          pageSize: query?.pageSize,
+          action: query?.action,
+          actor: query?.actor,
+          accountId: query?.accountId,
+          since: query?.since,
+          until: query?.until,
+        },
+      }),
   };
 }

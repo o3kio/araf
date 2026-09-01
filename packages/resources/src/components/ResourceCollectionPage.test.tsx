@@ -106,6 +106,16 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
     listApiCredentials: vi.fn(),
     createApiCredential: vi.fn(),
     deleteApiCredential: vi.fn(),
+    getPlatformOverview: vi.fn(),
+    listRegions: vi.fn(),
+    listAvailabilityZones: vi.fn(),
+    listProviderHealth: vi.fn(),
+    listServiceHealth: vi.fn(),
+    getCapacitySummary: vi.fn(),
+    listCustomerAccounts: vi.fn(),
+    listAccountProjects: vi.fn(),
+    listOperatorOperations: vi.fn(),
+    listOperatorAuditEvents: vi.fn(),
   };
 
   return (
@@ -181,6 +191,16 @@ describe("ResourceCollectionPage", () => {
         listApiCredentials: vi.fn(),
         createApiCredential: vi.fn(),
         deleteApiCredential: vi.fn(),
+        getPlatformOverview: vi.fn(),
+        listRegions: vi.fn(),
+        listAvailabilityZones: vi.fn(),
+        listProviderHealth: vi.fn(),
+        listServiceHealth: vi.fn(),
+        getCapacitySummary: vi.fn(),
+        listCustomerAccounts: vi.fn(),
+        listAccountProjects: vi.fn(),
+        listOperatorOperations: vi.fn(),
+        listOperatorAuditEvents: vi.fn(),
       };
 
       return (

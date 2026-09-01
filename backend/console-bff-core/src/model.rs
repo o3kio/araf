@@ -360,6 +360,161 @@ pub struct ApiCredential {
     pub secret: Option<String>,
 }
 
+/// Provider kind for operator platform health views.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProviderKind {
+    Compute,
+    Network,
+    Storage,
+}
+
+/// Region status for operator platform views.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum RegionStatus {
+    Healthy,
+    Degraded,
+    Unavailable,
+    Maintenance,
+}
+
+/// Availability zone within a region.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AvailabilityZone {
+    pub id: String,
+    pub name: String,
+    pub region_id: String,
+    pub status: RegionStatus,
+}
+
+/// Region exposed to operator platform views.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Region {
+    pub id: String,
+    pub name: String,
+    pub status: RegionStatus,
+    pub azs: Vec<AvailabilityZone>,
+    pub updated_at: OffsetDateTime,
+}
+
+/// Provider health entry for operator platform views.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderHealth {
+    pub id: String,
+    pub kind: ProviderKind,
+    pub name: String,
+    pub status: RegionStatus,
+    pub region_id: String,
+    pub last_seen_at: OffsetDateTime,
+    pub message: String,
+}
+
+/// Service lifecycle health for operator platform views.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceHealth {
+    pub id: String,
+    pub name: String,
+    pub lifecycle_state: String,
+    pub ready_since: Option<OffsetDateTime>,
+}
+
+/// Normalized capacity summary for a resource class.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CapacitySummary {
+    pub resource_class: String,
+    pub total: u64,
+    pub used: u64,
+    pub available: u64,
+    pub unit: String,
+    pub updated_at: OffsetDateTime,
+}
+
+/// Customer account/organization visible to operators.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomerAccount {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    pub created_at: OffsetDateTime,
+}
+
+/// Operator-scope project view.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperatorProject {
+    pub id: String,
+    pub name: String,
+    pub account_id: String,
+    pub region_id: String,
+    pub status: String,
+    pub created_at: OffsetDateTime,
+}
+
+/// Audit event exposed to operators.
+///
+/// This is intentionally a distinct operator-scope type from tenant `AuditEvent`
+/// because operator audit spans accounts and projects and must not leak
+/// tenant-scoped details through the tenant BFF surface.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperatorAuditEvent {
+    pub id: String,
+    pub actor: String,
+    pub action: String,
+    pub resource_type: Option<String>,
+    pub resource_id: Option<String>,
+    pub account_id: Option<String>,
+    pub project_id: Option<String>,
+    pub outcome: String,
+    pub recorded_at: OffsetDateTime,
+    pub correlation_id: String,
+}
+
+/// Platform overview summary for the operator home page.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformOverview {
+    pub region_status_summary: Vec<StatusCount>,
+    pub provider_status_summary: Vec<StatusCount>,
+    pub active_operations_count: u64,
+    pub recent_alerts: Vec<PlatformAlert>,
+    pub data_freshness_at: OffsetDateTime,
+}
+
+/// Count of entities in a given status.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusCount {
+    pub status: RegionStatus,
+    pub count: u64,
+}
+
+/// Recent platform alert for the operator overview.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformAlert {
+    pub id: String,
+    pub severity: AlertSeverity,
+    pub message: String,
+    pub occurred_at: OffsetDateTime,
+}
+
+/// Alert severity for operator platform overview.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AlertSeverity {
+    Info,
+    Warning,
+    Critical,
+}
+
 /// Request body for creating a new API credential.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

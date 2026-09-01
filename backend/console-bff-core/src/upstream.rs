@@ -13,10 +13,11 @@ use time::OffsetDateTime;
 use crate::{
     error::ApiError,
     model::{
-        ActionRequest, ApiCredential, AuditEvent, CreateApiCredentialRequest,
-        CreateResourceRequest, ListAuditEventsParams, Operation, OperationState,
-        PaginatedCollection, Project, ProjectMember, ProjectQuota, Resource, Role,
-        ServiceDescriptor, SessionContext, SortDirection, User,
+        ActionRequest, ApiCredential, AuditEvent, CapacitySummary, CreateApiCredentialRequest,
+        CreateResourceRequest, CustomerAccount, ListAuditEventsParams, Operation, OperationState,
+        OperatorAuditEvent, OperatorProject, PaginatedCollection, PlatformOverview, Project,
+        ProjectMember, ProjectQuota, ProviderHealth, Region, Resource, Role, ServiceDescriptor,
+        ServiceHealth, SessionContext, SortDirection, User,
     },
     request::RequestContext,
 };
@@ -34,6 +35,32 @@ pub struct ListResourcesParams {
     pub filters: HashMap<String, String>,
     pub sort_field: Option<String>,
     pub sort_direction: SortDirection,
+}
+
+/// Parameters for listing operator-scope audit events.
+#[derive(Clone, Debug, Default)]
+pub struct ListOperatorAuditEventsParams {
+    pub page: u32,
+    pub page_size: u32,
+    pub action: Option<String>,
+    pub actor: Option<String>,
+    pub account_id: Option<String>,
+    pub since: Option<OffsetDateTime>,
+    pub until: Option<OffsetDateTime>,
+}
+
+/// Parameters for listing operator operations.
+#[derive(Clone, Debug, Default)]
+pub struct ListOperatorOperationsParams {
+    pub page: u32,
+    pub page_size: u32,
+    pub state: Option<OperationState>,
+    pub action: Option<String>,
+    pub resource_type: Option<String>,
+    pub region_id: Option<String>,
+    pub account_id: Option<String>,
+    pub since: Option<OffsetDateTime>,
+    pub until: Option<OffsetDateTime>,
 }
 
 /// Parameters for listing operations.
@@ -223,6 +250,107 @@ pub trait Upstream: Send + Sync + 'static {
         Err(ApiError::NotImplemented(
             "tenant governance API credential endpoints are not implemented by upstream O3K"
                 .to_owned(),
+        ))
+    }
+
+    /// List regions for operator platform views.
+    async fn list_regions(&self, _ctx: &RequestContext) -> Result<Vec<Region>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "operator region endpoints are not implemented by upstream O3K".to_owned(),
+        ))
+    }
+
+    /// List availability zones within a region.
+    async fn list_availability_zones(
+        &self,
+        _ctx: &RequestContext,
+        _region_id: &str,
+    ) -> Result<Vec<crate::model::AvailabilityZone>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "operator availability zone endpoints are not implemented by upstream O3K".to_owned(),
+        ))
+    }
+
+    /// List provider health entries for operator platform views.
+    async fn list_provider_health(
+        &self,
+        _ctx: &RequestContext,
+    ) -> Result<Vec<ProviderHealth>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "operator provider health endpoints are not implemented by upstream O3K".to_owned(),
+        ))
+    }
+
+    /// List service lifecycle health entries.
+    async fn list_service_health(
+        &self,
+        _ctx: &RequestContext,
+    ) -> Result<Vec<ServiceHealth>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "operator service health endpoints are not implemented by upstream O3K".to_owned(),
+        ))
+    }
+
+    /// Get normalized capacity summary for the platform.
+    async fn get_capacity_summary(
+        &self,
+        _ctx: &RequestContext,
+    ) -> Result<Vec<CapacitySummary>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "operator capacity endpoints are not implemented by upstream O3K".to_owned(),
+        ))
+    }
+
+    /// List customer accounts/organizations visible to operators.
+    async fn list_customer_accounts(
+        &self,
+        _ctx: &RequestContext,
+    ) -> Result<PaginatedCollection<CustomerAccount>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "operator account endpoints are not implemented by upstream O3K".to_owned(),
+        ))
+    }
+
+    /// List projects across accounts for operator platform views.
+    async fn list_operator_projects(
+        &self,
+        _ctx: &RequestContext,
+        _account_id: Option<&str>,
+    ) -> Result<PaginatedCollection<OperatorProject>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "operator project endpoints are not implemented by upstream O3K".to_owned(),
+        ))
+    }
+
+    /// List global/filtered operations visible to operators.
+    async fn list_operator_operations(
+        &self,
+        _ctx: &RequestContext,
+        _params: ListOperatorOperationsParams,
+    ) -> Result<PaginatedCollection<Operation>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "operator operations list is not implemented by upstream O3K".to_owned(),
+        ))
+    }
+
+    /// List operator-scope audit events.
+    async fn list_operator_audit_events(
+        &self,
+        _ctx: &RequestContext,
+        _params: ListOperatorAuditEventsParams,
+    ) -> Result<PaginatedCollection<OperatorAuditEvent>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "operator audit endpoints are not implemented by upstream O3K".to_owned(),
+        ))
+    }
+
+    /// Get the platform overview summary.
+    async fn get_platform_overview(
+        &self,
+        _ctx: &RequestContext,
+    ) -> Result<PlatformOverview, ApiError> {
+        Err(ApiError::NotImplemented(
+            "operator platform overview is not implemented by upstream O3K".to_owned(),
         ))
     }
 }
