@@ -41,6 +41,19 @@ const CSP_POLICY: &str = "\
 
 /// Apply the default middleware stack to a router.
 pub fn apply_default_layers(router: Router, surface: &'static str) -> Router {
+    apply_layers(router, Arc::new(SessionState::fixture(surface)))
+}
+
+/// Apply middleware for a production/O3K router.
+///
+/// Authentication is intentionally fail-closed until the provider-backed
+/// session middleware is mounted. No request receives an authenticated
+/// identity merely because it reached the BFF.
+pub fn apply_production_layers(router: Router) -> Router {
+    apply_layers(router, Arc::new(SessionState::default()))
+}
+
+fn apply_layers(router: Router, session: Arc<SessionState>) -> Router {
     let trace = TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
         let request_id = request_id_from_request(request);
         let correlation_id = correlation_id_from_request(request);
@@ -103,7 +116,7 @@ pub fn apply_default_layers(router: Router, surface: &'static str) -> Router {
         .layer(referrer)
         .layer(permissions)
         .layer(axum::middleware::from_fn_with_state(
-            Arc::new(SessionState::fixture(surface)),
+            session,
             inject_session,
         ))
         .layer(body_limit)

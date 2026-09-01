@@ -263,10 +263,11 @@ pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
         UpstreamAdapter::Fixture => Arc::new(FixtureAdapter::new(config.surface)),
         UpstreamAdapter::O3k => Arc::new(O3kAdapter::from_env(config.surface)?),
     };
-    Ok(middleware::apply_default_layers(
-        router_for_surface(upstream, config.surface),
-        config.surface,
-    ))
+    let router = router_for_surface(upstream, config.surface);
+    Ok(match config.adapter {
+        UpstreamAdapter::Fixture => middleware::apply_default_layers(router, config.surface),
+        UpstreamAdapter::O3k => middleware::apply_production_layers(router),
+    })
 }
 
 /// Build a complete tenant BFF router using the fixture adapter.
