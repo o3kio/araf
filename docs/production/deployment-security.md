@@ -20,6 +20,11 @@ host, for example:
 add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 ```
 
+An executable reference is provided in
+[`deploy/nginx-production.conf.template`](../../deploy/nginx-production.conf.template).
+It redirects HTTP to HTTPS, terminates TLS, sets the security headers, and
+forwards only the explicitly supported proxy headers to the private BFF.
+
 The browser-facing API is same-origin under `/api/`. Session cookies must be
 opaque, `Secure`, `HttpOnly`, `SameSite=Lax` (or stricter where compatible),
 path-scoped, and cleared on logout. CSRF tokens are sent in a request header;
