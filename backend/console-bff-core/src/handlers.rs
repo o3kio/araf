@@ -1,6 +1,6 @@
 //! Shared BFF HTTP handlers.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use axum::{
     extract::{rejection::JsonRejection, Path, Query, State},
@@ -15,9 +15,10 @@ use crate::{
     error::{ApiError, BffError},
     model::{
         ActionRequest, Operation, PaginatedCollection, Resource, ServiceDescriptor, SessionContext,
+        SortDirection,
     },
     request::RequestContext,
-    upstream::Upstream,
+    upstream::{ListResourcesParams, Upstream},
 };
 
 /// Attach the request's correlation id to an upstream error so Problem Details
@@ -41,6 +42,10 @@ pub struct ListResourcesQuery {
     pub page_size: u32,
     pub project_id: Option<String>,
     pub region_id: Option<String>,
+    pub attached_server_id: Option<String>,
+    pub sort_field: Option<String>,
+    #[serde(default)]
+    pub sort_direction: SortDirection,
 }
 
 fn default_page_size() -> u32 {
@@ -84,16 +89,24 @@ pub async fn list_resources(
     Query(query): Query<ListResourcesQuery>,
     ctx: RequestContext,
 ) -> Result<Json<PaginatedCollection<Resource>>, BffError> {
+    let mut filters = HashMap::new();
+    if let Some(server_id) = query.attached_server_id {
+        filters.insert("attached_server_id".to_string(), server_id);
+    }
+
+    let params = ListResourcesParams {
+        page: query.page,
+        page_size: query.page_size,
+        project_id: query.project_id,
+        region_id: query.region_id,
+        filters,
+        sort_field: query.sort_field,
+        sort_direction: query.sort_direction,
+    };
+
     let collection = state
         .upstream
-        .list_resources(
-            &ctx,
-            &resource_type,
-            query.page,
-            query.page_size,
-            query.project_id.as_deref(),
-            query.region_id.as_deref(),
-        )
+        .list_resources(&ctx, &resource_type, params)
         .await
         .map_err(|e| with_ctx(e, &ctx))?;
     Ok(Json(collection))

@@ -44,6 +44,7 @@ pub fn apply_default_layers(router: Router, surface: &'static str) -> Router {
         .allow_headers([
             crate::request::correlation_id_header(),
             crate::request::request_id_header(),
+            axum::http::header::CONTENT_TYPE,
         ])
         .expose_headers([
             crate::request::correlation_id_header(),

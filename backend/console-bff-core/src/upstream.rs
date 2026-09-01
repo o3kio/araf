@@ -4,15 +4,33 @@
 //! an `Upstream` trait that is implemented by the production adapter (M7+)
 //! and by the deterministic fixture adapter (M3-M6).
 
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 
 use crate::{
     error::ApiError,
     model::{
         ActionRequest, Operation, PaginatedCollection, Resource, ServiceDescriptor, SessionContext,
+        SortDirection,
     },
     request::RequestContext,
 };
+
+/// Parameters for listing resources.
+///
+/// Bundles pagination, common scope filters, and resource-type-specific
+/// filters so the upstream trait method stays narrow.
+#[derive(Clone, Debug, Default)]
+pub struct ListResourcesParams {
+    pub page: u32,
+    pub page_size: u32,
+    pub project_id: Option<String>,
+    pub region_id: Option<String>,
+    pub filters: HashMap<String, String>,
+    pub sort_field: Option<String>,
+    pub sort_direction: SortDirection,
+}
 
 /// Abstract upstream dependency for BFF handlers.
 ///
@@ -35,10 +53,7 @@ pub trait Upstream: Send + Sync + 'static {
         &self,
         ctx: &RequestContext,
         resource_type: &str,
-        page: u32,
-        page_size: u32,
-        project_id: Option<&str>,
-        region_id: Option<&str>,
+        params: ListResourcesParams,
     ) -> Result<PaginatedCollection<Resource>, ApiError>;
 
     /// Get a single resource by id.

@@ -472,3 +472,262 @@ async fn invalid_json_body_returns_400_problem_details() {
 
     assert_problem_details(response, StatusCode::BAD_REQUEST, correlation).await;
 }
+
+#[tokio::test]
+async fn services_include_three_resource_types_with_presentation_metadata() {
+    let app = fixture_router(TENANT);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/services")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_json(response).await;
+    let services = json.as_array().expect("services array");
+    let ids: Vec<_> = services.iter().map(|s| s["id"].as_str().unwrap()).collect();
+    assert!(ids.contains(&"compute"));
+    assert!(ids.contains(&"network"));
+    assert!(ids.contains(&"storage"));
+
+    let find_type = |type_id: &str| {
+        services
+            .iter()
+            .flat_map(|s| s["resourceTypes"].as_array().unwrap())
+            .find(|rt| rt["id"] == type_id)
+            .cloned()
+            .unwrap_or_else(|| panic!("missing resource type {type_id}"))
+    };
+
+    let server = find_type("compute.server");
+    assert_eq!(server["name"], "Server");
+    assert!(!server["columns"].as_array().unwrap().is_empty());
+    assert!(!server["filters"].as_array().unwrap().is_empty());
+    assert!(!server["sortableFields"].as_array().unwrap().is_empty());
+    assert!(!server["detailsSections"].as_array().unwrap().is_empty());
+    assert_eq!(server["iconToken"], "server");
+
+    let vpc = find_type("network.vpc");
+    assert_eq!(vpc["name"], "VPC");
+    assert!(vpc["columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c["id"] == "cidr"));
+
+    let volume = find_type("storage.volume");
+    assert_eq!(volume["name"], "Volume");
+    assert!(!volume["relationships"].as_array().unwrap().is_empty());
+    let rel = &volume["relationships"][0];
+    assert_eq!(rel["targetResourceType"], "compute.server");
+    assert_eq!(rel["sourcePropertyKey"], "attachedServerId");
+    assert_eq!(rel["direction"], "to-one");
+}
+
+#[tokio::test]
+async fn list_network_vpc_is_bounded_and_reports_total() {
+    let app = fixture_router(TENANT);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/resources/network.vpc")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_json(response).await;
+    assert_eq!(json["total"], 1_000);
+    assert_eq!(json["items"][0]["resourceType"], "network.vpc");
+    assert!(json["items"][0]["id"].as_str().unwrap().starts_with("vpc-"));
+    assert_eq!(json["hasMore"], true);
+}
+
+#[tokio::test]
+async fn list_storage_volume_is_bounded_and_reports_total() {
+    let app = fixture_router(TENANT);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/resources/storage.volume")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_json(response).await;
+    assert_eq!(json["total"], 5_000);
+    assert_eq!(json["items"][0]["resourceType"], "storage.volume");
+    assert!(json["items"][0]["id"]
+        .as_str()
+        .unwrap()
+        .starts_with("volume-"));
+    assert_eq!(json["hasMore"], true);
+}
+
+#[tokio::test]
+async fn storage_volume_detail_exposes_attached_server_relationship() {
+    let app = fixture_router(TENANT);
+
+    let volume_detail = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/resources/storage.volume/volume-00000001")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    assert_eq!(volume_detail["resourceType"], "storage.volume");
+    assert!(volume_detail["properties"].is_object());
+    let attached_server_id = volume_detail["properties"]["attachedServerId"]
+        .as_str()
+        .expect("attachedServerId");
+    assert!(attached_server_id.starts_with("resource-"));
+
+    let server_detail = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/v1/resources/compute.server/{attached_server_id}"
+                ))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    assert_eq!(server_detail["id"], attached_server_id);
+    assert_eq!(server_detail["resourceType"], "compute.server");
+}
+
+#[tokio::test]
+async fn storage_volume_filters_by_attached_server_id() {
+    let app = fixture_router(TENANT);
+
+    let volume_detail = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/resources/storage.volume/volume-00000001")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    let attached_server_id = volume_detail["properties"]["attachedServerId"]
+        .as_str()
+        .unwrap();
+
+    let filtered = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/v1/resources/storage.volume?pageSize=100&attachedServerId={attached_server_id}"
+                ))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    assert!(!filtered["items"].as_array().unwrap().is_empty());
+    for item in filtered["items"].as_array().unwrap() {
+        assert_eq!(
+            item["properties"]["attachedServerId"].as_str().unwrap(),
+            attached_server_id
+        );
+    }
+}
+
+#[tokio::test]
+async fn list_resources_honors_sorting() {
+    let app = fixture_router(TENANT);
+
+    let asc = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/resources/compute.server?pageSize=5&sortField=name&sortDirection=asc")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    let desc = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri(
+                    "/api/v1/resources/compute.server?pageSize=5&sortField=name&sortDirection=desc",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    let asc_names: Vec<String> = asc["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["name"].as_str().unwrap().to_string())
+        .collect();
+    let mut sorted = asc_names.clone();
+    sorted.sort();
+    assert_eq!(asc_names, sorted);
+
+    let desc_names: Vec<String> = desc["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["name"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(desc_names, sorted.into_iter().rev().collect::<Vec<_>>());
+}
+
+#[tokio::test]
+async fn network_vpc_detail_exposes_cidr_property() {
+    let app = fixture_router(TENANT);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/resources/network.vpc/vpc-0000001")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_json(response).await;
+    assert_eq!(json["resourceType"], "network.vpc");
+    assert!(json["properties"]["cidrBlock"].is_string());
+}
