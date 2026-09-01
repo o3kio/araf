@@ -1,16 +1,22 @@
+#
 # Araf backend multi-stage Docker build.
 #
+# Build context must be the backend/ directory (set in docker-compose.yml).
+# See docker-compose.yml for how this is invoked.
+#
+
 # Stage 1: Build both BFF binaries
-FROM rust:1.85-slim-bookworm AS builder
+FROM rust:slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-COPY backend .
 
-RUN --mount=type=cache,target=/build/target \
-    --mount=type=cache,target=/usr/local/cargo/registry \
-    cargo build --release --bin tenant-bff --bin operator-bff && \
+# Copy the entire backend workspace (Cargo.toml, Cargo.lock, all crates)
+COPY . .
+
+# Build both binaries
+RUN cargo build --release --bin tenant-bff --bin operator-bff && \
     cp target/release/tenant-bff /usr/local/bin/tenant-bff && \
     cp target/release/operator-bff /usr/local/bin/operator-bff
 

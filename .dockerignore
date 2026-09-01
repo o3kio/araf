@@ -1,0 +1,25 @@
+# Git
+.git/
+.gitignore
+
+# Rust
+backend/target/
+
+# Node
+node_modules/
+
+# Build output
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
