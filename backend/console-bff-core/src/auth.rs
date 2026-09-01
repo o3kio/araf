@@ -220,10 +220,9 @@ pub async fn logout(
     State(oidc_config): State<OidcConfig>,
     request: RequestContext,
 ) -> Response {
-    // Extract session token from the request context's correlation id as fallback.
-    // In a real implementation the middleware extracts the cookie before the handler.
-    // For now we rely on the middleware layer to provide the session token.
-    session_store.destroy(&request.request_id).await;
+    if let Some(session_token) = request.session_token.as_deref() {
+        session_store.destroy(session_token).await;
+    }
     let mut response = Response::new(axum::body::Body::empty());
     clear_session_cookie(&mut response, oidc_config.surface);
     info!("session destroyed");
@@ -232,9 +231,19 @@ pub async fn logout(
 
 /// Return the current session status without exposing tokens.
 pub async fn session_status(
-    State(_session_store): State<Arc<SessionStore>>,
+    State(session_store): State<Arc<SessionStore>>,
     request: RequestContext,
 ) -> Json<SessionStatus> {
+    if let Some(token) = request.session_token.as_deref() {
+        if let Some(server_session) = session_store.validate(token).await {
+            return Json(SessionStatus {
+                authenticated: true,
+                user_id: Some(server_session.user_id),
+                user_name: Some(server_session.user_name),
+                surface: Some(server_session.surface.to_string()),
+            });
+        }
+    }
     let session = request.session;
     if session.authenticated {
         Json(SessionStatus {
