@@ -10,6 +10,7 @@ import type {
   Resource,
   ServiceDescriptor,
   PaginatedCollection,
+  SessionContext,
 } from "@araf/api-client";
 
 function noop(): void {
@@ -28,6 +29,7 @@ const serverDescriptor: ServiceDescriptor = {
       name: "Server",
       pluralName: "Servers",
       iconToken: "server",
+      createCapability: { resourceType: "compute.server", action: "create" },
       supportedActions: [],
       columns: [
         { id: "name", header: "Name", field: "name" },
@@ -39,6 +41,16 @@ const serverDescriptor: ServiceDescriptor = {
       relationships: [],
     },
   ],
+};
+
+const sessionContext: SessionContext = {
+  surface: "tenant",
+  userId: "user-1",
+  userName: "Test User",
+  organizationId: "org-1",
+  projectId: "project-1",
+  regionId: "eu-west",
+  capabilities: [{ resourceType: "compute.server", action: "create" }],
 };
 
 const resources: Resource[] = [
@@ -75,10 +87,11 @@ const collection: PaginatedCollection<Resource> = {
 function TestWrapper({ children }: { children: React.ReactNode }) {
   const client: ArafClient = {
     healthz: vi.fn(),
-    getContext: vi.fn(),
+    getContext: vi.fn().mockResolvedValue(sessionContext),
     listServices: vi.fn().mockResolvedValue([serverDescriptor]),
     listResources: vi.fn().mockResolvedValue(collection),
     getResource: vi.fn(),
+    createResource: vi.fn(),
     submitAction: vi.fn(),
     listOperations: vi.fn(),
     getOperation: vi.fn(),
@@ -138,10 +151,11 @@ describe("ResourceCollectionPage", () => {
     const TestWrapperWithError = ({ children }: { children: React.ReactNode }) => {
       const errorClient: ArafClient = {
         healthz: vi.fn(),
-        getContext: vi.fn(),
+        getContext: vi.fn().mockResolvedValue(sessionContext),
         listServices: vi.fn().mockRejectedValue(new Error("Network error")),
         listResources: vi.fn(),
         getResource: vi.fn(),
+        createResource: vi.fn(),
         submitAction: vi.fn(),
         listOperations: vi.fn(),
         getOperation: vi.fn(),

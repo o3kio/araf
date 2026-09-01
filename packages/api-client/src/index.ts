@@ -32,10 +32,15 @@ export interface SessionContext {
   capabilities: Capability[];
 }
 
+export type ActionRiskClass = "normal" | "disruptive" | "destructive" | "privileged";
+
 export interface ActionDescriptor {
   id: string;
   name: string;
   requiresConfirmation: boolean;
+  riskClass: ActionRiskClass;
+  requiredCapability: Capability;
+  inputSchema?: unknown;
 }
 
 export type FilterKind = "text" | "select";
@@ -81,6 +86,13 @@ export interface ResourceTypeDescriptor {
   sortableFields: string[];
   detailsSections: DetailsSectionDescriptor[];
   relationships: RelationshipDescriptor[];
+  createSchema?: unknown;
+  createCapability: Capability;
+}
+
+export interface CreateResourceRequest {
+  resourceType: string;
+  payload: unknown;
 }
 
 export interface ServiceDescriptor {
@@ -234,6 +246,7 @@ export interface ArafClient {
     query?: ListResourcesQuery,
   ): Promise<PaginatedCollection<Resource>>;
   getResource(resourceType: string, id: string): Promise<Resource>;
+  createResource(resourceType: string, payload: unknown): Promise<Operation>;
   submitAction(resourceType: string, id: string, actionRequest: ActionRequest): Promise<Operation>;
   listOperations(query?: ListOperationsQuery): Promise<PaginatedCollection<Operation>>;
   getOperation(id: string): Promise<Operation>;
@@ -306,6 +319,12 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
       request<Resource>(
         `/api/v1/resources/${encodeURIComponent(resourceType)}/${encodeURIComponent(id)}`,
       ),
+
+    createResource: (resourceType, payload) =>
+      request<Operation>(`/api/v1/resources/${encodeURIComponent(resourceType)}`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
 
     submitAction: (resourceType, id, actionRequest) =>
       request<Operation>(

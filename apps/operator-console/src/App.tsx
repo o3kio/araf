@@ -5,6 +5,7 @@ import {
   ResourceLandingPage,
   ResourceCollectionPage,
   ResourceDetailPage,
+  ResourceCreatePage,
 } from "@araf/resources";
 import { createArafClient } from "@araf/api-client";
 import { useState, type ReactNode } from "react";
@@ -136,6 +137,11 @@ function ResourceDetailRoute() {
   return <ResourceDetailPage resourceType={decodeURIComponent(resourceType ?? "")} />;
 }
 
+function ResourceCreateRoute() {
+  const { resourceType } = useParams<{ resourceType: string }>();
+  return <ResourceCreatePage resourceType={decodeURIComponent(resourceType ?? "")} />;
+}
+
 export function App() {
   const [density] = useState<"comfortable" | "compact">("compact");
 
@@ -201,6 +207,14 @@ export function App() {
                 element={
                   <OperatorRouterShell>
                     <ResourceCollectionRoute />
+                  </OperatorRouterShell>
+                }
+              />
+              <Route
+                path="/resources/:resourceType/create"
+                element={
+                  <OperatorRouterShell>
+                    <ResourceCreateRoute />
                   </OperatorRouterShell>
                 }
               />

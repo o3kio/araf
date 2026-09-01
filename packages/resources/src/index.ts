@@ -21,6 +21,9 @@ export {
   type UseResourceCollectionResult,
 } from "./hooks/useResourceCollection";
 export { useResourceDetail, type UseResourceDetailResult } from "./hooks/useResourceDetail";
+export { useCreateResource, type UseCreateResourceResult } from "./hooks/useCreateResource";
+export { useResourceAction, type UseResourceActionResult } from "./hooks/useResourceAction";
+export { useCapabilities, type UseCapabilitiesResult } from "./hooks/useCapabilities";
 
 // Components
 export {
@@ -30,3 +33,8 @@ export {
 export { ResourceDetailPage, type ResourceDetailPageProps } from "./components/ResourceDetailPage";
 export { RelationshipPanel, type RelationshipPanelProps } from "./components/RelationshipPanel";
 export { ResourceLandingPage } from "./components/ResourceLandingPage";
+export { ResourceCreatePage, type ResourceCreatePageProps } from "./components/ResourceCreatePage";
+export {
+  ResourceActionsPanel,
+  type ResourceActionsPanelProps,
+} from "./components/ResourceActionsPanel";

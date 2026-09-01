@@ -12,6 +12,7 @@ async-trait = "0.1"
 axum = "0.8"
 console-bff-core = { path = "console-bff-core" }
 http = "1"
+jsonschema = "0.28"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

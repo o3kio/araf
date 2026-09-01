@@ -14,8 +14,8 @@ use tracing::info;
 use crate::{
     error::{ApiError, BffError},
     model::{
-        ActionRequest, Operation, PaginatedCollection, Resource, ServiceDescriptor, SessionContext,
-        SortDirection,
+        ActionRequest, CreateResourceRequest, Operation, PaginatedCollection, Resource,
+        ServiceDescriptor, SessionContext, SortDirection,
     },
     request::RequestContext,
     upstream::{ListResourcesParams, Upstream},
@@ -110,6 +110,27 @@ pub async fn list_resources(
         .await
         .map_err(|e| with_ctx(e, &ctx))?;
     Ok(Json(collection))
+}
+
+pub async fn create_resource(
+    State(state): State<AppState>,
+    Path(resource_type): Path<String>,
+    ctx: RequestContext,
+    request: Result<Json<CreateResourceRequest>, JsonRejection>,
+) -> Result<Json<Operation>, BffError> {
+    let Json(request) = request.map_err(|e| with_ctx(e, &ctx))?;
+
+    info!(
+        correlation_id = %ctx.correlation_id(),
+        resource_type = %resource_type,
+        "creating resource"
+    );
+    let operation = state
+        .upstream
+        .create_resource(&ctx, &resource_type, request)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(operation))
 }
 
 pub async fn get_resource(

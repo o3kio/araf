@@ -32,6 +32,20 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      - name: Install Rust toolchain for BFF fixture binary
+        run: |
+          rustup toolchain install ${{ env.RUST_TOOLCHAIN }} \
+            --profile minimal --component rustfmt --component clippy
+          rustup override set ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
+      - name: Build tenant BFF fixture binary
+        working-directory: backend
+        run: cargo build -p tenant-bff
+
       - name: Format check
         run: pnpm format:check
 

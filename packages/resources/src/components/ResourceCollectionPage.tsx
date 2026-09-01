@@ -5,11 +5,13 @@ import {
   EmptyState,
   ErrorState,
   StatusIndicator,
+  Button,
   type TableColumnDefinition,
 } from "@araf/ui";
 import { Link } from "react-router";
 import { useResourceCollection } from "../hooks/useResourceCollection";
 import { useResourceDescriptor } from "../hooks/useResourceDescriptor";
+import { useCapabilities } from "../hooks/useCapabilities";
 import { getResourceField, formatResourceField } from "../fields";
 import { mapResourceStatus } from "../status";
 import type { Resource, SortDirection } from "@araf/api-client";
@@ -27,12 +29,23 @@ export interface ResourceCollectionPageProps {
  * Supports server-side pagination, descriptor-driven filters, sorting, status
  * indicators, and row links to the resource detail page.
  */
+function hasCapability(
+  capabilities: readonly { readonly resourceType: string; readonly action: string }[],
+  required: { readonly resourceType: string; readonly action: string } | undefined,
+): boolean {
+  if (!required) return false;
+  return capabilities.some(
+    (c) => c.resourceType === required.resourceType && c.action === required.action,
+  );
+}
+
 export function ResourceCollectionPage({ resourceType }: ResourceCollectionPageProps) {
   const {
     descriptor,
     loading: descriptorLoading,
     error: descriptorError,
   } = useResourceDescriptor(resourceType);
+  const { capabilities, loading: capabilitiesLoading } = useCapabilities();
   const {
     collection,
     query,
@@ -46,7 +59,7 @@ export function ResourceCollectionPage({ resourceType }: ResourceCollectionPageP
   } = useResourceCollection(resourceType, descriptor);
 
   const error = descriptorError ?? collectionError;
-  const loading = descriptorLoading || collectionLoading;
+  const loading = descriptorLoading || collectionLoading || capabilitiesLoading;
 
   const columns: TableColumnDefinition<Resource>[] =
     descriptor?.columns.map((column) => ({
@@ -85,6 +98,13 @@ export function ResourceCollectionPage({ resourceType }: ResourceCollectionPageP
         headingLevel="h1"
         description={`Manage ${descriptor?.pluralName ?? resourceType}`}
         counter={collection ? `(${String(collection.total)})` : undefined}
+        actions={
+          descriptor?.createSchema && hasCapability(capabilities, descriptor.createCapability) ? (
+            <Link to={`/resources/${encodeURIComponent(resourceType)}/create`}>
+              <Button variant="primary">Create</Button>
+            </Link>
+          ) : undefined
+        }
       >
         {descriptor?.pluralName ?? resourceType}
       </Header>

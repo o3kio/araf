@@ -50,6 +50,12 @@ export type { FormSectionProps } from "./components/FormSection";
 export { ConfirmModal } from "./components/ConfirmModal";
 export type { ConfirmModalProps } from "./components/ConfirmModal";
 
+export { Button } from "./components/Button";
+export type { ButtonProps } from "./components/Button";
+
+export { SpaceBetween } from "./components/SpaceBetween";
+export type { SpaceBetweenProps } from "./components/SpaceBetween";
+
 export { Tabs } from "./components/Tabs";
 export type { TabsProps, TabItem } from "./components/Tabs";
 

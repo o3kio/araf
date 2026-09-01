@@ -11,8 +11,8 @@ use async_trait::async_trait;
 use crate::{
     error::ApiError,
     model::{
-        ActionRequest, Operation, PaginatedCollection, Resource, ServiceDescriptor, SessionContext,
-        SortDirection,
+        ActionRequest, CreateResourceRequest, Operation, PaginatedCollection, Resource,
+        ServiceDescriptor, SessionContext, SortDirection,
     },
     request::RequestContext,
 };
@@ -71,6 +71,14 @@ pub trait Upstream: Send + Sync + 'static {
         resource_type: &str,
         id: &str,
         request: ActionRequest,
+    ) -> Result<Operation, ApiError>;
+
+    /// Create a new resource and return the canonical Operation.
+    async fn create_resource(
+        &self,
+        ctx: &RequestContext,
+        resource_type: &str,
+        request: CreateResourceRequest,
     ) -> Result<Operation, ApiError>;
 
     /// List Operations.
