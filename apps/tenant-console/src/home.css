@@ -1,0 +1,51 @@
+.araf-home__context-value {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.araf-home__context-value strong {
+  color: var(--araf-color-text);
+  font-size: 15px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.araf-home__eyebrow {
+  color: var(--araf-color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.araf-home__description {
+  margin: 0;
+  color: var(--araf-color-text-muted);
+  line-height: 1.55;
+}
+
+.araf-home__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.araf-home__automation {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.araf-home__automation > div {
+  max-width: 760px;
+}
+
+@media (max-width: 720px) {
+  .araf-home__automation {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
