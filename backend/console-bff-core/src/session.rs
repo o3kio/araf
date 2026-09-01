@@ -98,7 +98,7 @@ impl SessionStore {
     pub async fn validate(&self, session_token: &str) -> Option<SessionData> {
         let session = self.get(session_token).await?;
         if session.is_expired() {
-            self.destroy(&session_token).await;
+            self.destroy(session_token).await;
             return None;
         }
         Some(session)
