@@ -15,8 +15,7 @@ export function HomePage() {
   const { scope } = useScope();
   const project = scope.projectName ?? scope.projectId ?? "No project selected";
   const region = scope.regionName ?? scope.regionId ?? "Global";
-  const organization =
-    scope.organizationName ?? scope.organizationId ?? "Current organization";
+  const organization = scope.organizationName ?? scope.organizationId ?? "Current organization";
 
   return (
     <SpaceBetween size="l">
@@ -64,7 +63,8 @@ export function HomePage() {
         <Container header={<Header variant="h2">Governance</Header>}>
           <SpaceBetween size="m">
             <p className="araf-home__description">
-              Review project access, quotas, usage and audit information for the active tenant scope.
+              Review project access, quotas, usage and audit information for the active tenant
+              scope.
             </p>
             <div className="araf-home__actions">
               <Button href="/organization/projects">Projects</Button>
