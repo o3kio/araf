@@ -52,8 +52,9 @@ pub fn apply_default_layers(router: Router, surface: &'static str) -> Router {
 pub fn apply_production_layers(
     router: Router,
     session_store: Arc<crate::session::SessionStore>,
+    surface: &'static str,
 ) -> Router {
-    apply_layers_with_session_store(router, session_store)
+    apply_layers_with_session_store(router, session_store, surface)
 }
 
 fn apply_layers(router: Router, session: Arc<SessionState>) -> Router {
@@ -133,6 +134,7 @@ fn apply_layers(router: Router, session: Arc<SessionState>) -> Router {
 fn apply_layers_with_session_store(
     router: Router,
     session_store: Arc<crate::session::SessionStore>,
+    surface: &'static str,
 ) -> Router {
     let csp_header = SetResponseHeaderLayer::overriding(
         axum::http::header::CONTENT_SECURITY_POLICY,
@@ -161,7 +163,7 @@ fn apply_layers_with_session_store(
         .layer(referrer)
         .layer(permissions)
         .layer(axum::middleware::from_fn_with_state(
-            session_store,
+            (session_store, surface),
             inject_validated_session,
         ))
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE_BYTES))
@@ -181,7 +183,7 @@ async fn inject_session(
 }
 
 async fn inject_validated_session(
-    State(store): State<Arc<crate::session::SessionStore>>,
+    State((store, surface)): State<(Arc<crate::session::SessionStore>, &'static str)>,
     mut request: Request,
     next: Next,
 ) -> Response {
@@ -192,8 +194,12 @@ async fn inject_validated_session(
         .and_then(|cookies| {
             cookies.split(';').find_map(|cookie| {
                 let (name, value) = cookie.trim().split_once('=')?;
-                (name == "araf_tenant_session" || name == "araf_operator_session")
-                    .then(|| (name, value))
+                (name
+                    == match surface {
+                        "operator-bff" => "araf_operator_session",
+                        _ => "araf_tenant_session",
+                    })
+                .then(|| (name, value))
             })
         })
     {
@@ -262,6 +268,7 @@ mod tests {
         let production = apply_production_layers(
             Router::new().route("/probe", get(session_probe)),
             crate::session::SessionStore::new(),
+            "tenant-bff",
         );
         let fixture = apply_default_layers(
             Router::new().route("/probe", get(session_probe)),
