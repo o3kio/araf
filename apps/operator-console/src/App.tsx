@@ -48,9 +48,7 @@ const navigationItems: OperatorNavigationItem[] = [
     id: "customers",
     type: "section",
     text: "Customers",
-    items: [
-      { id: "accounts", type: "link", text: "Accounts", href: "/customers/accounts" },
-    ],
+    items: [{ id: "accounts", type: "link", text: "Accounts", href: "/customers/accounts" }],
   },
   {
     id: "services",
@@ -71,9 +69,7 @@ const navigationItems: OperatorNavigationItem[] = [
     id: "governance",
     type: "section",
     text: "Governance",
-    items: [
-      { id: "audit", type: "link", text: "Audit", href: "/governance/audit" },
-    ],
+    items: [{ id: "audit", type: "link", text: "Audit", href: "/governance/audit" }],
   },
 ];
 
