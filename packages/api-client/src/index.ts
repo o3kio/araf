@@ -10,6 +10,8 @@ export type ResourceStatus = "ready" | "busy" | "error" | "unknown";
 
 export type OperationState = "pending" | "running" | "succeeded" | "failed";
 
+export type SortDirection = "asc" | "desc";
+
 export interface HealthzResponse {
   status: "ok";
   service: string;
@@ -36,11 +38,49 @@ export interface ActionDescriptor {
   requiresConfirmation: boolean;
 }
 
+export type FilterKind = "text" | "select";
+
+export interface ColumnDescriptor {
+  id: string;
+  header: string;
+  field: string;
+  width?: string;
+}
+
+export interface FilterDescriptor {
+  id: string;
+  label: string;
+  field: string;
+  kind: FilterKind;
+}
+
+export interface DetailsSectionDescriptor {
+  id: string;
+  label: string;
+  fields: string[];
+}
+
+export type RelationshipDirection = "to-one" | "to-many";
+
+export interface RelationshipDescriptor {
+  id: string;
+  targetResourceType: string;
+  label: string;
+  sourcePropertyKey: string;
+  direction: RelationshipDirection;
+}
+
 export interface ResourceTypeDescriptor {
   id: string;
   name: string;
   pluralName: string;
+  iconToken: string;
   supportedActions: ActionDescriptor[];
+  columns: ColumnDescriptor[];
+  filters: FilterDescriptor[];
+  sortableFields: string[];
+  detailsSections: DetailsSectionDescriptor[];
+  relationships: RelationshipDescriptor[];
 }
 
 export interface ServiceDescriptor {
@@ -59,6 +99,7 @@ export interface Resource {
   status: ResourceStatus;
   createdAt: string;
   updatedAt: string;
+  properties?: Record<string, unknown>;
 }
 
 export interface PaginatedCollection<T> {
@@ -110,6 +151,9 @@ export interface ListResourcesQuery {
   pageSize?: number;
   projectId?: string;
   regionId?: string;
+  sortField?: string;
+  sortDirection?: SortDirection;
+  [filterKey: string]: string | number | undefined;
 }
 
 export interface ListOperationsQuery {
@@ -239,18 +283,24 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
 
     listServices: () => request<ServiceDescriptor[]>("/api/v1/services"),
 
-    listResources: (resourceType, query) =>
-      request<PaginatedCollection<Resource>>(
+    listResources: (resourceType, query) => {
+      const { sortField, sortDirection, page, pageSize, projectId, regionId, ...filters } =
+        query ?? {};
+      return request<PaginatedCollection<Resource>>(
         `/api/v1/resources/${encodeURIComponent(resourceType)}`,
         {
           query: {
-            page: query?.page,
-            pageSize: query?.pageSize,
-            projectId: query?.projectId,
-            regionId: query?.regionId,
+            page,
+            pageSize,
+            projectId,
+            regionId,
+            sortField,
+            sortDirection,
+            ...filters,
           },
         },
-      ),
+      );
+    },
 
     getResource: (resourceType, id) =>
       request<Resource>(

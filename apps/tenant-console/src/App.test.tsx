@@ -28,17 +28,17 @@ describe("Tenant console shell", () => {
     window.history.replaceState(null, "", "/");
     render(<App />);
 
-    await userEvent.selectOptions(screen.getByLabelText(/Project/i), "Beta");
-    expect(window.location.search).toContain("project=project-beta");
+    await userEvent.selectOptions(screen.getByLabelText(/Project/i), "Project 2");
+    expect(window.location.search).toContain("project=project-2");
 
     await userEvent.selectOptions(screen.getByLabelText(/Region/i), "eu-west");
     expect(window.location.search).toContain("region=eu-west");
   });
 
   it("restores scope from the URL on load", () => {
-    window.history.replaceState(null, "", "/?project=project-beta&region=eu-west");
+    window.history.replaceState(null, "", "/?project=project-2&region=eu-west");
     render(<App />);
-    expect(screen.getByLabelText(/Project/i)).toHaveValue("project-beta");
+    expect(screen.getByLabelText(/Project/i)).toHaveValue("project-2");
     expect(screen.getByLabelText(/Region/i)).toHaveValue("eu-west");
   });
 

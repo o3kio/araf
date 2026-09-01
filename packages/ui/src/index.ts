@@ -27,7 +27,7 @@ export { Header } from "./components/Header";
 export type { HeaderProps } from "./components/Header";
 
 export { StatusIndicator } from "./components/StatusIndicator";
-export type { StatusIndicatorProps } from "./components/StatusIndicator";
+export type { StatusIndicatorProps, ArafStatusType } from "./components/StatusIndicator";
 
 export { Table } from "./components/Table";
 export type { TableProps, TableColumnDefinition, TableAriaLabels } from "./components/Table";

@@ -1,10 +1,32 @@
-/**
- * @araf/resources — M0 workspace-boundary placeholder.
- *
- * Generic resource runtime (descriptors, list/detail primitives).
- *
- * Intentionally without implementation: the owning milestone adds real code
- * here. This package exists to pin the workspace boundary and import
- * discipline described in docs/architecture/overview.md §11.
- */
-export const PACKAGE_BOUNDARY = "@araf/resources" as const;
+// Client provider
+export {
+  ResourceClientProvider,
+  useResourceClient,
+  type ResourceClientProviderProps,
+} from "./client/context";
+
+// Core runtime primitives
+export { validateDescriptor, type ResourceDescriptor } from "./descriptor";
+export { getResourceField, formatResourceField } from "./fields";
+export { mapResourceStatus } from "./status";
+
+// Hooks
+export {
+  useResourceDescriptor,
+  type UseResourceDescriptorResult,
+} from "./hooks/useResourceDescriptor";
+export {
+  useResourceCollection,
+  type CollectionQuery,
+  type UseResourceCollectionResult,
+} from "./hooks/useResourceCollection";
+export { useResourceDetail, type UseResourceDetailResult } from "./hooks/useResourceDetail";
+
+// Components
+export {
+  ResourceCollectionPage,
+  type ResourceCollectionPageProps,
+} from "./components/ResourceCollectionPage";
+export { ResourceDetailPage, type ResourceDetailPageProps } from "./components/ResourceDetailPage";
+export { RelationshipPanel, type RelationshipPanelProps } from "./components/RelationshipPanel";
+export { ResourceLandingPage } from "./components/ResourceLandingPage";
