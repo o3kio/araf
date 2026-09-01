@@ -1,6 +1,7 @@
 import { AppLayout, TopNavigation, type TopNavigationUtility } from "@araf/ui";
 import type { ReactNode } from "react";
 import { useIdentity } from "../identity/context";
+import "../shell.css";
 
 export interface OperatorNavigationItem {
   id: string;
@@ -89,6 +90,7 @@ export function OperatorShell({ children, navigationItems, activeHref }: Operato
         <span className="araf-operator-shell__context-label" data-testid="operator-context">
           Platform context
         </span>
+        <strong className="araf-scope-display__value">O3K control plane</strong>
       </div>
       {navigationItems.length > 0 ? renderNavigationItems(navigationItems, activeHref) : null}
     </nav>
