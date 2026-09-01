@@ -23,7 +23,7 @@ RUN cargo build --release --bin tenant-bff --bin operator-bff && \
 # Stage 2: Minimal runtime image
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/bin/tenant-bff /usr/local/bin/tenant-bff
 COPY --from=builder /usr/local/bin/operator-bff /usr/local/bin/operator-bff
