@@ -254,4 +254,39 @@ test.describe("generic resource runtime", () => {
 
     await expect(page.getByText(/Operation .+ is pending/)).toBeVisible();
   });
+
+  test("tenant shell preserves accessible navigation and responsive styling", async ({ page }) => {
+    expect(previewUrl).toBeDefined();
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`${previewUrl ?? ""}/resources/compute.server`);
+
+    const shell = page.locator(".araf-tenant-shell");
+    const search = page.getByRole("searchbox", { name: "Search resources" });
+    const activeLink = page.getByRole("link", { name: "Servers" });
+
+    await expect(shell).toBeVisible();
+    await expect(search).toBeVisible();
+    await expect(activeLink).toHaveAttribute("aria-current", "page");
+    const tenantNavigation = page.getByRole("navigation", { name: "Tenant navigation" });
+    await expect(tenantNavigation.getByLabel("Project")).toBeVisible();
+    await expect(tenantNavigation.getByLabel("Region")).toBeVisible();
+
+    // These computed-style assertions deliberately fail if shell.css is omitted
+    // from the production bundle, catching the raw-shell regression.
+    await expect(shell).toHaveCSS("min-height", "800px");
+    await expect(search).toHaveCSS("height", "36px");
+    await expect(search).toHaveCSS("border-radius", "8px");
+
+    await search.focus();
+    await expect(search).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("link", { name: "Operations" }).first()).toBeFocused();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(shell).toHaveCSS("min-height", "844px");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      await page.evaluate(() => document.documentElement.clientWidth),
+    );
+  });
 });
