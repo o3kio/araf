@@ -160,6 +160,7 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
     listProviderHealth: vi.fn(),
     listServiceHealth: vi.fn(),
     listServiceCatalog: vi.fn(),
+    listUsage: vi.fn(),
     listInstalledServices: vi.fn(),
     listDiscoveredResourceTypes: vi.fn(),
     getCapacitySummary: vi.fn(),

@@ -26,7 +26,7 @@ use crate::{
         Project, ProjectMember, ProjectQuota, ProviderHealth, ProviderKind, QuotaEntry, Region,
         RegionStatus, RelationshipDescriptor, RelationshipDirection, Resource, ResourceStatus,
         ResourceTypeDescriptor, Role, ServiceCatalogEntry, ServiceDescriptor, ServiceHealth,
-        SessionContext, SortDirection, StatusCount, User,
+        SessionContext, SortDirection, StatusCount, UsageQuery, UsageRecord, UsageSummary, User,
     },
     request::RequestContext,
     upstream::{
@@ -556,15 +556,22 @@ impl FixtureAdapter {
 
     fn quota_for(project_id: &str) -> ProjectQuota {
         let seed = Self::hash_id(project_id);
+        // Aligned with O3K kernel known quota dimensions.
         let entries = [
             ("compute.server", 100_u64, "instances"),
+            ("compute.vcpus", 200_u64, "cores"),
+            ("compute.memory_mb", 524_288_u64, "mebibytes"),
+            ("compute.disk_gb", 10_000_u64, "gibibytes"),
             ("storage.volume", 5000_u64, "gibibytes"),
             ("network.vpc", 20_u64, "networks"),
+            ("network.subnets", 50_u64, "subnets"),
+            ("network.ports", 200_u64, "ports"),
+            ("image.images", 100_u64, "images"),
         ]
         .into_iter()
         .enumerate()
         .map(|(idx, (resource_type, limit, unit))| {
-            let used = ((seed >> (idx * 8)) % (limit.max(1))).min(limit);
+            let used = ((seed >> (idx * 4 + 3)) % (limit.max(1))).min(limit);
             QuotaEntry {
                 resource_type: resource_type.to_owned(),
                 limit,
@@ -2007,6 +2014,89 @@ impl Upstream for FixtureAdapter {
             page: 0,
             page_size: items.len() as u32,
             items,
+        })
+    }
+
+    async fn list_usage(
+        &self,
+        ctx: &RequestContext,
+        query: UsageQuery,
+    ) -> Result<UsageSummary, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("tenant.quota", "read") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let (since, until) = query.bounded_range()?;
+
+        let accessible = Self::accessible_project_ids(&session);
+        let pid = query.project_id.as_deref().unwrap_or_else(|| {
+            accessible
+                .first()
+                .map(|s| s.as_str())
+                .unwrap_or("project-1")
+        });
+        if !accessible.iter().any(|id| id.as_str() == pid) {
+            return Err(ApiError::NotFound);
+        }
+
+        let seed = Self::hash_id(pid);
+        let range_hours = (until - since).whole_hours().max(1) as u64;
+
+        // Generate hourly usage data points over the window, with deterministic
+        // values derived from the project seed so each project is distinct and
+        // stable across requests.
+        let dimensions = [
+            ("compute.server", "instances"),
+            ("compute.vcpus", "cores"),
+            ("network.vpc", "networks"),
+            ("storage.volume", "gibibytes"),
+        ];
+
+        let mut records = Vec::new();
+        let now = OffsetDateTime::now_utc();
+
+        for hour_offset in 0..range_hours.min(72) {
+            let ts = since + time::Duration::hours(hour_offset as i64);
+            if ts > now || ts > until {
+                break;
+            }
+
+            for (dim_idx, (resource_type, unit)) in dimensions.iter().enumerate() {
+                let base = (seed >> (dim_idx * 8)) % 100;
+                // Deterministic hourly variation so each data point is
+                // distinguishable but pattern remains stable.
+                let variation =
+                    (seed.wrapping_mul(hour_offset.wrapping_add(1)) >> (dim_idx * 4)) % 20;
+                let value = base.saturating_add(variation).max(1);
+                records.push(UsageRecord {
+                    resource_type: resource_type.to_string(),
+                    value: value.min(1000),
+                    unit: unit.to_string(),
+                    timestamp: ts,
+                });
+            }
+        }
+
+        // If the requested range is empty or too short, return at least one point.
+        if records.is_empty() {
+            let ts = since;
+            for (dim_idx, (resource_type, unit)) in dimensions.iter().enumerate() {
+                let base = (seed >> (dim_idx * 8)) % 100;
+                records.push(UsageRecord {
+                    resource_type: resource_type.to_string(),
+                    value: base.max(1),
+                    unit: unit.to_string(),
+                    timestamp: ts,
+                });
+            }
+        }
+
+        Ok(UsageSummary {
+            project_id: pid.to_string(),
+            records,
+            since,
+            until,
         })
     }
 
