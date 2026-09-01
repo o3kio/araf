@@ -103,6 +103,44 @@ export interface ServiceDescriptor {
   resourceTypes: ResourceTypeDescriptor[];
 }
 
+export interface ServiceCatalogEntry {
+  id: string;
+  namespace: string;
+  name: string;
+  version: string;
+  ownership: string | null;
+  lifecycleState: string;
+  capabilities: Capability[];
+  regions: string[];
+  description?: string;
+  documentationUrl?: string;
+}
+
+export interface InstalledService {
+  id: string;
+  namespace: string;
+  name: string;
+  version: string;
+  ownership: string | null;
+  lifecycleState: string;
+  health: string;
+  resourceTypes: string[];
+  controllerInfo?: string;
+  installedAt?: string;
+  updatedAt?: string;
+}
+
+export interface DiscoveredResourceType {
+  namespace: string;
+  name: string;
+  serviceId: string;
+  schemaVersion: string;
+  collection: string;
+  scope: string;
+  ready: boolean;
+  lifecycleActions: Record<string, string>;
+}
+
 export interface Resource {
   id: string;
   name: string;
@@ -486,6 +524,9 @@ export interface ArafClient {
   healthz(): Promise<HealthzResponse>;
   getContext(): Promise<SessionContext>;
   listServices(): Promise<ServiceDescriptor[]>;
+  listServiceCatalog(): Promise<ServiceCatalogEntry[]>;
+  listInstalledServices(): Promise<InstalledService[]>;
+  listDiscoveredResourceTypes(): Promise<DiscoveredResourceType[]>;
   listResources(
     resourceType: string,
     query?: ListResourcesQuery,
@@ -570,6 +611,13 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
     getContext: () => request<SessionContext>("/api/v1/context"),
 
     listServices: () => request<ServiceDescriptor[]>("/api/v1/services"),
+
+    listServiceCatalog: () => request<ServiceCatalogEntry[]>("/api/v1/services/catalog"),
+
+    listInstalledServices: () => request<InstalledService[]>("/api/v1/operator/services/installed"),
+
+    listDiscoveredResourceTypes: () =>
+      request<DiscoveredResourceType[]>("/api/v1/operator/services/resource-types"),
 
     listResources: (resourceType, query) => {
       const { sortField, sortDirection, page, pageSize, projectId, regionId, ...filters } =

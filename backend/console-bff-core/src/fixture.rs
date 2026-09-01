@@ -20,13 +20,13 @@ use crate::{
         ActionDescriptor, ActionRequest, ActionRiskClass, AlertSeverity, ApiCredential, AuditEvent,
         AvailabilityZone, Capability, CapacitySummary, ColumnDescriptor,
         CreateApiCredentialRequest, CreateResourceRequest, CustomerAccount,
-        DetailsSectionDescriptor, FilterDescriptor, FilterKind, JsonSchema, ListAuditEventsParams,
-        Operation, OperationError, OperationEvent, OperationState, OperatorAuditEvent,
-        OperatorProject, PaginatedCollection, PlatformAlert, PlatformOverview, Project,
-        ProjectMember, ProjectQuota, ProviderHealth, ProviderKind, QuotaEntry, Region,
+        DetailsSectionDescriptor, DiscoveredResourceType, FilterDescriptor, FilterKind, JsonSchema,
+        ListAuditEventsParams, Operation, OperationError, OperationEvent, OperationState,
+        OperatorAuditEvent, OperatorProject, PaginatedCollection, PlatformAlert, PlatformOverview,
+        Project, ProjectMember, ProjectQuota, ProviderHealth, ProviderKind, QuotaEntry, Region,
         RegionStatus, RelationshipDescriptor, RelationshipDirection, Resource, ResourceStatus,
-        ResourceTypeDescriptor, Role, ServiceDescriptor, ServiceHealth, SessionContext,
-        SortDirection, StatusCount, User,
+        ResourceTypeDescriptor, Role, ServiceCatalogEntry, ServiceDescriptor, ServiceHealth,
+        SessionContext, SortDirection, StatusCount, User,
     },
     request::RequestContext,
     upstream::{
@@ -43,6 +43,9 @@ pub const FIXTURE_VPC_TOTAL: u64 = 1_000;
 
 /// Total number of synthetic volume resources.
 pub const FIXTURE_VOLUME_TOTAL: u64 = 5_000;
+
+/// Total number of synthetic object storage bucket resources.
+pub const FIXTURE_OBJECT_STORAGE_BUCKET_TOTAL: u64 = 2_000;
 
 /// Total number of synthetic users in the fixture tenant.
 const FIXTURE_USER_TOTAL: u64 = 50;
@@ -107,6 +110,7 @@ impl FixtureAdapter {
             "compute.server" => Some(FIXTURE_RESOURCE_TOTAL),
             "network.vpc" => Some(FIXTURE_VPC_TOTAL),
             "storage.volume" => Some(FIXTURE_VOLUME_TOTAL),
+            "object.storage.bucket" => Some(FIXTURE_OBJECT_STORAGE_BUCKET_TOTAL),
             _ => None,
         }
     }
@@ -219,11 +223,51 @@ impl FixtureAdapter {
         }
     }
 
+    fn object_storage_bucket_at(id: u64) -> Resource {
+        let seed = Self::seed_from_id(id ^ 0xabcd_ef01_2345_6789);
+        let regions = ["eu-west", "us-east", "ap-south"];
+        let region = regions[(seed as usize) % regions.len()];
+        let statuses = [
+            ResourceStatus::Ready,
+            ResourceStatus::Busy,
+            ResourceStatus::Error,
+            ResourceStatus::Unknown,
+        ];
+        let status = statuses[(seed as usize >> 8) % statuses.len()];
+        let project_id = format!("project-{}", (seed % 5) + 1);
+        let size_mb = 100 + (seed % 900);
+
+        let mut properties = HashMap::new();
+        properties.insert(
+            "sizeMb".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(size_mb)),
+        );
+        properties.insert(
+            "publicAccess".to_string(),
+            serde_json::Value::Bool(seed % 3 == 0),
+        );
+
+        Resource {
+            id: format!("bucket-{id:08}"),
+            name: format!("fixture-bucket-{id}"),
+            resource_type: "object.storage.bucket".to_string(),
+            project_id,
+            region_id: region.to_string(),
+            status,
+            created_at: OffsetDateTime::UNIX_EPOCH
+                + time::Duration::seconds((seed % 1_000_000) as i64),
+            updated_at: OffsetDateTime::UNIX_EPOCH
+                + time::Duration::seconds((seed % 1_000_000) as i64 + 60),
+            properties: Some(properties),
+        }
+    }
+
     fn resource_at(resource_type: &str, id: u64) -> Option<Resource> {
         match resource_type {
             "compute.server" => Some(Self::compute_server_at(id)),
             "network.vpc" => Some(Self::network_vpc_at(id)),
             "storage.volume" => Some(Self::storage_volume_at(id)),
+            "object.storage.bucket" => Some(Self::object_storage_bucket_at(id)),
             _ => None,
         }
     }
@@ -271,6 +315,9 @@ impl FixtureAdapter {
             "storage.volume" => id
                 .strip_prefix("volume-")
                 .and_then(|s| s.parse::<u64>().ok()),
+            "object.storage.bucket" => id
+                .strip_prefix("bucket-")
+                .and_then(|s| s.parse::<u64>().ok()),
             _ => None,
         }
     }
@@ -280,6 +327,7 @@ impl FixtureAdapter {
             "compute.server" => Some(Self::compute_server_descriptor()),
             "network.vpc" => Some(Self::network_vpc_descriptor()),
             "storage.volume" => Some(Self::storage_volume_descriptor()),
+            "object.storage.bucket" => Some(Self::object_storage_bucket_descriptor()),
             _ => None,
         }
     }
@@ -938,6 +986,107 @@ impl FixtureAdapter {
         }
     }
 
+    fn object_storage_bucket_descriptor() -> ResourceTypeDescriptor {
+        ResourceTypeDescriptor {
+            id: "object.storage.bucket".to_string(),
+            name: "Object Storage Bucket".to_string(),
+            plural_name: "Object Storage Buckets".to_string(),
+            icon_token: "storage".to_string(),
+            create_schema: Some(JsonSchema(serde_json::json!({
+                "type": "object",
+                "required": ["name", "regionId", "projectId"],
+                "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "regionId": { "enum": ["eu-west", "us-east", "ap-south"] },
+                    "projectId": { "enum": ["project-1", "project-2", "project-3", "project-4", "project-5"] },
+                    "publicAccess": { "type": "boolean" }
+                }
+            }))),
+            create_capability: Capability {
+                resource_type: "object.storage.bucket".to_string(),
+                action: "create".to_string(),
+            },
+            supported_actions: vec![ActionDescriptor {
+                id: "delete".to_string(),
+                name: "Delete".to_string(),
+                requires_confirmation: true,
+                risk_class: ActionRiskClass::Destructive,
+                required_capability: Capability {
+                    resource_type: "object.storage.bucket".to_string(),
+                    action: "delete".to_string(),
+                },
+                input_schema: None,
+            }],
+            columns: vec![
+                ColumnDescriptor {
+                    id: "name".to_string(),
+                    header: "Name".to_string(),
+                    field: "name".to_string(),
+                    width: None,
+                },
+                ColumnDescriptor {
+                    id: "size".to_string(),
+                    header: "Size (MB)".to_string(),
+                    field: "properties.sizeMb".to_string(),
+                    width: Some("120px".to_string()),
+                },
+                ColumnDescriptor {
+                    id: "publicAccess".to_string(),
+                    header: "Public Access".to_string(),
+                    field: "properties.publicAccess".to_string(),
+                    width: Some("140px".to_string()),
+                },
+                ColumnDescriptor {
+                    id: "status".to_string(),
+                    header: "Status".to_string(),
+                    field: "status".to_string(),
+                    width: Some("120px".to_string()),
+                },
+                ColumnDescriptor {
+                    id: "region".to_string(),
+                    header: "Region".to_string(),
+                    field: "regionId".to_string(),
+                    width: Some("140px".to_string()),
+                },
+            ],
+            filters: vec![
+                FilterDescriptor {
+                    id: "project".to_string(),
+                    label: "Project".to_string(),
+                    field: "projectId".to_string(),
+                    kind: FilterKind::Select,
+                },
+                FilterDescriptor {
+                    id: "region".to_string(),
+                    label: "Region".to_string(),
+                    field: "regionId".to_string(),
+                    kind: FilterKind::Select,
+                },
+            ],
+            sortable_fields: vec![
+                "name".to_string(),
+                "status".to_string(),
+                "createdAt".to_string(),
+            ],
+            details_sections: vec![DetailsSectionDescriptor {
+                id: "overview".to_string(),
+                label: "Overview".to_string(),
+                fields: vec![
+                    "id".to_string(),
+                    "name".to_string(),
+                    "status".to_string(),
+                    "projectId".to_string(),
+                    "regionId".to_string(),
+                    "properties.sizeMb".to_string(),
+                    "properties.publicAccess".to_string(),
+                    "createdAt".to_string(),
+                    "updatedAt".to_string(),
+                ],
+            }],
+            relationships: vec![],
+        }
+    }
+
     // Operator platform fixture data
 
     /// Total number of synthetic customer accounts in the fixture operator universe.
@@ -1277,7 +1426,133 @@ impl Upstream for FixtureAdapter {
                 category: "Services".to_string(),
                 resource_types: vec![Self::storage_volume_descriptor()],
             },
+            ServiceDescriptor {
+                id: "object.storage".to_string(),
+                name: "Object Storage".to_string(),
+                category: "Services".to_string(),
+                resource_types: vec![Self::object_storage_bucket_descriptor()],
+            },
         ])
+    }
+
+    async fn list_discovered_services(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<Vec<ServiceCatalogEntry>, ApiError> {
+        let session = self.context(ctx).await?;
+        let required_capability = if self.surface == "operator-bff" {
+            ("operator.service", "list")
+        } else {
+            ("tenant.service-catalog", "list")
+        };
+        if !session.has_capability(required_capability.0, required_capability.1) {
+            return Err(ApiError::Forbidden);
+        }
+
+        let services = [
+            ("identity", "Identity", "ready", vec!["global"]),
+            (
+                "image",
+                "Image",
+                "ready",
+                vec!["eu-west", "us-east", "ap-south"],
+            ),
+            (
+                "network",
+                "Networking",
+                "ready",
+                vec!["eu-west", "us-east", "ap-south"],
+            ),
+            (
+                "compute",
+                "Compute",
+                "ready",
+                vec!["eu-west", "us-east", "ap-south"],
+            ),
+            (
+                "placement",
+                "Placement",
+                "ready",
+                vec!["eu-west", "us-east", "ap-south"],
+            ),
+            (
+                "object.storage",
+                "Object Storage",
+                "ready",
+                vec!["eu-west", "us-east", "ap-south"],
+            ),
+        ];
+
+        Ok(services
+            .into_iter()
+            .map(|(id, name, lifecycle_state, regions)| {
+                let mut capability_resource_type = id.to_string();
+                capability_resource_type.push_str(".*");
+                ServiceCatalogEntry {
+                    id: id.to_string(),
+                    namespace: id.to_string(),
+                    name: name.to_string(),
+                    version: "1.0.0".to_string(),
+                    ownership: Some("platform".to_string()),
+                    lifecycle_state: lifecycle_state.to_string(),
+                    capabilities: vec![Capability {
+                        resource_type: capability_resource_type,
+                        action: "list".to_string(),
+                    }],
+                    regions: regions.into_iter().map(String::from).collect(),
+                    description: Some(format!("Fixture {name} service")),
+                    documentation_url: Some(format!("https://docs.araf.o3k.io/services/{id}")),
+                }
+            })
+            .collect())
+    }
+
+    async fn list_discovered_resource_types(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<Vec<DiscoveredResourceType>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("operator.service", "read") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let types = [
+            ("identity", "project", "projects", "project", true),
+            ("identity", "user", "users", "project", true),
+            ("image", "image", "images", "project", true),
+            ("network", "vpc", "vpcs", "project", true),
+            ("compute", "server", "servers", "project", true),
+            (
+                "placement",
+                "server_group",
+                "server-groups",
+                "project",
+                true,
+            ),
+            ("storage", "volume", "volumes", "project", true),
+            ("object.storage", "bucket", "buckets", "project", true),
+        ];
+
+        Ok(types
+            .into_iter()
+            .map(|(namespace, name, collection, scope, ready)| {
+                let mut lifecycle_actions = HashMap::new();
+                lifecycle_actions.insert(
+                    "list".to_string(),
+                    format!("/o3k/v1/{namespace}/{collection}"),
+                );
+                DiscoveredResourceType {
+                    namespace: namespace.to_string(),
+                    name: name.to_string(),
+                    service_id: namespace.to_string(),
+                    schema_version: "1.0".to_string(),
+                    collection: collection.to_string(),
+                    scope: scope.to_string(),
+                    ready,
+                    lifecycle_actions,
+                }
+            })
+            .collect())
     }
 
     async fn list_resources(
@@ -2197,6 +2472,10 @@ impl SessionContext {
                     resource_type: "tenant.api-credential".to_string(),
                     action: "delete".to_string(),
                 },
+                Capability {
+                    resource_type: "tenant.service-catalog".to_string(),
+                    action: "list".to_string(),
+                },
             ]);
         }
 
@@ -2236,6 +2515,14 @@ impl SessionContext {
                 },
                 Capability {
                     resource_type: "operator.audit".to_string(),
+                    action: "read".to_string(),
+                },
+                Capability {
+                    resource_type: "operator.service".to_string(),
+                    action: "list".to_string(),
+                },
+                Capability {
+                    resource_type: "operator.service".to_string(),
                     action: "read".to_string(),
                 },
             ]);

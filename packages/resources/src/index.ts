@@ -24,6 +24,7 @@ export { useResourceDetail, type UseResourceDetailResult } from "./hooks/useReso
 export { useCreateResource, type UseCreateResourceResult } from "./hooks/useCreateResource";
 export { useResourceAction, type UseResourceActionResult } from "./hooks/useResourceAction";
 export { useCapabilities, type UseCapabilitiesResult } from "./hooks/useCapabilities";
+export { useServiceCatalog, type UseServiceCatalogResult } from "./hooks/useServiceCatalog";
 
 // Components
 export {
@@ -38,3 +39,4 @@ export {
   ResourceActionsPanel,
   type ResourceActionsPanelProps,
 } from "./components/ResourceActionsPanel";
+export { ServiceCatalogPage } from "./components/ServiceCatalogPage";
