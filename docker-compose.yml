@@ -11,7 +11,6 @@
 #   Open http://localhost:5173 (tenant) or http://localhost:5174 (operator)
 
 services:
-
   tenant-bff:
     build:
       context: backend
@@ -24,7 +23,8 @@ services:
       - ARAF_UPSTREAM_ADAPTER=fixture
       - RUST_LOG=info
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      test:
+        ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -42,7 +42,8 @@ services:
       - ARAF_UPSTREAM_ADAPTER=fixture
       - RUST_LOG=info
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/healthz"]
+      test:
+        ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/healthz"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -54,7 +55,8 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         APP: tenant-console
-        VITE_TENANT_BFF_URL: http://localhost:8080
+    environment:
+      - BFF_UPSTREAM=http://tenant-bff:8080
     ports:
       - "5173:80"
     depends_on:
@@ -67,7 +69,8 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         APP: operator-console
-        VITE_OPERATOR_BFF_URL: http://localhost:8081
+    environment:
+      - BFF_UPSTREAM=http://operator-bff:8081
     ports:
       - "5174:80"
     depends_on:

@@ -51,8 +51,11 @@ const regions: RegionOption[] = [
   { id: "ap-south", name: "AP South" },
 ];
 
+// Default to same-origin: in dev the Vite server proxies /api to the BFF,
+// in production nginx proxies it (see deploy/nginx-default.conf.template).
+// VITE_TENANT_BFF_URL remains as an explicit override (used by e2e tests).
 const tenantBffUrl =
-  (import.meta.env.VITE_TENANT_BFF_URL as string | undefined) ?? "http://127.0.0.1:8080";
+  (import.meta.env.VITE_TENANT_BFF_URL as string | undefined) ?? window.location.origin;
 const arafClient = createArafClient(tenantBffUrl);
 
 const staticNavigationItems: TenantNavigationItem[] = [

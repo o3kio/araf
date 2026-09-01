@@ -25,8 +25,11 @@ import { createArafClient } from "@araf/api-client";
 import { useState, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useParams } from "react-router";
 
+// Default to same-origin: in dev the Vite server proxies /api to the BFF,
+// in production nginx proxies it (see deploy/nginx-default.conf.template).
+// VITE_OPERATOR_BFF_URL remains as an explicit override (used by e2e tests).
 const operatorBffUrl =
-  (import.meta.env.VITE_OPERATOR_BFF_URL as string | undefined) ?? "http://127.0.0.1:8081";
+  (import.meta.env.VITE_OPERATOR_BFF_URL as string | undefined) ?? window.location.origin;
 const arafClient = createArafClient(operatorBffUrl);
 
 const navigationItems: OperatorNavigationItem[] = [
