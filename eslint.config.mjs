@@ -7,7 +7,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["**/dist/**", "**/coverage/**", "**/node_modules/**", "backend/**"],
+    ignores: ["**/dist/**", "**/coverage/**", "**/node_modules/**", "backend/**", ".o3k-rust/**"],
   },
   eslint.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
