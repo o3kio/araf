@@ -22,6 +22,17 @@ Implementation phases must add new gaps here instead of inventing production O3K
 - **Blocked Araf feature:** Production login, logout, session rotation, and server-side token storage.
 - **Acceptable fallback:** Fixture adapter with no OIDC exchange; defer production auth integration until the O3K identity contract is available.
 
+### Current verification (2026-09-02)
+
+The active O3K Rust identity service exposes Keystone-style token issue,
+verification, and AuthContext projection, but the inspected public contracts do
+not expose an OIDC authorization endpoint, authorization-code exchange,
+refresh-token, or browser-session revocation contract. Araf's current
+`auth.rs` is therefore not a production adapter: its login callback is not
+mounted in the router, accepts a fixture code, and uses a placeholder userinfo
+URL. This remains a blocking upstream/integration dependency for P2.1; it must
+not be enabled through a console-only workaround.
+
 ## M3-O3K-003: Canonical Operation representation and lifecycle contract
 
 - **Gap id:** `M3-O3K-003`
