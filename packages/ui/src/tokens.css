@@ -2,8 +2,8 @@
  * Araf design tokens as CSS custom properties.
  *
  * This file imports Cloudscape global styles and defines Araf-specific
- * CSS custom properties for density, status, focus and typography.
- * Application code must not import Cloudscape directly (ADR 0004).
+ * CSS custom properties for density, status, focus, typography and product
+ * surfaces. Application code must not import Cloudscape directly (ADR 0004).
  */
 
 @import "@cloudscape-design/global-styles/index.css";
@@ -13,6 +13,27 @@
   --araf-density-row-padding: var(--space-scaled-m);
   --araf-density-cell-padding: var(--space-scaled-s);
   --araf-density-section-gap: var(--space-scaled-l);
+
+  /* Product surfaces. These tokens keep shell/application CSS independent
+   * from Cloudscape implementation selectors while preserving Araf branding. */
+  --araf-color-bg-app: #f2f3f3;
+  --araf-color-bg-surface: #ffffff;
+  --araf-color-bg-subtle: #f7f8f9;
+  --araf-color-bg-selected: #eaf3ff;
+  --araf-color-border: #d5dbdb;
+  --araf-color-border-strong: #aab7b8;
+  --araf-color-text: #16191f;
+  --araf-color-text-muted: #5f6b7a;
+  --araf-color-link: #0972d3;
+  --araf-color-link-hover: #033160;
+  --araf-color-accent: #0972d3;
+  --araf-color-accent-strong: #033160;
+  --araf-shadow-focus: 0 0 0 2px rgb(9 114 211 / 25%);
+
+  /* Shell geometry */
+  --araf-shell-control-height: 36px;
+  --araf-shell-radius: 8px;
+  --araf-shell-nav-gap: 2px;
 
   /* Semantic status colors */
   --araf-status-success: var(--color-text-status-success);
@@ -45,10 +66,26 @@
   --araf-motion-easing: ease-in-out;
 }
 
+html.araf-theme,
+html.araf-theme body,
+html.araf-theme #root {
+  min-height: 100%;
+}
+
+html.araf-theme body {
+  margin: 0;
+  background: var(--araf-color-bg-app);
+  color: var(--araf-color-text);
+  font-family: var(--araf-font-family);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
 .araf-density-compact {
   --araf-density-row-padding: var(--space-scaled-xs);
   --araf-density-cell-padding: var(--space-scaled-xs);
   --araf-density-section-gap: var(--space-scaled-m);
+  --araf-shell-control-height: 32px;
 }
 
 /* Visible focus for keyboard navigation, scoped to Araf-themed subtrees. */
