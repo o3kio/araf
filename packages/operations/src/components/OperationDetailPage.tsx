@@ -82,7 +82,7 @@ export function OperationDetailPage() {
 
           <section aria-labelledby="operation-timeline-heading">
             <h2 id="operation-timeline-heading">Timeline</h2>
-            <OperationTimeline events={operation.events} />
+            <OperationTimeline operation={operation} />
           </section>
         </SpaceBetween>
       )}

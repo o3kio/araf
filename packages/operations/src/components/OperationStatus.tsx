@@ -3,12 +3,14 @@ import type { OperationState } from "@araf/api-client";
 
 const stateToStatus: Record<
   OperationState,
-  { type: "pending" | "info" | "success" | "error"; label: string }
+  { type: "pending" | "info" | "success" | "error" | "warning"; label: string }
 > = {
   pending: { type: "pending", label: "Pending" },
   running: { type: "info", label: "Running" },
   succeeded: { type: "success", label: "Succeeded" },
   failed: { type: "error", label: "Failed" },
+  retryable: { type: "warning", label: "Retryable" },
+  unknownOutcome: { type: "warning", label: "Unknown outcome" },
 };
 
 export interface OperationStatusProps {

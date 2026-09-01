@@ -4,6 +4,7 @@ import {
   ArafApiError,
   type ActionRequest,
   type HealthzResponse,
+  type Operation,
   type PaginatedCollection,
   type Resource,
 } from "./index.js";
@@ -166,6 +167,37 @@ describe("createArafClient", () => {
       expect(apiError.problem).toEqual(problem);
     }
   });
+
+  it.each(["retryable", "unknownOutcome"] as const)(
+    "accepts operation state %s from the BFF",
+    async (state) => {
+      const body: Operation = {
+        id: "op-retryable-1",
+        action: "start",
+        state,
+        resourceId: "resource-1",
+        resourceType: "compute.server",
+        projectId: "project-1",
+        regionId: "global",
+        initiatedBy: "user-1",
+        startedAt: "2024-01-01T00:00:00Z",
+        updatedAt: "2024-01-01T00:00:05Z",
+        correlationId: "corr-1",
+        error: {
+          code: "upstream-error",
+          title: "Upstream operation error",
+          detail: "transient provider failure",
+        },
+        events: [],
+      };
+      mockFetch(new Response(JSON.stringify(body), { status: 200 }));
+
+      const client = createArafClient(baseUrl);
+      const result = await client.getOperation("op-retryable-1");
+
+      expect(result.state).toBe(state);
+    },
+  );
 
   it("falls back to a synthetic ProblemDetails when the error body is not JSON", async () => {
     mockFetch(new Response("bad gateway", { status: 502 }));
