@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { ResourceClientProvider } from "../client/context";
 import { ResourceActionsPanel } from "./ResourceActionsPanel";
 import type {
@@ -134,6 +135,15 @@ const startOperation: Operation = {
   updatedAt: "2024-01-01T00:00:00Z",
   correlationId: "corr-start-1",
   error: null,
+  events: [
+    {
+      id: "ev-start-1",
+      state: "pending",
+      occurredAt: "2024-01-01T00:00:00Z",
+      message: "Operation created and pending",
+      correlationId: "corr-start-1",
+    },
+  ],
 };
 
 const attachOperation: Operation = {
@@ -149,6 +159,15 @@ const attachOperation: Operation = {
   updatedAt: "2024-01-01T00:00:00Z",
   correlationId: "corr-attach-1",
   error: null,
+  events: [
+    {
+      id: "ev-attach-1",
+      state: "pending",
+      occurredAt: "2024-01-01T00:00:00Z",
+      message: "Operation created and pending",
+      correlationId: "corr-attach-1",
+    },
+  ],
 };
 
 function TestWrapper({
@@ -181,7 +200,13 @@ function TestWrapper({
 
   return (
     <ResourceClientProvider client={client}>
-      <ResourceActionsPanel resource={resource} descriptor={descriptor} onOperation={onOperation} />
+      <MemoryRouter>
+        <ResourceActionsPanel
+          resource={resource}
+          descriptor={descriptor}
+          onOperation={onOperation}
+        />
+      </MemoryRouter>
     </ResourceClientProvider>
   );
 }

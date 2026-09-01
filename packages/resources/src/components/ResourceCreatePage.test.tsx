@@ -84,6 +84,15 @@ const createdOperation: Operation = {
   updatedAt: "2024-01-01T00:00:00Z",
   correlationId: "corr-create-1",
   error: null,
+  events: [
+    {
+      id: "ev-create-1",
+      state: "pending",
+      occurredAt: "2024-01-01T00:00:00Z",
+      message: "Operation created and pending",
+      correlationId: "corr-create-1",
+    },
+  ],
 };
 
 function TestWrapper({
@@ -140,9 +149,14 @@ describe("ResourceCreatePage", () => {
       expect(screen.getByText(/creation submitted/i)).toBeInTheDocument();
     });
 
+    expect(screen.getByText(/Request accepted/i)).toBeInTheDocument();
     expect(screen.getByText(/op-create-1/i)).toBeInTheDocument();
     expect(screen.getByText(/pending/i)).toBeInTheDocument();
     expect(screen.getByText(/corr-create-1/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /View operation/i })).toHaveAttribute(
+      "href",
+      "/operations/op-create-1",
+    );
   });
 
   it("shows inline validation errors for missing required fields", async () => {

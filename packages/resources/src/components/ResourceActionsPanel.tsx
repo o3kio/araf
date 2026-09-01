@@ -1,4 +1,5 @@
 import { Button, ConfirmModal, FormField, LoadingState, SpaceBetween } from "@araf/ui";
+import { Link } from "react-router";
 import { useState, useCallback, useMemo } from "react";
 import { validateFormData, type ValidationError } from "@araf/schema-runtime";
 import { useCapabilities } from "../hooks/useCapabilities";
@@ -186,8 +187,11 @@ export function ResourceActionsPanel({
 
       {operation ? (
         <div role="status" style={{ marginTop: "0.5rem" }}>
-          Operation <strong>{operation.id}</strong> is <strong>{operation.state}</strong>.
-          Correlation ID: {operation.correlationId}
+          Operation{" "}
+          <Link to={`/operations/${encodeURIComponent(operation.id)}`}>
+            <strong>{operation.id}</strong>
+          </Link>{" "}
+          is <strong>{operation.state}</strong>. Correlation ID: {operation.correlationId}
         </div>
       ) : null}
 

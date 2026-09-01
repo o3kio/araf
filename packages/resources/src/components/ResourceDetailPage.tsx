@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { Header, BreadcrumbGroup, Tabs, LoadingState, ErrorState } from "@araf/ui";
-import { useParams } from "react-router";
+import { Header, BreadcrumbGroup, Tabs, LoadingState, ErrorState, Button } from "@araf/ui";
+import { useParams, Link } from "react-router";
 import type { Resource } from "@araf/api-client";
+import { useOperations } from "@araf/operations";
 import { useResourceDetail } from "../hooks/useResourceDetail";
 import { useResourceDescriptor } from "../hooks/useResourceDescriptor";
 import { getResourceField, formatResourceField } from "../fields";
@@ -190,11 +191,52 @@ interface OperationsPanelProps {
 }
 
 function OperationsPanel({ resource }: OperationsPanelProps) {
+  const { collection, loading, error, refresh } = useOperations({
+    resourceType: resource.resourceType,
+    resourceId: resource.id,
+  });
+
+  if (error) {
+    return (
+      <ErrorState
+        title="Could not load operations"
+        message={errorMessage(error)}
+        correlationId={errorCorrelationId(error)}
+        onRetry={refresh}
+      />
+    );
+  }
+
+  if (loading && !collection) {
+    return <LoadingState message="Loading operations..." />;
+  }
+
+  const operations = collection?.items ?? [];
+
   return (
     <div>
-      <p>
-        Operations for <strong>{resource.name}</strong> will be shown here.
-      </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <p>
+          Recent operations for <strong>{resource.name}</strong>.
+        </p>
+        <Link to="/operations">
+          <Button variant="normal">View all operations</Button>
+        </Link>
+      </div>
+
+      {operations.length === 0 ? (
+        <p>No operations found for this resource.</p>
+      ) : (
+        <ul aria-label={`Operations for ${resource.name}`}>
+          {operations.map((operation) => (
+            <li key={operation.id}>
+              <Link to={`/operations/${encodeURIComponent(operation.id)}`}>
+                {operation.action} — {operation.state} — {operation.id}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
