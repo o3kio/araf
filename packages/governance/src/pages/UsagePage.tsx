@@ -70,7 +70,7 @@ function UsageContent({ usage, quotas }: UsageContentProps) {
     unit: string;
     timestamp: string;
     limit: number | undefined;
-  };
+  }
 
   const columnDefinitions: TableColumnDefinition<UsageRow>[] = [
     { id: "resourceType", header: "Resource type", cell: (r) => r.resourceType },
@@ -200,7 +200,7 @@ function QuotaOverview({
     limit: number;
     used: number;
     unit: string;
-  };
+  }
 
   const columnDefinitions: TableColumnDefinition<QuotaRow>[] = [
     { id: "project", header: "Project", cell: (r) => r.projectId },

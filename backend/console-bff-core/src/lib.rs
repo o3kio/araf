@@ -7,6 +7,8 @@
 //!
 //! The BFF must never become a generic upstream proxy (ADR 0002).
 
+pub mod auth;
+pub mod csrf;
 pub mod descriptor_validation;
 pub mod error;
 pub mod fixture;
@@ -16,6 +18,7 @@ pub mod model;
 pub mod o3k_adapter;
 pub mod o3k_client;
 pub mod request;
+pub mod session;
 pub mod upstream;
 
 use std::sync::Arc;
