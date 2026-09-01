@@ -46,6 +46,10 @@ pub struct BffSurface {
 fn base_routes(router: Router<AppState>) -> Router<AppState> {
     router
         .route("/healthz", get(handlers::healthz))
+        .route("/api/v1/auth/login", get(auth::login))
+        .route("/api/v1/auth/callback", get(auth::auth_callback))
+        .route("/api/v1/auth/logout", post(auth::logout))
+        .route("/api/v1/auth/session", get(auth::session_status))
         .route("/api/v1/context", get(handlers::get_context))
         .route("/api/v1/services", get(handlers::list_services))
         .route(
@@ -149,20 +153,38 @@ fn operator_routes(router: Router<AppState>) -> Router<AppState> {
 /// Surface-specific binaries add or omit routes by composing this router with
 /// additional surface-only routes.
 pub fn api_router(upstream: Arc<dyn Upstream>) -> Router {
-    let state = AppState { upstream };
-    base_routes(governance_routes(operator_routes(Router::new()))).with_state(state)
+    let state = fixture_state(upstream, "tenant-bff");
+    routes_for_surface("tenant-bff", true).with_state(state)
 }
 
 /// Build the tenant API router (excludes operator-only routes).
 pub fn tenant_api_router(upstream: Arc<dyn Upstream>) -> Router {
-    let state = AppState { upstream };
-    base_routes(governance_routes(Router::new())).with_state(state)
+    let state = fixture_state(upstream, "tenant-bff");
+    routes_for_surface("tenant-bff", false).with_state(state)
 }
 
 /// Build the operator API router (includes all routes).
 pub fn operator_api_router(upstream: Arc<dyn Upstream>) -> Router {
-    let state = AppState { upstream };
-    base_routes(governance_routes(operator_routes(Router::new()))).with_state(state)
+    let state = fixture_state(upstream, "operator-bff");
+    routes_for_surface("operator-bff", true).with_state(state)
+}
+
+fn fixture_state(upstream: Arc<dyn Upstream>, surface: &'static str) -> AppState {
+    AppState {
+        upstream,
+        oidc: auth::OidcConfig::fixture(surface),
+        sessions: session::SessionStore::new(),
+    }
+}
+
+fn routes_for_surface(surface: &'static str, include_operator: bool) -> Router<AppState> {
+    let router = if include_operator {
+        governance_routes(operator_routes(Router::new()))
+    } else {
+        governance_routes(Router::new())
+    };
+    let _ = surface;
+    base_routes(router)
 }
 
 /// Which upstream adapter the BFF should use.
@@ -249,21 +271,23 @@ fn configuration_error(message: String) -> ApiError {
     ApiError::Upstream(UpstreamError::Error(message))
 }
 
-fn router_for_surface(upstream: Arc<dyn Upstream>, surface: &'static str) -> Router {
-    if surface == "operator-bff" {
-        operator_api_router(upstream)
-    } else {
-        tenant_api_router(upstream)
-    }
-}
-
 /// Build the API router for the given configuration.
 pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
     let upstream: Arc<dyn Upstream> = match config.adapter {
         UpstreamAdapter::Fixture => Arc::new(FixtureAdapter::new(config.surface)),
         UpstreamAdapter::O3k => Arc::new(O3kAdapter::from_env(config.surface)?),
     };
-    let router = router_for_surface(upstream, config.surface);
+    let oidc = match config.adapter {
+        UpstreamAdapter::Fixture => auth::OidcConfig::fixture(config.surface),
+        UpstreamAdapter::O3k => auth::OidcConfig::from_env(config.surface)?,
+    };
+    let state = AppState {
+        upstream,
+        oidc,
+        sessions: session::SessionStore::new(),
+    };
+    let router =
+        routes_for_surface(config.surface, config.surface == "operator-bff").with_state(state);
     Ok(match config.adapter {
         UpstreamAdapter::Fixture => middleware::apply_default_layers(router, config.surface),
         UpstreamAdapter::O3k => middleware::apply_production_layers(router),
@@ -273,7 +297,11 @@ pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
 /// Build a complete tenant BFF router using the fixture adapter.
 pub fn fixture_router(surface: &'static str) -> Router {
     let upstream: Arc<dyn Upstream> = Arc::new(FixtureAdapter::new(surface));
-    middleware::apply_default_layers(router_for_surface(upstream, surface), surface)
+    middleware::apply_default_layers(
+        routes_for_surface(surface, surface == "operator-bff")
+            .with_state(fixture_state(upstream, surface)),
+        surface,
+    )
 }
 
 #[cfg(test)]

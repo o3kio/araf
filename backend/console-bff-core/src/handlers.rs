@@ -39,6 +39,8 @@ fn with_ctx<E: Into<ApiError>>(err: E, ctx: &RequestContext) -> BffError {
 #[derive(Clone)]
 pub struct AppState {
     pub upstream: Arc<dyn Upstream>,
+    pub oidc: crate::auth::OidcConfig,
+    pub sessions: Arc<crate::session::SessionStore>,
 }
 
 #[derive(Debug, Deserialize)]

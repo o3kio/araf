@@ -17,13 +17,11 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use tracing::info;
 
 use crate::{
     error::{ApiError, BffError},
     request::RequestContext,
-    session::SessionStore,
 };
 
 /// OIDC client configuration read from environment.
@@ -143,10 +141,9 @@ fn clear_session_cookie(response: &mut Response, surface: &str) {
 /// Initiate OIDC login.
 /// In production this redirects to the IdP authorization endpoint.
 /// In fixture mode, redirects to the callback.
-pub async fn login(
-    State(config): State<OidcConfig>,
-    State(session_store): State<Arc<SessionStore>>,
-) -> Redirect {
+pub async fn login(State(state): State<crate::handlers::AppState>) -> Redirect {
+    let config = state.oidc;
+    let session_store = state.sessions;
     if config.fixture_mode {
         return Redirect::to(&config.authorization_url);
     }
@@ -162,10 +159,11 @@ pub async fn login(
 /// In fixture mode, creates a session with synthetic data.
 /// In production, exchanges the code for tokens and then creates a session.
 pub async fn auth_callback(
-    State(oidc_config): State<OidcConfig>,
-    State(session_store): State<Arc<SessionStore>>,
+    State(state): State<crate::handlers::AppState>,
     Query(params): Query<AuthCallbackQuery>,
 ) -> Result<Response, BffError> {
+    let oidc_config = state.oidc;
+    let session_store = state.sessions;
     if !oidc_config.fixture_mode {
         let Some(state) = params.state.as_deref() else {
             return Err(BffError::new(ApiError::Unauthorized, "auth"));
@@ -216,10 +214,11 @@ pub async fn auth_callback(
 
 /// Logout: destroy the server-side session and clear the session cookie.
 pub async fn logout(
-    State(session_store): State<Arc<SessionStore>>,
-    State(oidc_config): State<OidcConfig>,
+    State(state): State<crate::handlers::AppState>,
     request: RequestContext,
 ) -> Response {
+    let session_store = state.sessions;
+    let oidc_config = state.oidc;
     if let Some(session_token) = request.session_token.as_deref() {
         session_store.destroy(session_token).await;
     }
@@ -231,9 +230,10 @@ pub async fn logout(
 
 /// Return the current session status without exposing tokens.
 pub async fn session_status(
-    State(session_store): State<Arc<SessionStore>>,
+    State(state): State<crate::handlers::AppState>,
     request: RequestContext,
 ) -> Json<SessionStatus> {
+    let session_store = state.sessions;
     if let Some(token) = request.session_token.as_deref() {
         if let Some(server_session) = session_store.validate(token).await {
             return Json(SessionStatus {
