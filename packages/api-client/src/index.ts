@@ -128,6 +128,14 @@ export interface OperationError {
   detail: string;
 }
 
+export interface OperationEvent {
+  id: string;
+  state: OperationState;
+  occurredAt: string;
+  message: string;
+  correlationId: string;
+}
+
 export interface Operation {
   id: string;
   action: string;
@@ -141,6 +149,7 @@ export interface Operation {
   updatedAt: string | null;
   correlationId: string;
   error: OperationError | null;
+  events: OperationEvent[];
 }
 
 export interface ActionRequest {
@@ -171,6 +180,14 @@ export interface ListResourcesQuery {
 export interface ListOperationsQuery {
   page?: number;
   pageSize?: number;
+  state?: OperationState;
+  action?: string;
+  resourceType?: string;
+  resourceId?: string;
+  projectId?: string;
+  regionId?: string;
+  since?: string;
+  until?: string;
 }
 
 export class ArafApiError extends Error {
@@ -340,6 +357,14 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
         query: {
           page: query?.page,
           pageSize: query?.pageSize,
+          state: query?.state,
+          action: query?.action,
+          resourceType: query?.resourceType,
+          resourceId: query?.resourceId,
+          projectId: query?.projectId,
+          regionId: query?.regionId,
+          since: query?.since,
+          until: query?.until,
         },
       }),
 

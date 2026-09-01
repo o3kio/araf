@@ -188,5 +188,54 @@ describe("tenant-bff fixture contract", () => {
     expect(operation.state).toBe("pending");
     expect(operation.resourceType).toBe("compute.server");
     expect(operation.correlationId).toBeDefined();
+    expect(operation.events).toBeDefined();
+    expect(operation.events.length).toBeGreaterThanOrEqual(1);
+    expect(operation.events[0]?.state).toBe("pending");
+  });
+
+  it("lists operations and supports filtering by resource type and state", async () => {
+    const client = createArafClient(`http://127.0.0.1:${String(port)}`);
+
+    const all = await client.listOperations({ page: 0, pageSize: 5 });
+    expect(all.items.length).toBeGreaterThan(0);
+    expect(all.total).toBeGreaterThanOrEqual(all.items.length);
+
+    const filtered = await client.listOperations({
+      page: 0,
+      pageSize: 5,
+      resourceType: "compute.server",
+      state: "pending",
+    });
+    expect(filtered.items.every((op) => op.resourceType === "compute.server")).toBe(true);
+    expect(filtered.items.every((op) => op.state === "pending")).toBe(true);
+  });
+
+  it("returns an Operation timeline with authoritative events", async () => {
+    const client = createArafClient(`http://127.0.0.1:${String(port)}`);
+    const operation = await client.submitAction("compute.server", "resource-0000000001", {
+      actionId: "start",
+    });
+
+    const fetched = await client.getOperation(operation.id);
+    expect(fetched.events).toBeDefined();
+    expect(fetched.events.length).toBeGreaterThanOrEqual(1);
+    expect(fetched.events[0]?.state).toBe("pending");
+    expect(fetched.events[0]?.correlationId).toBeDefined();
+  });
+
+  it("retrieves a created operation after reload", async () => {
+    const client = createArafClient(`http://127.0.0.1:${String(port)}`);
+    const operation = await client.createResource("compute.server", {
+      name: "reload-survival-server",
+      regionId: "eu-west",
+      projectId: "project-1",
+      bootVolumeSizeGb: 25,
+    });
+
+    const reloaded = await client.getOperation(operation.id);
+    expect(reloaded.id).toBe(operation.id);
+    expect(reloaded.action).toBe("create");
+    expect(reloaded.resourceType).toBe("compute.server");
+    expect(reloaded.events.length).toBeGreaterThanOrEqual(1);
   });
 });

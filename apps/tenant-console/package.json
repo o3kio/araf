@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@araf/api-client": "workspace:*",
+    "@araf/operations": "workspace:*",
     "@araf/resources": "workspace:*",
     "@araf/ui": "workspace:*",
     "@araf/shell": "workspace:*",

@@ -5,8 +5,16 @@ import { MemoryRouter, Routes, Route } from "react-router";
 import { ScopeProvider } from "@araf/shell";
 import type { Scope } from "@araf/shell";
 import { ResourceClientProvider } from "../client/context";
+import { OperationsClientProvider } from "@araf/operations";
 import { ResourceDetailPage } from "./ResourceDetailPage";
-import type { ArafClient, Resource, ServiceDescriptor, SessionContext } from "@araf/api-client";
+import type {
+  ArafClient,
+  Resource,
+  ServiceDescriptor,
+  SessionContext,
+  PaginatedCollection,
+  Operation,
+} from "@araf/api-client";
 
 function noop(): void {
   // intentionally empty for test harnesses
@@ -85,6 +93,38 @@ const relatedServer: Resource = {
   updatedAt: "2024-01-01T00:01:00Z",
 };
 
+const operationsCollection: PaginatedCollection<Operation> = {
+  items: [
+    {
+      id: "op-volume-1",
+      action: "create",
+      state: "succeeded",
+      resourceId: volume.id,
+      resourceType: volume.resourceType,
+      projectId: "project-1",
+      regionId: "eu-west",
+      initiatedBy: "user-1",
+      startedAt: "2024-01-01T00:00:00Z",
+      updatedAt: "2024-01-01T00:01:00Z",
+      correlationId: "corr-volume-1",
+      error: null,
+      events: [
+        {
+          id: "ev-volume-1",
+          state: "succeeded",
+          occurredAt: "2024-01-01T00:01:00Z",
+          message: "Operation completed",
+          correlationId: "corr-volume-1",
+        },
+      ],
+    },
+  ],
+  total: 1,
+  page: 0,
+  pageSize: 25,
+  hasMore: false,
+};
+
 function TestWrapper({ children }: { children: React.ReactNode }) {
   const client: ArafClient = {
     healthz: vi.fn(),
@@ -101,19 +141,21 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
     }),
     createResource: vi.fn(),
     submitAction: vi.fn(),
-    listOperations: vi.fn(),
+    listOperations: vi.fn().mockResolvedValue(operationsCollection),
     getOperation: vi.fn(),
   };
 
   return (
     <ResourceClientProvider client={client}>
-      <ScopeProvider scope={scope} onChange={noop}>
-        <MemoryRouter initialEntries={["/resources/storage.volume/volume-00000001"]}>
-          <Routes>
-            <Route path="/resources/:resourceType/:id" element={children} />
-          </Routes>
-        </MemoryRouter>
-      </ScopeProvider>
+      <OperationsClientProvider client={client}>
+        <ScopeProvider scope={scope} onChange={noop}>
+          <MemoryRouter initialEntries={["/resources/storage.volume/volume-00000001"]}>
+            <Routes>
+              <Route path="/resources/:resourceType/:id" element={children} />
+            </Routes>
+          </MemoryRouter>
+        </ScopeProvider>
+      </OperationsClientProvider>
     </ResourceClientProvider>
   );
 }

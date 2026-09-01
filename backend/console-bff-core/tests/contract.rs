@@ -1036,3 +1036,222 @@ async fn services_expose_create_schema_and_action_metadata() {
     assert!(attach["inputSchema"].is_object());
     assert_eq!(attach["riskClass"], "normal");
 }
+
+#[tokio::test]
+async fn create_operation_is_retrievable_by_id_after_reload() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-create-reload";
+
+    let create = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/resources/compute.server")
+                    .header("content-type", "application/json")
+                    .header(CORRELATION_HEADER, correlation)
+                    .body(Body::from(
+                        json!({
+                            "name": "reload-server",
+                            "regionId": "eu-west",
+                            "projectId": "project-1",
+                            "bootVolumeSizeGb": 50
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    assert_eq!(create["state"], "pending");
+    assert_eq!(create["correlationId"], correlation);
+    let op_id = create["id"].as_str().expect("operation id");
+
+    // Simulate a page reload by fetching the same operation again.
+    let detail = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/operations/{op_id}"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    assert_eq!(detail["id"], op_id);
+    assert_eq!(detail["state"], "pending");
+    assert!(detail["events"].is_array());
+    assert!(!detail["events"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn operation_state_transitions_through_lifecycle() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-transition";
+
+    let create = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/resources/compute.server")
+                    .header("content-type", "application/json")
+                    .header(CORRELATION_HEADER, correlation)
+                    .body(Body::from(
+                        json!({
+                            "name": "transition-server",
+                            "regionId": "eu-west",
+                            "projectId": "project-1",
+                            "bootVolumeSizeGb": 50
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    let op_id = create["id"].as_str().expect("operation id");
+    assert_eq!(create["state"], "pending");
+
+    // Wait for Pending -> Running transition.
+    tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+    let running = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/v1/operations/{op_id}"))
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+    assert_eq!(running["state"], "running");
+
+    // Wait for Running -> terminal transition.
+    tokio::time::sleep(std::time::Duration::from_millis(2_100)).await;
+    let terminal = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/operations/{op_id}"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+    assert!(
+        terminal["state"] == "succeeded" || terminal["state"] == "failed",
+        "operation should reach a terminal state, got {}",
+        terminal["state"]
+    );
+}
+
+#[tokio::test]
+async fn list_operations_filters_by_state() {
+    let app = fixture_router(TENANT);
+
+    let pending = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/operations?state=pending&pageSize=5")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    assert!(!pending["items"].as_array().unwrap().is_empty());
+    for item in pending["items"].as_array().unwrap() {
+        assert_eq!(item["state"], "pending");
+    }
+
+    let succeeded = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri("/api/v1/operations?state=succeeded&pageSize=5")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    assert!(!succeeded["items"].as_array().unwrap().is_empty());
+    for item in succeeded["items"].as_array().unwrap() {
+        assert_eq!(item["state"], "succeeded");
+    }
+}
+
+#[tokio::test]
+async fn operation_detail_returns_event_timeline() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-events";
+
+    let create = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/resources/compute.server")
+                    .header("content-type", "application/json")
+                    .header(CORRELATION_HEADER, correlation)
+                    .body(Body::from(
+                        json!({
+                            "name": "events-server",
+                            "regionId": "eu-west",
+                            "projectId": "project-1",
+                            "bootVolumeSizeGb": 50
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    let op_id = create["id"].as_str().expect("operation id");
+
+    // Advance the operation so the timeline contains multiple events.
+    tokio::time::sleep(std::time::Duration::from_millis(3_300)).await;
+    let detail = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/operations/{op_id}"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    let events = detail["events"].as_array().expect("events array");
+    assert!(
+        events.len() >= 2,
+        "expected multiple lifecycle events, got {}",
+        events.len()
+    );
+
+    let first = &events[0];
+    assert_eq!(first["state"], "pending");
+    assert!(first["occurredAt"].is_string());
+    assert!(first["message"].is_string());
+    assert_eq!(first["correlationId"], correlation);
+}

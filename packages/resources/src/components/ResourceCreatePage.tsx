@@ -7,6 +7,7 @@ import {
   LoadingState,
   SpaceBetween,
 } from "@araf/ui";
+import { Link } from "react-router";
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { validateFormData, type ValidationError } from "@araf/schema-runtime";
 import { useResourceDescriptor } from "../hooks/useResourceDescriptor";
@@ -296,17 +297,23 @@ export function ResourceCreatePage({ resourceType }: ResourceCreatePageProps) {
 
   if (operation) {
     return (
-      <section aria-label={`${descriptor.name} created`}>
+      <section aria-label={`${descriptor.name} creation submitted`}>
         <Header variant="h1" headingLevel="h1">
           {descriptor.name} creation submitted
         </Header>
+        <p>Request accepted. The resource is being provisioned.</p>
         <p>
           Operation <strong>{operation.id}</strong> is <strong>{operation.state}</strong>.
         </p>
         <p>Correlation ID: {operation.correlationId}</p>
-        <Button href={`/resources/${encodeURIComponent(resourceType)}`} variant="primary">
-          View {descriptor.pluralName}
-        </Button>
+        <SpaceBetween size="m" direction="horizontal">
+          <Link to={`/operations/${encodeURIComponent(operation.id)}`}>
+            <Button variant="primary">View operation</Button>
+          </Link>
+          <Link to={`/resources/${encodeURIComponent(resourceType)}`}>
+            <Button variant="normal">View {descriptor.pluralName}</Button>
+          </Link>
+        </SpaceBetween>
       </section>
     );
   }
