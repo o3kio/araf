@@ -17,16 +17,22 @@ use time::OffsetDateTime;
 use crate::{
     error::ApiError,
     model::{
-        ActionDescriptor, ActionRequest, ActionRiskClass, ApiCredential, AuditEvent, Capability,
-        ColumnDescriptor, CreateApiCredentialRequest, CreateResourceRequest,
+        ActionDescriptor, ActionRequest, ActionRiskClass, AlertSeverity, ApiCredential, AuditEvent,
+        AvailabilityZone, Capability, CapacitySummary, ColumnDescriptor,
+        CreateApiCredentialRequest, CreateResourceRequest, CustomerAccount,
         DetailsSectionDescriptor, FilterDescriptor, FilterKind, JsonSchema, ListAuditEventsParams,
-        Operation, OperationError, OperationEvent, OperationState, PaginatedCollection, Project,
-        ProjectMember, ProjectQuota, QuotaEntry, RelationshipDescriptor, RelationshipDirection,
-        Resource, ResourceStatus, ResourceTypeDescriptor, Role, ServiceDescriptor, SessionContext,
-        SortDirection, User,
+        Operation, OperationError, OperationEvent, OperationState, OperatorAuditEvent,
+        OperatorProject, PaginatedCollection, PlatformAlert, PlatformOverview, Project,
+        ProjectMember, ProjectQuota, ProviderHealth, ProviderKind, QuotaEntry, Region,
+        RegionStatus, RelationshipDescriptor, RelationshipDirection, Resource, ResourceStatus,
+        ResourceTypeDescriptor, Role, ServiceDescriptor, ServiceHealth, SessionContext,
+        SortDirection, StatusCount, User,
     },
     request::RequestContext,
-    upstream::{ListOperationsParams, ListResourcesParams, Upstream},
+    upstream::{
+        ListOperationsParams, ListOperatorAuditEventsParams, ListOperatorOperationsParams,
+        ListResourcesParams, Upstream,
+    },
 };
 
 /// Total number of synthetic resources in the fixture universe.
@@ -931,6 +937,314 @@ impl FixtureAdapter {
             }],
         }
     }
+
+    // Operator platform fixture data
+
+    /// Total number of synthetic customer accounts in the fixture operator universe.
+    const FIXTURE_ACCOUNT_TOTAL: u64 = 12;
+
+    /// Total number of synthetic operator audit events.
+    const FIXTURE_OPERATOR_AUDIT_TOTAL: u64 = 150;
+
+    fn region_at(id: u64) -> Region {
+        let seed = Self::seed_from_id(id ^ 0x15a0_7e70);
+        let statuses = [
+            RegionStatus::Healthy,
+            RegionStatus::Degraded,
+            RegionStatus::Unavailable,
+            RegionStatus::Maintenance,
+        ];
+        let status = statuses[(seed as usize) % statuses.len()];
+        let base_id = match id % 4 {
+            0 => "eu-west",
+            1 => "us-east",
+            2 => "ap-south",
+            _ => "sa-east",
+        };
+        let region_id = base_id.to_string();
+        let name = match base_id {
+            "eu-west" => "EU West",
+            "us-east" => "US East",
+            "ap-south" => "AP South",
+            _ => "SA East",
+        }
+        .to_string();
+
+        let az_count = 2 + (seed % 3) as usize;
+        let azs: Vec<AvailabilityZone> = (0..az_count)
+            .map(|az_idx| {
+                let az_seed = Self::seed_from_id(id ^ (az_idx as u64));
+                let az_status = statuses[(az_seed as usize) % statuses.len()];
+                AvailabilityZone {
+                    id: format!("{}-az-{}", region_id, az_idx + 1),
+                    name: format!("{} Availability Zone {}", name, az_idx + 1),
+                    region_id: region_id.clone(),
+                    status: az_status,
+                }
+            })
+            .collect();
+
+        Region {
+            id: region_id.clone(),
+            name,
+            status,
+            azs,
+            updated_at: OffsetDateTime::UNIX_EPOCH
+                + time::Duration::seconds((seed % 1_000_000) as i64),
+        }
+    }
+
+    fn provider_at(id: u64) -> ProviderHealth {
+        let seed = Self::seed_from_id(id ^ 0x000b_adc0_ffee);
+        let kinds = [
+            ProviderKind::Compute,
+            ProviderKind::Network,
+            ProviderKind::Storage,
+        ];
+        let kind = kinds[(id as usize) % kinds.len()];
+        let statuses = [
+            RegionStatus::Healthy,
+            RegionStatus::Degraded,
+            RegionStatus::Unavailable,
+            RegionStatus::Maintenance,
+        ];
+        let status = statuses[(seed as usize) % statuses.len()];
+        let regions = ["eu-west", "us-east", "ap-south", "sa-east"];
+        let region_id = regions[(id as usize) % regions.len()].to_string();
+        let name = format!("{:?} provider {}", kind, id % 6 + 1);
+        let message = match status {
+            RegionStatus::Healthy => "All health checks passing",
+            RegionStatus::Degraded => "Elevated latency on some control-plane calls",
+            RegionStatus::Unavailable => "Control-plane heartbeats missed",
+            RegionStatus::Maintenance => "Scheduled maintenance in progress",
+        }
+        .to_string();
+
+        ProviderHealth {
+            id: format!("provider-{id:04}"),
+            kind,
+            name,
+            status,
+            region_id,
+            last_seen_at: OffsetDateTime::UNIX_EPOCH
+                + time::Duration::seconds((seed % 1_000_000) as i64),
+            message,
+        }
+    }
+
+    fn service_health_at(id: u64) -> ServiceHealth {
+        let seed = Self::seed_from_id(id ^ 0xfeed_face);
+        let services = ["compute", "network", "storage", "identity", "catalog"];
+        let name = services[(id as usize) % services.len()].to_string();
+        let states = ["ready", "starting", "degraded", "unavailable"];
+        let lifecycle_state = states[(seed as usize) % states.len()].to_string();
+        let ready_since = if lifecycle_state == "ready" {
+            Some(OffsetDateTime::UNIX_EPOCH + time::Duration::seconds((seed % 1_000_000) as i64))
+        } else {
+            None
+        };
+
+        ServiceHealth {
+            id: format!("service-{id:04}"),
+            name,
+            lifecycle_state,
+            ready_since,
+        }
+    }
+
+    fn capacity_summary(resource_class: &str) -> CapacitySummary {
+        let seed = Self::hash_id(resource_class);
+        let (total, used, unit) = match resource_class {
+            "vcpu" => (10_000_u64, ((seed % 6_000) + 1).min(10_000), "cores"),
+            "memory" => (40_000_u64, ((seed % 24_000) + 1).min(40_000), "gibibytes"),
+            "disk" => (
+                500_000_u64,
+                ((seed % 300_000) + 1).min(500_000),
+                "gibibytes",
+            ),
+            _ => (1_000_u64, ((seed % 600) + 1).min(1_000), "units"),
+        };
+        let available = total.saturating_sub(used);
+
+        CapacitySummary {
+            resource_class: resource_class.to_owned(),
+            total,
+            used,
+            available,
+            unit: unit.to_owned(),
+            updated_at: OffsetDateTime::UNIX_EPOCH
+                + time::Duration::seconds((seed % 1_000_000) as i64),
+        }
+    }
+
+    fn customer_account_at(id: u64) -> CustomerAccount {
+        let seed = Self::seed_from_id(id ^ 0xcafe_babe);
+        let status = if seed % 7 == 0 { "suspended" } else { "active" };
+        CustomerAccount {
+            id: format!("account-{id:03}"),
+            name: format!("Customer Account {id}"),
+            status: status.to_owned(),
+            created_at: OffsetDateTime::UNIX_EPOCH
+                + time::Duration::seconds((seed % 1_000_000) as i64),
+        }
+    }
+
+    fn operator_project_at(id: u64) -> OperatorProject {
+        let seed = Self::seed_from_id(id ^ 0xdeca_fb00);
+        let account_id = format!("account-{:03}", id % Self::FIXTURE_ACCOUNT_TOTAL);
+        let regions = ["eu-west", "us-east", "ap-south", "sa-east"];
+        let region_id = regions[(id as usize) % regions.len()].to_string();
+        let status = if seed % 9 == 0 { "suspended" } else { "active" };
+        OperatorProject {
+            id: format!("project-{id:03}"),
+            name: format!("Operator Project {id}"),
+            account_id,
+            region_id,
+            status: status.to_owned(),
+            created_at: OffsetDateTime::UNIX_EPOCH
+                + time::Duration::seconds((seed % 1_000_000) as i64),
+        }
+    }
+
+    fn operator_operation_at(id: u64) -> Operation {
+        let seed = Self::seed_from_id(id ^ 0x0bad_f00d);
+        let states = [
+            OperationState::Pending,
+            OperationState::Running,
+            OperationState::Succeeded,
+            OperationState::Failed,
+        ];
+        let state = states[(seed as usize) % states.len()];
+        let error = if state == OperationState::Failed {
+            Some(OperationError {
+                code: "fixture-operator-failure".to_string(),
+                title: "Fixture operator operation failed".to_string(),
+                detail: "This is a deterministic operator-scope failure for prototype testing."
+                    .to_string(),
+            })
+        } else {
+            None
+        };
+
+        Operation {
+            id: format!("op-operator-{id:010}"),
+            action: if seed % 2 == 0 { "create" } else { "delete" }.to_string(),
+            state,
+            resource_id: Some(format!("resource-{}", seed % 1_000)),
+            resource_type: Some("compute.server".to_string()),
+            project_id: Some(format!("project-{}", seed % 50)),
+            region_id: Some(["eu-west", "us-east", "ap-south"][(seed as usize) % 3].to_string()),
+            initiated_by: Some("fixture-operator".to_string()),
+            started_at: Some(
+                OffsetDateTime::UNIX_EPOCH + time::Duration::seconds((seed % 1_000_000) as i64),
+            ),
+            updated_at: Some(
+                OffsetDateTime::UNIX_EPOCH
+                    + time::Duration::seconds((seed % 1_000_000) as i64 + 60),
+            ),
+            correlation_id: format!("corr-operator-{id}"),
+            error,
+            events: vec![],
+        }
+    }
+
+    fn operator_audit_event_at(id: u64) -> OperatorAuditEvent {
+        let seed = Self::seed_from_id(id ^ 0xabad_1dea);
+        let actor = format!("operator-{:03}", id % 20);
+        let action = match id % 5 {
+            0 => "create",
+            1 => "delete",
+            2 => "update",
+            3 => "login",
+            _ => "logout",
+        };
+        let resource_type = if id % 3 == 0 {
+            None
+        } else {
+            Some(match id % 4 {
+                0 => "compute.server",
+                1 => "storage.volume",
+                2 => "network.vpc",
+                _ => "operator.region",
+            })
+        };
+        let resource_id = resource_type.as_ref().map(|rt| format!("{rt}-{id:010}"));
+        let outcome = if seed % 8 == 0 { "failed" } else { "succeeded" };
+        OperatorAuditEvent {
+            id: format!("audit-operator-{id:010}"),
+            actor,
+            action: action.to_owned(),
+            resource_type: resource_type.map(|s| s.to_owned()),
+            resource_id,
+            account_id: Some(format!("account-{:03}", id % Self::FIXTURE_ACCOUNT_TOTAL)),
+            project_id: if id % 2 == 0 {
+                Some(format!("project-{}", id % 50))
+            } else {
+                None
+            },
+            outcome: outcome.to_owned(),
+            recorded_at: OffsetDateTime::UNIX_EPOCH
+                + time::Duration::seconds((seed % 1_000_000) as i64),
+            correlation_id: format!("corr-operator-audit-{id}"),
+        }
+    }
+
+    fn platform_overview() -> PlatformOverview {
+        let regions: Vec<Region> = (0..4).map(Self::region_at).collect();
+        let providers: Vec<ProviderHealth> = (0..12).map(Self::provider_at).collect();
+
+        let mut region_counts: std::collections::HashMap<RegionStatus, u64> =
+            std::collections::HashMap::new();
+        for r in &regions {
+            *region_counts.entry(r.status).or_insert(0) += 1;
+            for az in &r.azs {
+                *region_counts.entry(az.status).or_insert(0) += 1;
+            }
+        }
+
+        let mut provider_counts: std::collections::HashMap<RegionStatus, u64> =
+            std::collections::HashMap::new();
+        for p in &providers {
+            *provider_counts.entry(p.status).or_insert(0) += 1;
+        }
+
+        let region_status_summary = region_counts
+            .into_iter()
+            .map(|(status, count)| StatusCount { status, count })
+            .collect();
+        let provider_status_summary = provider_counts
+            .into_iter()
+            .map(|(status, count)| StatusCount { status, count })
+            .collect();
+
+        let active_operations_count = (0..100)
+            .map(Self::operator_operation_at)
+            .filter(|o| o.state == OperationState::Running)
+            .count() as u64;
+
+        let recent_alerts = vec![
+            PlatformAlert {
+                id: "alert-001".to_string(),
+                severity: AlertSeverity::Warning,
+                message: "Elevated compute control-plane latency in us-east".to_string(),
+                occurred_at: OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(1_700_000_000),
+            },
+            PlatformAlert {
+                id: "alert-002".to_string(),
+                severity: AlertSeverity::Info,
+                message: "Capacity rebalance completed in eu-west".to_string(),
+                occurred_at: OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(1_700_000_300),
+            },
+        ];
+
+        PlatformOverview {
+            region_status_summary,
+            provider_status_summary,
+            active_operations_count,
+            recent_alerts,
+            data_freshness_at: OffsetDateTime::now_utc(),
+        }
+    }
 }
 
 #[async_trait]
@@ -1257,6 +1571,14 @@ impl Upstream for FixtureAdapter {
 
         // Fallback to deterministic synthetic operation for backward-compatible
         // tests that request ids in the fixture universe.
+        if let Some(numeric_id) = id
+            .strip_prefix("op-operator-")
+            .and_then(|s| s.parse::<u64>().ok())
+            .filter(|n| *n < 1_000)
+        {
+            return Ok(Self::operator_operation_at(numeric_id));
+        }
+
         let numeric_id = id
             .strip_prefix("op-")
             .and_then(|s| s.parse::<u64>().ok())
@@ -1560,6 +1882,253 @@ impl Upstream for FixtureAdapter {
         store.api_credentials.remove(pos);
         Ok(())
     }
+
+    async fn list_regions(&self, ctx: &RequestContext) -> Result<Vec<Region>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("platform.region", "list") {
+            return Err(ApiError::Forbidden);
+        }
+        Ok((0..4).map(Self::region_at).collect())
+    }
+
+    async fn list_availability_zones(
+        &self,
+        ctx: &RequestContext,
+        region_id: &str,
+    ) -> Result<Vec<AvailabilityZone>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("platform.region", "read") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let region = (0..4)
+            .map(Self::region_at)
+            .find(|r| r.id == region_id)
+            .ok_or(ApiError::NotFound)?;
+        Ok(region.azs)
+    }
+
+    async fn list_provider_health(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<Vec<ProviderHealth>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("platform.health", "read") {
+            return Err(ApiError::Forbidden);
+        }
+        Ok((0..12).map(Self::provider_at).collect())
+    }
+
+    async fn list_service_health(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<Vec<ServiceHealth>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("platform.health", "read") {
+            return Err(ApiError::Forbidden);
+        }
+        Ok((0..10).map(Self::service_health_at).collect())
+    }
+
+    async fn get_capacity_summary(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<Vec<CapacitySummary>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("platform.capacity", "read") {
+            return Err(ApiError::Forbidden);
+        }
+        Ok(["vcpu", "memory", "disk"]
+            .into_iter()
+            .map(Self::capacity_summary)
+            .collect())
+    }
+
+    async fn list_customer_accounts(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<PaginatedCollection<CustomerAccount>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("operator.account", "list") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let items: Vec<CustomerAccount> = (0..Self::FIXTURE_ACCOUNT_TOTAL)
+            .map(Self::customer_account_at)
+            .collect();
+        Ok(PaginatedCollection {
+            total: items.len() as u64,
+            has_more: false,
+            page: 0,
+            page_size: items.len() as u32,
+            items,
+        })
+    }
+
+    async fn list_operator_projects(
+        &self,
+        ctx: &RequestContext,
+        account_id: Option<&str>,
+    ) -> Result<PaginatedCollection<OperatorProject>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("operator.project", "list") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let mut items: Vec<OperatorProject> = (0..50).map(Self::operator_project_at).collect();
+        if let Some(account) = account_id {
+            items.retain(|p| p.account_id == account);
+        }
+
+        Ok(PaginatedCollection {
+            total: items.len() as u64,
+            has_more: false,
+            page: 0,
+            page_size: items.len() as u32,
+            items,
+        })
+    }
+
+    async fn list_operator_operations(
+        &self,
+        ctx: &RequestContext,
+        params: ListOperatorOperationsParams,
+    ) -> Result<PaginatedCollection<Operation>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("operator.operation", "list") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let page_size = params.page_size.clamp(1, 100);
+        let mut items: Vec<Operation> = (0..100).map(Self::operator_operation_at).collect();
+
+        if let Some(state) = params.state {
+            items.retain(|o| o.state == state);
+        }
+        if let Some(action) = params.action {
+            items.retain(|o| o.action == action);
+        }
+        if let Some(resource_type) = params.resource_type {
+            items.retain(|o| o.resource_type.as_ref() == Some(&resource_type));
+        }
+        if let Some(region_id) = params.region_id {
+            items.retain(|o| o.region_id.as_ref() == Some(&region_id));
+        }
+        if let Some(account_id) = params.account_id {
+            items.retain(|o| {
+                o.project_id
+                    .as_ref()
+                    .and_then(|pid| pid.strip_prefix("project-"))
+                    .and_then(|n| n.parse::<u64>().ok())
+                    .map(|n| format!("account-{:03}", n % Self::FIXTURE_ACCOUNT_TOTAL))
+                    == Some(account_id.to_owned())
+            });
+        }
+        if let Some(since) = params.since {
+            items.retain(|o| {
+                o.started_at
+                    .map(|started| started >= since)
+                    .unwrap_or(false)
+            });
+        }
+        if let Some(until) = params.until {
+            items.retain(|o| {
+                o.started_at
+                    .map(|started| started <= until)
+                    .unwrap_or(false)
+            });
+        }
+
+        let total = items.len() as u64;
+        let offset = (params.page as u64).saturating_mul(page_size as u64);
+        let page_items = if offset >= total {
+            vec![]
+        } else {
+            let end = (offset + page_size as u64).min(total) as usize;
+            items[offset as usize..end].to_vec()
+        };
+
+        Ok(PaginatedCollection {
+            items: page_items,
+            total,
+            page: params.page,
+            page_size,
+            has_more: offset + (page_size as u64) < total,
+        })
+    }
+
+    async fn list_operator_audit_events(
+        &self,
+        ctx: &RequestContext,
+        params: ListOperatorAuditEventsParams,
+    ) -> Result<PaginatedCollection<OperatorAuditEvent>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("operator.audit", "read") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let mut events: Vec<OperatorAuditEvent> = (0..Self::FIXTURE_OPERATOR_AUDIT_TOTAL)
+            .map(Self::operator_audit_event_at)
+            .filter(|e| {
+                params
+                    .action
+                    .as_ref()
+                    .map(|a| &e.action == a)
+                    .unwrap_or(true)
+            })
+            .filter(|e| params.actor.as_ref().map(|a| &e.actor == a).unwrap_or(true))
+            .filter(|e| {
+                params
+                    .account_id
+                    .as_ref()
+                    .map(|a| e.account_id.as_ref() == Some(a))
+                    .unwrap_or(true)
+            })
+            .filter(|e| {
+                params
+                    .since
+                    .map(|since| e.recorded_at >= since)
+                    .unwrap_or(true)
+            })
+            .filter(|e| {
+                params
+                    .until
+                    .map(|until| e.recorded_at <= until)
+                    .unwrap_or(true)
+            })
+            .collect();
+
+        events.sort_by_key(|b| std::cmp::Reverse(b.recorded_at));
+
+        let page_size = params.page_size.clamp(1, 100);
+        let total = events.len() as u64;
+        let offset = (params.page as u64).saturating_mul(page_size as u64);
+        let items = if offset >= total {
+            vec![]
+        } else {
+            let end = (offset + page_size as u64).min(total) as usize;
+            events[offset as usize..end].to_vec()
+        };
+
+        Ok(PaginatedCollection {
+            items,
+            total,
+            page: params.page,
+            page_size,
+            has_more: offset + (page_size as u64) < total,
+        })
+    }
+
+    async fn get_platform_overview(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<PlatformOverview, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("platform.overview", "read") {
+            return Err(ApiError::Forbidden);
+        }
+        Ok(Self::platform_overview())
+    }
 }
 
 impl SessionContext {
@@ -1638,7 +2207,35 @@ impl SessionContext {
                     action: "read".to_string(),
                 },
                 Capability {
+                    resource_type: "platform.region".to_string(),
+                    action: "list".to_string(),
+                },
+                Capability {
+                    resource_type: "platform.region".to_string(),
+                    action: "read".to_string(),
+                },
+                Capability {
                     resource_type: "platform.health".to_string(),
+                    action: "read".to_string(),
+                },
+                Capability {
+                    resource_type: "platform.capacity".to_string(),
+                    action: "read".to_string(),
+                },
+                Capability {
+                    resource_type: "operator.account".to_string(),
+                    action: "list".to_string(),
+                },
+                Capability {
+                    resource_type: "operator.project".to_string(),
+                    action: "list".to_string(),
+                },
+                Capability {
+                    resource_type: "operator.operation".to_string(),
+                    action: "list".to_string(),
+                },
+                Capability {
+                    resource_type: "operator.audit".to_string(),
                     action: "read".to_string(),
                 },
             ]);

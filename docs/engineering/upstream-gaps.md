@@ -175,6 +175,69 @@ Implementation phases must add new gaps here instead of inventing production O3K
 - **Blocked Araf feature:** Tenant governance and operator identity management surfaces.
 - **Acceptable fallback:** Keep governance pages as placeholders/fixtures for M7; defer to M8 after confirming the upstream IAM contract.
 
+## M9-O3K-001: Region/AZ enumeration/health
+
+- **Gap id:** `M9-O3K-001`
+- **Required O3K contract:** Authoritative endpoints to enumerate regions and availability zones and report their health status, including AZ-level state.
+- **Why Araf M9 needs it:** The Operator Console platform overview and Regions page depend on `Upstream::list_regions` and `Upstream::list_availability_zones`. O3K currently only hard-codes `RegionOne` with no enumeration or health surface.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Live region/AZ health views in the Operator Console.
+- **Acceptable fallback:** Fixture adapter returns deterministic synthetic regions, AZs and mixed statuses. The production `O3kAdapter` returns `501 Not Implemented` with a clear Problem Details message.
+
+## M9-O3K-002: Provider/service health surface
+
+- **Gap id:** `M9-O3K-002`
+- **Required O3K contract:** Authoritative endpoints exposing compute/network/storage provider health and service lifecycle state with observation timestamps.
+- **Why Araf M9 needs it:** `Upstream::list_provider_health` and `Upstream::list_service_health` must surface actionable control-plane health without data-plane access or browser-side inference.
+- **Current status:** Confirmed missing. O3K exposes only global `/healthz`/`/readyz` and `/o3k/v1/services` lifecycle state without provider detail.
+- **Blocked Araf feature:** Provider health, service readiness, and degraded-platform alerting in the Operator Console.
+- **Acceptable fallback:** Fixture adapter returns synthetic provider and service health entries. `O3kAdapter` returns `501 Not Implemented`.
+
+## M9-O3K-003: Normalized platform capacity summary
+
+- **Gap id:** `M9-O3K-003`
+- **Required O3K contract:** An authoritative, provider-neutral capacity endpoint returning total/used/available per resource class with a canonical unit and freshness timestamp.
+- **Why Araf M9 needs it:** The Capacity page must display normalized platform capacity. The placement ledger has internal provider inventory but no public summary endpoint, and Araf must not derive capacity by scraping provider-specific browser data.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Real capacity dashboard in the Operator Console.
+- **Acceptable fallback:** Fixture adapter returns deterministic capacity summaries for vCPU, memory and disk. `O3kAdapter` returns `501 Not Implemented`.
+
+## M9-O3K-004: Operator-scope identity/project enumeration
+
+- **Gap id:** `M9-O3K-004`
+- **Required O3K contract:** Authoritative operator-scope endpoints to list customer accounts/organizations and their projects across the platform.
+- **Why Araf M9 needs it:** `Upstream::list_customer_accounts` and `Upstream::list_operator_projects` must be backed by O3K identity scope enumeration. Keystone-shaped records exist but only token routes are public.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Account and cross-account project lookup in the Operator Console.
+- **Acceptable fallback:** Fixture adapter returns synthetic customer accounts and operator-scope projects. `O3kAdapter` returns `501 Not Implemented`.
+
+## M9-O3K-005: Global Operations list/search
+
+- **Gap id:** `M9-O3K-005`
+- **Required O3K contract:** A server-bounded operator/global `GET /o3k/v1/operations` endpoint supporting filters by state, action, resource type, account and region.
+- **Why Araf M9 needs it:** The Operator Operations page needs to surface platform-wide operations. Only `GET /o3k/v1/operations/{id}` exists.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Global operations list in the Operator Console.
+- **Acceptable fallback:** Fixture adapter returns synthetic operator-scope operations. `O3kAdapter` returns `501 Not Implemented`.
+
+## M9-O3K-006: Audit/event evidence persistence and query
+
+- **Gap id:** `M9-O3K-006`
+- **Required O3K contract:** Persistent audit/event store and query endpoint accessible to authorized operators, spanning accounts and projects.
+- **Why Araf M9 needs it:** `Upstream::list_operator_audit_events` must return real audit evidence. The `AuditEvent` model exists but has no persistence or query endpoint.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Operator audit trail in the Operator Console.
+- **Acceptable fallback:** Fixture adapter returns synthetic operator-scope audit events distinct from tenant audit. `O3kAdapter` returns `501 Not Implemented`.
+
+## M9-O3K-007: Operator/global authorization policy
+
+- **Gap id:** `M9-O3K-007`
+- **Required O3K contract:** An O3K authorization model and token/capability contract that distinguishes operators from tenants and grants `operator.*`/`platform.*` capabilities.
+- **Why Araf M9 needs it:** Operator endpoints must reject tenant sessions and enforce operator-scope authorization. The `StaticAuthorizer` currently requires project ownership and there is no global operator scope.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Production operator authorization and tenant/operator endpoint separation.
+- **Acceptable fallback:** Fixture adapter grants operator capabilities only to the `operator-bff` surface and rejects cross-surface access with `403 Forbidden`. `O3kAdapter` relies on upstream authorization and returns `501 Not Implemented` for operator platform reads until the authorization contract matures.
+
 ## M8-O3K-001: Tenant governance management endpoints
 
 - **Gap id:** `M8-O3K-001`

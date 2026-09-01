@@ -26,17 +26,22 @@ use tracing::debug;
 use crate::{
     error::{ApiError, UpstreamError},
     model::{
-        ActionDescriptor, ActionRequest, ActionRiskClass, Capability, ColumnDescriptor,
-        CreateResourceRequest, DetailsSectionDescriptor, FilterDescriptor, FilterKind, JsonSchema,
-        Operation, OperationError, OperationEvent, OperationState, PaginatedCollection, Resource,
-        ResourceStatus, ResourceTypeDescriptor, ServiceDescriptor, SessionContext,
+        ActionDescriptor, ActionRequest, ActionRiskClass, Capability, CapacitySummary,
+        ColumnDescriptor, CreateResourceRequest, CustomerAccount, DetailsSectionDescriptor,
+        FilterDescriptor, FilterKind, JsonSchema, Operation, OperationError, OperationEvent,
+        OperationState, OperatorAuditEvent, OperatorProject, PaginatedCollection, PlatformOverview,
+        ProviderHealth, Region, Resource, ResourceStatus, ResourceTypeDescriptor,
+        ServiceDescriptor, ServiceHealth, SessionContext,
     },
     o3k_client::{
         MutationResult, NativeOperation, NativeResourceEnvelope, O3kClient, O3kClientConfig,
         O3kClientError,
     },
     request::RequestContext,
-    upstream::{ListOperationsParams, ListResourcesParams, Upstream},
+    upstream::{
+        ListOperationsParams, ListOperatorAuditEventsParams, ListOperatorOperationsParams,
+        ListResourcesParams, Upstream,
+    },
 };
 
 /// Adapter that calls the O3K native API.
@@ -891,6 +896,97 @@ impl Upstream for O3kAdapter {
             .await
             .map_err(Self::map_client_error)?;
         Ok(Self::map_native_operation(op))
+    }
+
+    async fn list_regions(&self, _ctx: &RequestContext) -> Result<Vec<Region>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "O3K does not expose a region enumeration endpoint".to_owned(),
+        ))
+    }
+
+    async fn list_availability_zones(
+        &self,
+        _ctx: &RequestContext,
+        _region_id: &str,
+    ) -> Result<Vec<crate::model::AvailabilityZone>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "O3K does not expose an availability zone enumeration endpoint".to_owned(),
+        ))
+    }
+
+    async fn list_provider_health(
+        &self,
+        _ctx: &RequestContext,
+    ) -> Result<Vec<ProviderHealth>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "O3K does not expose a provider health endpoint".to_owned(),
+        ))
+    }
+
+    async fn list_service_health(
+        &self,
+        _ctx: &RequestContext,
+    ) -> Result<Vec<ServiceHealth>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "O3K does not expose a service health endpoint".to_owned(),
+        ))
+    }
+
+    async fn get_capacity_summary(
+        &self,
+        _ctx: &RequestContext,
+    ) -> Result<Vec<CapacitySummary>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "O3K does not expose a normalized capacity summary endpoint".to_owned(),
+        ))
+    }
+
+    async fn list_customer_accounts(
+        &self,
+        _ctx: &RequestContext,
+    ) -> Result<PaginatedCollection<CustomerAccount>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "O3K does not expose a customer account enumeration endpoint".to_owned(),
+        ))
+    }
+
+    async fn list_operator_projects(
+        &self,
+        _ctx: &RequestContext,
+        _account_id: Option<&str>,
+    ) -> Result<PaginatedCollection<OperatorProject>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "O3K does not expose an operator-scope project enumeration endpoint".to_owned(),
+        ))
+    }
+
+    async fn list_operator_operations(
+        &self,
+        _ctx: &RequestContext,
+        _params: ListOperatorOperationsParams,
+    ) -> Result<PaginatedCollection<Operation>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "O3K does not expose a global operator operations list endpoint".to_owned(),
+        ))
+    }
+
+    async fn list_operator_audit_events(
+        &self,
+        _ctx: &RequestContext,
+        _params: ListOperatorAuditEventsParams,
+    ) -> Result<PaginatedCollection<OperatorAuditEvent>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "O3K does not expose an operator audit event query endpoint".to_owned(),
+        ))
+    }
+
+    async fn get_platform_overview(
+        &self,
+        _ctx: &RequestContext,
+    ) -> Result<PlatformOverview, ApiError> {
+        Err(ApiError::NotImplemented(
+            "O3K does not expose a platform overview endpoint".to_owned(),
+        ))
     }
 }
 

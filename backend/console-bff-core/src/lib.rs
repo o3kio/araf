@@ -38,14 +38,8 @@ pub struct BffSurface {
     pub service: &'static str,
 }
 
-/// Build the shared API router for the given upstream adapter.
-///
-/// Surface-specific binaries add or omit routes by composing this router with
-/// additional surface-only routes.
-pub fn api_router(upstream: Arc<dyn Upstream>) -> Router {
-    let state = AppState { upstream };
-
-    Router::new()
+fn base_routes(router: Router<AppState>) -> Router<AppState> {
+    router
         .route("/healthz", get(handlers::healthz))
         .route("/api/v1/context", get(handlers::get_context))
         .route("/api/v1/services", get(handlers::list_services))
@@ -63,6 +57,10 @@ pub fn api_router(upstream: Arc<dyn Upstream>) -> Router {
         )
         .route("/api/v1/operations", get(handlers::list_operations))
         .route("/api/v1/operations/{id}", get(handlers::get_operation))
+}
+
+fn governance_routes(router: Router<AppState>) -> Router<AppState> {
+    router
         .route("/api/v1/governance/projects", get(handlers::list_projects))
         .route(
             "/api/v1/governance/projects/{id}",
@@ -85,7 +83,68 @@ pub fn api_router(upstream: Arc<dyn Upstream>) -> Router {
             "/api/v1/governance/api-credentials/{id}",
             delete(handlers::delete_api_credential),
         )
-        .with_state(state)
+}
+
+fn operator_routes(router: Router<AppState>) -> Router<AppState> {
+    router
+        .route(
+            "/api/v1/operator/platform/overview",
+            get(handlers::get_platform_overview),
+        )
+        .route("/api/v1/operator/regions", get(handlers::list_regions))
+        .route(
+            "/api/v1/operator/regions/{id}/zones",
+            get(handlers::list_availability_zones),
+        )
+        .route(
+            "/api/v1/operator/providers/health",
+            get(handlers::list_provider_health),
+        )
+        .route(
+            "/api/v1/operator/services/health",
+            get(handlers::list_service_health),
+        )
+        .route(
+            "/api/v1/operator/capacity",
+            get(handlers::get_capacity_summary),
+        )
+        .route(
+            "/api/v1/operator/accounts",
+            get(handlers::list_customer_accounts),
+        )
+        .route(
+            "/api/v1/operator/accounts/{id}/projects",
+            get(handlers::list_operator_projects),
+        )
+        .route(
+            "/api/v1/operator/operations",
+            get(handlers::list_operator_operations),
+        )
+        .route(
+            "/api/v1/operator/audit-events",
+            get(handlers::list_operator_audit_events),
+        )
+}
+
+/// Build the shared API router for the given upstream adapter.
+///
+/// Surface-specific binaries add or omit routes by composing this router with
+/// additional surface-only routes.
+pub fn api_router(upstream: Arc<dyn Upstream>) -> Router {
+    let state = AppState { upstream };
+    base_routes(governance_routes(operator_routes(Router::new()))).with_state(state)
+}
+
+/// Build the tenant API router (excludes operator-only routes).
+pub fn tenant_api_router(upstream: Arc<dyn Upstream>) -> Router {
+    let state = AppState { upstream };
+    base_routes(governance_routes(Router::new())).with_state(state)
+}
+
+/// Build the operator API router (includes all routes).
+pub fn operator_api_router(upstream: Arc<dyn Upstream>) -> Router {
+    let state = AppState { upstream };
+    base_routes(governance_routes(operator_routes(Router::new()))).with_state(state)
 }
 
 /// Which upstream adapter the BFF should use.
@@ -118,6 +177,14 @@ impl BffConfig {
     }
 }
 
+fn router_for_surface(upstream: Arc<dyn Upstream>, surface: &'static str) -> Router {
+    if surface == "operator-bff" {
+        operator_api_router(upstream)
+    } else {
+        tenant_api_router(upstream)
+    }
+}
+
 /// Build the API router for the given configuration.
 pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
     let upstream: Arc<dyn Upstream> = match config.adapter {
@@ -125,15 +192,15 @@ pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
         UpstreamAdapter::O3k => Arc::new(O3kAdapter::from_env(config.surface)?),
     };
     Ok(middleware::apply_default_layers(
-        api_router(upstream),
+        router_for_surface(upstream, config.surface),
         config.surface,
     ))
 }
 
-/// Build a complete BFF router for the given surface using the fixture adapter.
+/// Build a complete tenant BFF router using the fixture adapter.
 pub fn fixture_router(surface: &'static str) -> Router {
     let upstream: Arc<dyn Upstream> = Arc::new(FixtureAdapter::new(surface));
-    middleware::apply_default_layers(api_router(upstream), surface)
+    middleware::apply_default_layers(router_for_surface(upstream, surface), surface)
 }
 
 #[cfg(test)]

@@ -1,31 +1,29 @@
 import type { ArafClient, SessionContext } from "@araf/api-client";
 import { vi } from "vitest";
-import { ResourceClientProvider } from "@araf/resources";
-import { GovernanceClientProvider } from "../client/context";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
+import { OperatorPlatformClientProvider } from "../client/context";
 
-export const allGovernanceCapabilities = [
-  { resourceType: "tenant.project", action: "list" },
-  { resourceType: "tenant.project", action: "read" },
-  { resourceType: "tenant.user", action: "list" },
-  { resourceType: "tenant.user", action: "read" },
-  { resourceType: "tenant.role", action: "list" },
-  { resourceType: "tenant.quota", action: "read" },
-  { resourceType: "tenant.audit", action: "read" },
-  { resourceType: "tenant.api-credential", action: "list" },
-  { resourceType: "tenant.api-credential", action: "create" },
-  { resourceType: "tenant.api-credential", action: "delete" },
+export const allOperatorPlatformCapabilities = [
+  { resourceType: "platform.overview", action: "read" },
+  { resourceType: "platform.region", action: "list" },
+  { resourceType: "platform.region", action: "read" },
+  { resourceType: "platform.health", action: "read" },
+  { resourceType: "platform.capacity", action: "read" },
+  { resourceType: "operator.account", action: "list" },
+  { resourceType: "operator.project", action: "list" },
+  { resourceType: "operator.operation", action: "list" },
+  { resourceType: "operator.audit", action: "read" },
 ];
 
 export const sessionContext: SessionContext = {
-  surface: "tenant-bff",
-  userId: "user-1",
-  userName: "Test User",
-  organizationId: "org-1",
-  projectId: "project-1",
-  regionId: "eu-west",
-  capabilities: allGovernanceCapabilities,
+  surface: "operator-bff",
+  userId: "operator-1",
+  userName: "Test Operator",
+  organizationId: null,
+  projectId: null,
+  regionId: "global",
+  capabilities: allOperatorPlatformCapabilities,
 };
 
 const emptyCollection = { items: [], total: 0, page: 0, pageSize: 25, hasMore: false };
@@ -58,10 +56,10 @@ export function createMockClient(overrides: Partial<ArafClient> = {}): ArafClien
     listProviderHealth: vi.fn(),
     listServiceHealth: vi.fn(),
     getCapacitySummary: vi.fn(),
-    listCustomerAccounts: vi.fn(),
-    listAccountProjects: vi.fn(),
-    listOperatorOperations: vi.fn(),
-    listOperatorAuditEvents: vi.fn(),
+    listCustomerAccounts: vi.fn().mockResolvedValue(emptyCollection),
+    listAccountProjects: vi.fn().mockResolvedValue(emptyCollection),
+    listOperatorOperations: vi.fn().mockResolvedValue(emptyCollection),
+    listOperatorAuditEvents: vi.fn().mockResolvedValue(emptyCollection),
     ...overrides,
   };
 }
@@ -76,10 +74,8 @@ export function TestWrapper({
   initialEntries?: string[];
 }) {
   return (
-    <ResourceClientProvider client={client}>
-      <GovernanceClientProvider client={client}>
-        <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
-      </GovernanceClientProvider>
-    </ResourceClientProvider>
+    <OperatorPlatformClientProvider client={client}>
+      <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
+    </OperatorPlatformClientProvider>
   );
 }

@@ -1621,3 +1621,312 @@ async fn o3k_adapter_governance_methods_return_501() {
     );
     assert_not_implemented!(adapter.delete_api_credential(&ctx, "cred-1").await);
 }
+
+#[tokio::test]
+async fn operator_can_list_platform_overview() {
+    let app = fixture_router(OPERATOR);
+
+    let overview = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri("/api/v1/operator/platform/overview")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    assert!(overview["regionStatusSummary"].is_array());
+    assert!(overview["providerStatusSummary"].is_array());
+    assert!(overview["activeOperationsCount"].is_number());
+    assert!(overview["recentAlerts"].is_array());
+    assert!(overview["dataFreshnessAt"].is_string());
+}
+
+#[tokio::test]
+async fn operator_can_list_regions_and_zones() {
+    let app = fixture_router(OPERATOR);
+
+    let regions = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/operator/regions")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    assert_eq!(regions.as_array().unwrap().len(), 4);
+    for region in regions.as_array().unwrap() {
+        assert!(region["id"].is_string());
+        assert!(region["azs"].is_array());
+    }
+
+    let zones = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri("/api/v1/operator/regions/eu-west/zones")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    assert!(!zones.as_array().unwrap().is_empty());
+    for zone in zones.as_array().unwrap() {
+        assert_eq!(zone["regionId"], "eu-west");
+    }
+}
+
+#[tokio::test]
+async fn operator_can_list_provider_health_and_capacity() {
+    let app = fixture_router(OPERATOR);
+
+    let providers = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/operator/providers/health")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    assert_eq!(providers.as_array().unwrap().len(), 12);
+    for provider in providers.as_array().unwrap() {
+        assert!(provider["kind"].is_string());
+        assert!(provider["status"].is_string());
+    }
+
+    let capacity = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri("/api/v1/operator/capacity")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    assert_eq!(capacity.as_array().unwrap().len(), 3);
+    for entry in capacity.as_array().unwrap() {
+        assert!(entry["resourceClass"].is_string());
+        assert!(entry["available"].is_number());
+    }
+}
+
+#[tokio::test]
+async fn operator_can_list_accounts_and_account_projects() {
+    let app = fixture_router(OPERATOR);
+
+    let accounts = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/operator/accounts")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    assert!(!accounts["items"].as_array().unwrap().is_empty());
+
+    let account_id = accounts["items"][0]["id"].as_str().unwrap();
+    let projects = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/operator/accounts/{account_id}/projects"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    for project in projects["items"].as_array().unwrap() {
+        assert_eq!(project["accountId"], account_id);
+    }
+}
+
+#[tokio::test]
+async fn operator_can_list_operations_and_audit_events() {
+    let app = fixture_router(OPERATOR);
+
+    let operations = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/operator/operations?pageSize=10")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    assert_eq!(operations["items"].as_array().unwrap().len(), 10);
+    assert!(operations["total"].is_number());
+
+    let audit = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri("/api/v1/operator/audit-events?pageSize=10")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    assert_eq!(audit["items"].as_array().unwrap().len(), 10);
+    assert!(audit["total"].is_number());
+    for event in audit["items"].as_array().unwrap() {
+        assert!(event["actor"].is_string());
+        assert!(event["accountId"].is_string());
+    }
+}
+
+#[tokio::test]
+async fn tenant_bff_does_not_expose_operator_endpoints() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-tenant-operator-denied";
+
+    let paths = [
+        "/api/v1/operator/platform/overview",
+        "/api/v1/operator/regions",
+        "/api/v1/operator/providers/health",
+        "/api/v1/operator/capacity",
+        "/api/v1/operator/accounts",
+        "/api/v1/operator/operations",
+        "/api/v1/operator/audit-events",
+    ];
+
+    for path in paths {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header(CORRELATION_HEADER, correlation)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        // The tenant BFF process does not mount operator routes (ADR 0001).
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+}
+
+#[tokio::test]
+async fn operator_endpoints_reject_missing_capabilities_with_403() {
+    let app = fixture_router(OPERATOR);
+    let correlation = "corr-operator-capability-denied";
+
+    // Tenant governance endpoints are forbidden to operator fixture session.
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/governance/projects")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_problem_details(response, StatusCode::FORBIDDEN, correlation).await;
+}
+
+#[tokio::test]
+async fn operator_accounts_do_not_leak_cross_tenant_data() {
+    let app = fixture_router(OPERATOR);
+
+    let accounts = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri("/api/v1/operator/accounts")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    let ids: std::collections::HashSet<String> = accounts["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["id"].as_str().unwrap().to_string())
+        .collect();
+
+    // Operator fixture universe uses account-* identifiers distinct from tenant projects.
+    for id in ids {
+        assert!(
+            id.starts_with("account-"),
+            "operator account id should be account-scoped, got {id}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn o3k_adapter_operator_methods_return_501() {
+    let adapter = O3kAdapter::new(
+        "operator-bff",
+        O3kClientConfig {
+            base_url: "http://localhost:9999".to_owned(),
+            token: "unused-token".to_owned(),
+        },
+    );
+    let ctx = RequestContext::new(
+        "req-test".to_owned(),
+        "corr-test".to_owned(),
+        Arc::new(SessionState::default()),
+    );
+
+    macro_rules! assert_not_implemented {
+        ($expr:expr) => {
+            let err = $expr.expect_err("expected NotImplemented");
+            assert_eq!(err.status(), StatusCode::NOT_IMPLEMENTED);
+        };
+    }
+
+    assert_not_implemented!(adapter.list_regions(&ctx).await);
+    assert_not_implemented!(adapter.list_availability_zones(&ctx, "eu-west").await);
+    assert_not_implemented!(adapter.list_provider_health(&ctx).await);
+    assert_not_implemented!(adapter.list_service_health(&ctx).await);
+    assert_not_implemented!(adapter.get_capacity_summary(&ctx).await);
+    assert_not_implemented!(adapter.list_customer_accounts(&ctx).await);
+    assert_not_implemented!(adapter.list_operator_projects(&ctx, None).await);
+    assert_not_implemented!(
+        adapter
+            .list_operator_operations(&ctx, Default::default())
+            .await
+    );
+    assert_not_implemented!(
+        adapter
+            .list_operator_audit_events(&ctx, Default::default())
+            .await
+    );
+    assert_not_implemented!(adapter.get_platform_overview(&ctx).await);
+}
