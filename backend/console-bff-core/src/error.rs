@@ -157,6 +157,15 @@ impl BffError {
     }
 }
 
+impl From<ApiError> for BffError {
+    fn from(error: ApiError) -> Self {
+        Self {
+            error,
+            correlation_id: "internal".to_owned(),
+        }
+    }
+}
+
 impl IntoResponse for BffError {
     fn into_response(self) -> Response {
         let problem = self.error.into_problem(&self.correlation_id);

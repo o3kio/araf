@@ -1640,7 +1640,9 @@ async fn tenant_can_list_usage_and_cross_project_is_rejected() {
         )
         .await
         .expect("response");
-    assert!(forbidden.status() == StatusCode::FORBIDDEN || forbidden.status() == StatusCode::NOT_FOUND);
+    assert!(
+        forbidden.status() == StatusCode::FORBIDDEN || forbidden.status() == StatusCode::NOT_FOUND
+    );
 }
 
 #[tokio::test]

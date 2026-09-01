@@ -309,3 +309,21 @@ Implementation phases must add new gaps here instead of inventing production O3K
 - **Current status:** Confirmed missing.
 - **Blocked Araf feature:** Trustworthy, directly consumable resource type descriptors from O3K without server-side sanitization.
 - **Acceptable fallback:** The BFF validates every descriptor using `descriptor_validation.rs` and rejects keys/values that could carry executable or unsafe content. The fixture adapter only produces known-safe descriptors; lifecycle actions are derived from the manifest-driven fixture set.
+
+## M12-O3K-001: Session store HA and persistence
+
+- **Gap id:** `M12-O3K-001`
+- **Required O3K contract:** A shared session store (e.g. Redis) contract for HA deployments where multiple BFF instances must validate sessions issued by other instances.
+- **Why Araf M12 needs it:** The in-memory `SessionStore` is single-process only. Restarting the BFF invalidates all active sessions, and scaling to multiple instances requires a shared session backend.
+- **Current status:** Not implemented — MVP uses an in-memory store.
+- **Blocked Araf feature:** Session persistence across BFF restarts and multi-instance HA deployments.
+- **Acceptable fallback:** In-memory store is sufficient for single-instance development and small-scale deployment. Document the requirement for production HA deployments.
+
+## M12-O3K-002: Production OIDC/OAuth provider endpoint
+
+- **Gap id:** `M12-O3K-002`
+- **Required O3K contract:** An O3K-owned OIDC/OAuth provider endpoint with authorization-code flow, token refresh, logout, and userinfo, available as a confidential IdP for both Tenant and Operator surfaces.
+- **Why Araf M12 needs it:** The auth module has the OIDC handler structure, but cannot be tested end-to-end without a real IdP. The fixture fallback creates synthetic sessions without real token exchange.
+- **Current status:** Not available — O3K identity is limited to bootstrap API token endpoints.
+- **Blocked Araf feature:** End-to-end OIDC authentication with real token exchange, refresh, and logout.
+- **Acceptable fallback:** Continue using fixture sessions. The auth module is structured to accept real OIDC config when available.

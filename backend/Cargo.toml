@@ -20,7 +20,7 @@ time = { version = "0.3", features = ["formatting", "serde", "serde-human-readab
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["limit", "trace", "compression-full", "cors"] }
+tower-http = { version = "0.6", features = ["limit", "trace", "compression-full", "cors", "set-header"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["v4", "serde"] }
