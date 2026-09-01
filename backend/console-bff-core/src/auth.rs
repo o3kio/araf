@@ -138,6 +138,18 @@ fn clear_session_cookie(response: &mut Response, surface: &str) {
     }
 }
 
+fn encode_query_component(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (byte as char).to_string()
+            }
+            _ => format!("%{byte:02X}"),
+        })
+        .collect()
+}
+
 /// Initiate OIDC login.
 /// In production this redirects to the IdP authorization endpoint.
 /// In fixture mode, redirects to the callback.
@@ -150,7 +162,10 @@ pub async fn login(State(state): State<crate::handlers::AppState>) -> Redirect {
     let state = session_store.issue_auth_state().await;
     Redirect::to(&format!(
         "{}?response_type=code&client_id={}&redirect_uri={}&scope=openid%20profile&state={}",
-        config.authorization_url, config.client_id, config.redirect_uri, state
+        config.authorization_url,
+        encode_query_component(&config.client_id),
+        encode_query_component(&config.redirect_uri),
+        encode_query_component(&state)
     ))
 }
 
@@ -341,4 +356,18 @@ async fn fetch_userinfo(userinfo_url: &str, access_token: &str) -> Result<OidcUs
             "OIDC userinfo parse failed: {e}"
         )))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::encode_query_component;
+
+    #[test]
+    fn authorization_values_are_percent_encoded() {
+        assert_eq!(
+            encode_query_component("client/id?x=y"),
+            "client%2Fid%3Fx%3Dy"
+        );
+        assert_eq!(encode_query_component("openid profile"), "openid%20profile");
+    }
 }
