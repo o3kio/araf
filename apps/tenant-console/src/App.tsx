@@ -36,6 +36,7 @@ import { createArafClient } from "@araf/api-client";
 import { useResourceClient } from "@araf/resources";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useParams } from "react-router";
+import { HomePage } from "./HomePage";
 
 const projects: ProjectOption[] = [
   { id: "project-1", name: "Project 1", organizationId: "org-acme" },
@@ -155,15 +156,6 @@ function useTenantNavigation(): TenantNavigationItem[] {
       ...staticNavigationItems.slice(1),
     ];
   }, [services]);
-}
-
-function HomePage() {
-  return (
-    <section>
-      <h1>Tenant home</h1>
-      <p>Welcome to the Araf Tenant Console.</p>
-    </section>
-  );
 }
 
 function PlaceholderPage({ title }: { title: string }) {
