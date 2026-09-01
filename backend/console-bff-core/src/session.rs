@@ -103,10 +103,7 @@ impl SessionStore {
     /// Consume an OIDC callback state value, rejecting expiry and replay.
     pub async fn consume_auth_state(&self, state: &str) -> bool {
         let mut states = self.auth_states.write().await;
-        match states.remove(state) {
-            Some(expires_at) if Instant::now() < expires_at => true,
-            _ => false,
-        }
+        matches!(states.remove(state), Some(expires_at) if Instant::now() < expires_at)
     }
 
     /// Look up a session by its opaque token.

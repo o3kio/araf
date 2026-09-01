@@ -199,7 +199,7 @@ async fn inject_validated_session(
                         "operator-bff" => "araf_operator_session",
                         _ => "araf_tenant_session",
                     })
-                .then(|| (name, value))
+                .then_some((name, value))
             })
         })
     {
