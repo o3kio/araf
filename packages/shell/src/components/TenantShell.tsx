@@ -6,6 +6,7 @@ import { ProjectSelector } from "./ProjectSelector";
 import { RegionSelector } from "./RegionSelector";
 import { ScopeDisplay } from "./ScopeDisplay";
 import type { ProjectOption, RegionOption } from "../types";
+import "../shell.css";
 
 export interface TenantNavigationItem {
   id: string;
@@ -182,7 +183,12 @@ export function TenantShell({
         identity={{ title: "Araf Tenant", href: "/" }}
         utilities={utilities}
         search={
-          <input type="search" placeholder="Search resources" aria-label="Search resources" />
+          <input
+            className="araf-tenant-shell__search"
+            type="search"
+            placeholder="Search resources"
+            aria-label="Search resources"
+          />
         }
         searchAriaLabel="Search resources"
       />
