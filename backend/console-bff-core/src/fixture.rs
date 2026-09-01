@@ -383,6 +383,7 @@ impl FixtureAdapter {
                 }
             }
             OperationState::Succeeded | OperationState::Failed => {}
+            OperationState::Retryable | OperationState::UnknownOutcome => {}
         }
     }
 

@@ -218,6 +218,8 @@ pub enum OperationState {
     Running,
     Succeeded,
     Failed,
+    Retryable,
+    UnknownOutcome,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

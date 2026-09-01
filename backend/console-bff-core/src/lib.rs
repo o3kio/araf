@@ -12,6 +12,8 @@ pub mod fixture;
 pub mod handlers;
 pub mod middleware;
 pub mod model;
+pub mod o3k_adapter;
+pub mod o3k_client;
 pub mod request;
 pub mod upstream;
 
@@ -24,6 +26,8 @@ use axum::{
 pub use error::{ApiError, BffError, ProblemDetails, UpstreamError};
 pub use fixture::{FixtureAdapter, FIXTURE_RESOURCE_TOTAL};
 pub use handlers::AppState;
+pub use o3k_adapter::O3kAdapter;
+pub use o3k_client::{O3kClient, O3kClientConfig};
 pub use request::{RequestContext, SessionState};
 pub use upstream::Upstream;
 
@@ -60,6 +64,48 @@ pub fn api_router(upstream: Arc<dyn Upstream>) -> Router {
         .route("/api/v1/operations", get(handlers::list_operations))
         .route("/api/v1/operations/{id}", get(handlers::get_operation))
         .with_state(state)
+}
+
+/// Which upstream adapter the BFF should use.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum UpstreamAdapter {
+    /// Deterministic fixture adapter used for prototype development.
+    #[default]
+    Fixture,
+    /// Real O3K native API adapter.
+    O3k,
+}
+
+/// Configuration for building a BFF router.
+#[derive(Clone, Debug)]
+pub struct BffConfig {
+    pub surface: &'static str,
+    pub adapter: UpstreamAdapter,
+}
+
+impl BffConfig {
+    /// Read configuration from environment variables.
+    ///
+    /// - `ARAF_UPSTREAM_ADAPTER`: `fixture` (default) or `o3k`.
+    pub fn from_env(surface: &'static str) -> Self {
+        let adapter = match std::env::var("ARAF_UPSTREAM_ADAPTER").as_deref() {
+            Ok("o3k") => UpstreamAdapter::O3k,
+            _ => UpstreamAdapter::Fixture,
+        };
+        Self { surface, adapter }
+    }
+}
+
+/// Build the API router for the given configuration.
+pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
+    let upstream: Arc<dyn Upstream> = match config.adapter {
+        UpstreamAdapter::Fixture => Arc::new(FixtureAdapter::new(config.surface)),
+        UpstreamAdapter::O3k => Arc::new(O3kAdapter::from_env(config.surface)?),
+    };
+    Ok(middleware::apply_default_layers(
+        api_router(upstream),
+        config.surface,
+    ))
 }
 
 /// Build a complete BFF router for the given surface using the fixture adapter.

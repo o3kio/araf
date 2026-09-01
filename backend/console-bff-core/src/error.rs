@@ -80,6 +80,8 @@ pub enum ApiError {
     Forbidden,
     #[error("unauthorized")]
     Unauthorized,
+    #[error("not implemented: {0}")]
+    NotImplemented(String),
     #[error("internal error")]
     Internal,
 }
@@ -114,6 +116,7 @@ impl ApiError {
             ApiError::NotFound => StatusCode::NOT_FOUND,
             ApiError::Forbidden => StatusCode::FORBIDDEN,
             ApiError::Unauthorized => StatusCode::UNAUTHORIZED,
+            ApiError::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
             ApiError::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -128,6 +131,7 @@ impl ApiError {
             ApiError::NotFound => "Not found",
             ApiError::Forbidden => "Forbidden",
             ApiError::Unauthorized => "Unauthorized",
+            ApiError::NotImplemented(_) => "Not implemented",
             ApiError::Internal => "Internal server error",
         };
 
