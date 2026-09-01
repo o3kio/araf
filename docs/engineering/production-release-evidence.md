@@ -7,7 +7,7 @@ green repository tests are not confused with production readiness.
 ## Candidate
 
 - Branch: `main`
-- Release SHA under assessment: `f0365b8`
+- Release SHA under assessment: `57eca60`
 - Date: 2026-09-02
 - Advertised production profiles: none; O3K integration is not yet accepted
 - OpenStack production support: not advertised
@@ -37,6 +37,8 @@ green repository tests are not confused with production readiness.
   validated server-side.
 - Callback state is short-lived and single-use.
 - Cross-surface session-cookie isolation has regression coverage.
+- Session records are independently checked against the configured BFF
+  surface, in addition to cookie namespace checking.
 - Production CORS is restricted to the configured surface-specific console
   origin.
 - Browser E2E, accessibility, CSRF and structured backend contract tests are
