@@ -292,7 +292,12 @@ function CreateCredentialModal({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          void onCreate({ name, kind, projectId });
+          if (!isValid) return;
+          void onCreate({
+            name: name.trim(),
+            kind: kind.trim(),
+            projectId: projectId.trim(),
+          });
         }}
         style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
       >
