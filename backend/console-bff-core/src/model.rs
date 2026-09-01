@@ -273,6 +273,115 @@ pub struct CreateResourceRequest {
     pub payload: serde_json::Value,
 }
 
+/// Tenant project view.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    pub organization_id: String,
+    pub status: String,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+/// Tenant user view.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct User {
+    pub id: String,
+    pub name: String,
+    pub email: Option<String>,
+    pub status: String,
+    pub created_at: OffsetDateTime,
+}
+
+/// Role available for project membership.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Role {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+/// Project membership entry.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMember {
+    pub user: User,
+    pub roles: Vec<String>,
+}
+
+/// Quota limit/usage for a single resource type within a project.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuotaEntry {
+    pub resource_type: String,
+    pub limit: u64,
+    pub used: u64,
+    pub unit: String,
+}
+
+/// Quota view for a single project.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectQuota {
+    pub project_id: String,
+    pub entries: Vec<QuotaEntry>,
+}
+
+/// Audit event describing who invoked or changed something.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditEvent {
+    pub id: String,
+    pub actor: String,
+    pub action: String,
+    pub resource_type: Option<String>,
+    pub resource_id: Option<String>,
+    pub project_id: Option<String>,
+    pub outcome: String,
+    pub recorded_at: OffsetDateTime,
+    pub correlation_id: String,
+}
+
+/// API credential metadata.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiCredential {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub project_id: String,
+    pub created_at: OffsetDateTime,
+    pub expires_at: Option<OffsetDateTime>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secret: Option<String>,
+}
+
+/// Request body for creating a new API credential.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateApiCredentialRequest {
+    pub name: String,
+    pub kind: String,
+    pub project_id: String,
+    pub expires_at: Option<OffsetDateTime>,
+}
+
+/// Parameters for listing audit events.
+#[derive(Clone, Debug, Default)]
+pub struct ListAuditEventsParams {
+    pub page: u32,
+    pub page_size: u32,
+    pub project_id: Option<String>,
+    pub action: Option<String>,
+    pub actor: Option<String>,
+    pub since: Option<OffsetDateTime>,
+    pub until: Option<OffsetDateTime>,
+}
+
 impl SessionContext {
     /// Check whether the session has been granted a specific capability.
     pub fn has_capability(&self, resource_type: &str, action: &str) -> bool {

@@ -74,6 +74,17 @@ function TestWrapper({ children, client }: { children: React.ReactNode; client?:
     submitAction: vi.fn(),
     listOperations: vi.fn().mockResolvedValue(collection),
     getOperation: vi.fn(),
+    listProjects: vi.fn(),
+    getProject: vi.fn(),
+    listProjectMembers: vi.fn(),
+    listUsers: vi.fn(),
+    getUser: vi.fn(),
+    listRoles: vi.fn(),
+    listQuotas: vi.fn(),
+    listAuditEvents: vi.fn(),
+    listApiCredentials: vi.fn(),
+    createApiCredential: vi.fn(),
+    deleteApiCredential: vi.fn(),
   };
   return (
     <OperationsClientProvider client={client ?? defaultClient}>
@@ -139,6 +150,17 @@ describe("OperationsListPage", () => {
       submitAction: vi.fn(),
       listOperations,
       getOperation: vi.fn(),
+      listProjects: vi.fn(),
+      getProject: vi.fn(),
+      listProjectMembers: vi.fn(),
+      listUsers: vi.fn(),
+      getUser: vi.fn(),
+      listRoles: vi.fn(),
+      listQuotas: vi.fn(),
+      listAuditEvents: vi.fn(),
+      listApiCredentials: vi.fn(),
+      createApiCredential: vi.fn(),
+      deleteApiCredential: vi.fn(),
     };
 
     render(
@@ -172,6 +194,17 @@ describe("OperationsListPage", () => {
       submitAction: vi.fn(),
       listOperations: vi.fn().mockRejectedValue(new Error("Network error")),
       getOperation: vi.fn(),
+      listProjects: vi.fn(),
+      getProject: vi.fn(),
+      listProjectMembers: vi.fn(),
+      listUsers: vi.fn(),
+      getUser: vi.fn(),
+      listRoles: vi.fn(),
+      listQuotas: vi.fn(),
+      listAuditEvents: vi.fn(),
+      listApiCredentials: vi.fn(),
+      createApiCredential: vi.fn(),
+      deleteApiCredential: vi.fn(),
     };
 
     render(

@@ -41,6 +41,7 @@ pub fn apply_default_layers(router: Router, surface: &'static str) -> Router {
             // M3 keeps this permissive for local fixture development only.
             true
         }))
+        .allow_credentials(true)
         .allow_headers([
             crate::request::correlation_id_header(),
             crate::request::request_id_header(),

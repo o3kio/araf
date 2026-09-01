@@ -14,8 +14,10 @@ use tracing::info;
 use crate::{
     error::{ApiError, BffError},
     model::{
-        ActionRequest, CreateResourceRequest, Operation, OperationState, PaginatedCollection,
-        Resource, ServiceDescriptor, SessionContext, SortDirection,
+        ActionRequest, ApiCredential, AuditEvent, CreateApiCredentialRequest,
+        CreateResourceRequest, ListAuditEventsParams, Operation, OperationState,
+        PaginatedCollection, Project, ProjectMember, ProjectQuota, Resource, Role,
+        ServiceDescriptor, SessionContext, SortDirection, User,
     },
     request::RequestContext,
     upstream::{ListOperationsParams, ListResourcesParams, Upstream},
@@ -67,6 +69,39 @@ pub struct ListOperationsQuery {
 
 fn default_page_size() -> u32 {
     25
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListGovernanceQuery {
+    #[serde(default)]
+    pub page: u32,
+    #[serde(default = "default_page_size")]
+    pub page_size: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListQuotasQuery {
+    #[serde(default)]
+    pub page: u32,
+    #[serde(default = "default_page_size")]
+    pub page_size: u32,
+    pub project_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListAuditEventsQuery {
+    #[serde(default)]
+    pub page: u32,
+    #[serde(default = "default_page_size")]
+    pub page_size: u32,
+    pub project_id: Option<String>,
+    pub action: Option<String>,
+    pub actor: Option<String>,
+    pub since: Option<time::OffsetDateTime>,
+    pub until: Option<time::OffsetDateTime>,
 }
 
 pub async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
@@ -222,4 +257,157 @@ pub async fn get_operation(
         .await
         .map_err(|e| with_ctx(e, &ctx))?;
     Ok(Json(operation))
+}
+
+pub async fn list_projects(
+    State(state): State<AppState>,
+    Query(_query): Query<ListGovernanceQuery>,
+    ctx: RequestContext,
+) -> Result<Json<PaginatedCollection<Project>>, BffError> {
+    let projects = state
+        .upstream
+        .list_projects(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(projects))
+}
+
+pub async fn get_project(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ctx: RequestContext,
+) -> Result<Json<Project>, BffError> {
+    let project = state
+        .upstream
+        .get_project(&ctx, &id)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(project))
+}
+
+pub async fn list_project_members(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ctx: RequestContext,
+) -> Result<Json<Vec<ProjectMember>>, BffError> {
+    let members = state
+        .upstream
+        .list_project_members(&ctx, &id)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(members))
+}
+
+pub async fn list_users(
+    State(state): State<AppState>,
+    Query(_query): Query<ListGovernanceQuery>,
+    ctx: RequestContext,
+) -> Result<Json<PaginatedCollection<User>>, BffError> {
+    let users = state
+        .upstream
+        .list_users(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(users))
+}
+
+pub async fn get_user(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ctx: RequestContext,
+) -> Result<Json<User>, BffError> {
+    let user = state
+        .upstream
+        .get_user(&ctx, &id)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(user))
+}
+
+pub async fn list_roles(
+    State(state): State<AppState>,
+    Query(_query): Query<ListGovernanceQuery>,
+    ctx: RequestContext,
+) -> Result<Json<PaginatedCollection<Role>>, BffError> {
+    let roles = state
+        .upstream
+        .list_roles(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(roles))
+}
+
+pub async fn list_quotas(
+    State(state): State<AppState>,
+    Query(query): Query<ListQuotasQuery>,
+    ctx: RequestContext,
+) -> Result<Json<PaginatedCollection<ProjectQuota>>, BffError> {
+    let quotas = state
+        .upstream
+        .list_quotas(&ctx, query.project_id.as_deref())
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(quotas))
+}
+
+pub async fn list_audit_events(
+    State(state): State<AppState>,
+    Query(query): Query<ListAuditEventsQuery>,
+    ctx: RequestContext,
+) -> Result<Json<PaginatedCollection<AuditEvent>>, BffError> {
+    let params = ListAuditEventsParams {
+        page: query.page,
+        page_size: query.page_size,
+        project_id: query.project_id,
+        action: query.action,
+        actor: query.actor,
+        since: query.since,
+        until: query.until,
+    };
+    let events = state
+        .upstream
+        .list_audit_events(&ctx, params)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(events))
+}
+
+pub async fn list_api_credentials(
+    State(state): State<AppState>,
+    Query(_query): Query<ListGovernanceQuery>,
+    ctx: RequestContext,
+) -> Result<Json<PaginatedCollection<ApiCredential>>, BffError> {
+    let credentials = state
+        .upstream
+        .list_api_credentials(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(credentials))
+}
+
+pub async fn create_api_credential(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+    request: Result<Json<CreateApiCredentialRequest>, JsonRejection>,
+) -> Result<Json<ApiCredential>, BffError> {
+    let Json(request) = request.map_err(|e| with_ctx(e, &ctx))?;
+    let credential = state
+        .upstream
+        .create_api_credential(&ctx, request)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(credential))
+}
+
+pub async fn delete_api_credential(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ctx: RequestContext,
+) -> Result<StatusCode, BffError> {
+    state
+        .upstream
+        .delete_api_credential(&ctx, &id)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(StatusCode::NO_CONTENT)
 }

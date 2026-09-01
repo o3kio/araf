@@ -191,6 +191,113 @@ export interface ListOperationsQuery {
   until?: string;
 }
 
+// Governance types
+
+export interface Project {
+  id: string;
+  name: string;
+  organizationId: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email?: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface Role {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export interface ProjectMember {
+  user: User;
+  roles: string[];
+}
+
+export interface QuotaEntry {
+  resourceType: string;
+  limit: number;
+  used: number;
+  unit: string;
+}
+
+export interface ProjectQuota {
+  projectId: string;
+  entries: QuotaEntry[];
+}
+
+export interface AuditEvent {
+  id: string;
+  actor: string;
+  action: string;
+  resourceType: string | null;
+  resourceId: string | null;
+  projectId: string | null;
+  outcome: string;
+  recordedAt: string;
+  correlationId: string;
+}
+
+export interface ApiCredential {
+  id: string;
+  name: string;
+  kind: string;
+  projectId: string;
+  createdAt: string;
+  expiresAt: string | null;
+  secret?: string;
+}
+
+export interface CreateApiCredentialRequest {
+  name: string;
+  kind: string;
+  projectId: string;
+  expiresAt?: string | null;
+}
+
+export interface ListProjectsQuery {
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ListUsersQuery {
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ListRolesQuery {
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ListQuotasQuery {
+  page?: number;
+  pageSize?: number;
+  projectId?: string;
+}
+
+export interface ListAuditEventsQuery {
+  page?: number;
+  pageSize?: number;
+  projectId?: string;
+  action?: string;
+  actor?: string;
+  since?: string;
+  until?: string;
+}
+
+export interface ListApiCredentialsQuery {
+  page?: number;
+  pageSize?: number;
+}
+
 export class ArafApiError extends Error {
   readonly status: number;
   readonly problem: ProblemDetails;
@@ -268,6 +375,19 @@ export interface ArafClient {
   submitAction(resourceType: string, id: string, actionRequest: ActionRequest): Promise<Operation>;
   listOperations(query?: ListOperationsQuery): Promise<PaginatedCollection<Operation>>;
   getOperation(id: string): Promise<Operation>;
+
+  // Governance
+  listProjects(query?: ListProjectsQuery): Promise<PaginatedCollection<Project>>;
+  getProject(id: string): Promise<Project>;
+  listProjectMembers(id: string): Promise<ProjectMember[]>;
+  listUsers(query?: ListUsersQuery): Promise<PaginatedCollection<User>>;
+  getUser(id: string): Promise<User>;
+  listRoles(query?: ListRolesQuery): Promise<PaginatedCollection<Role>>;
+  listQuotas(query?: ListQuotasQuery): Promise<PaginatedCollection<ProjectQuota>>;
+  listAuditEvents(query?: ListAuditEventsQuery): Promise<PaginatedCollection<AuditEvent>>;
+  listApiCredentials(query?: ListApiCredentialsQuery): Promise<PaginatedCollection<ApiCredential>>;
+  createApiCredential(payload: CreateApiCredentialRequest): Promise<ApiCredential>;
+  deleteApiCredential(id: string): Promise<void>;
 }
 
 export function createArafClient(baseUrl: string | URL): ArafClient {
@@ -291,6 +411,7 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
 
     const response = await fetch(url, {
       method: options.method ?? "GET",
+      credentials: "include",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -370,5 +491,63 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
       }),
 
     getOperation: (id) => request<Operation>(`/api/v1/operations/${encodeURIComponent(id)}`),
+
+    // Governance
+    listProjects: (query) =>
+      request<PaginatedCollection<Project>>("/api/v1/governance/projects", {
+        query: { page: query?.page, pageSize: query?.pageSize },
+      }),
+
+    getProject: (id) => request<Project>(`/api/v1/governance/projects/${encodeURIComponent(id)}`),
+
+    listProjectMembers: (id) =>
+      request<ProjectMember[]>(`/api/v1/governance/projects/${encodeURIComponent(id)}/members`),
+
+    listUsers: (query) =>
+      request<PaginatedCollection<User>>("/api/v1/governance/users", {
+        query: { page: query?.page, pageSize: query?.pageSize },
+      }),
+
+    getUser: (id) => request<User>(`/api/v1/governance/users/${encodeURIComponent(id)}`),
+
+    listRoles: (query) =>
+      request<PaginatedCollection<Role>>("/api/v1/governance/roles", {
+        query: { page: query?.page, pageSize: query?.pageSize },
+      }),
+
+    listQuotas: (query) =>
+      request<PaginatedCollection<ProjectQuota>>("/api/v1/governance/quotas", {
+        query: { page: query?.page, pageSize: query?.pageSize, projectId: query?.projectId },
+      }),
+
+    listAuditEvents: (query) =>
+      request<PaginatedCollection<AuditEvent>>("/api/v1/governance/audit", {
+        query: {
+          page: query?.page,
+          pageSize: query?.pageSize,
+          projectId: query?.projectId,
+          action: query?.action,
+          actor: query?.actor,
+          since: query?.since,
+          until: query?.until,
+        },
+      }),
+
+    listApiCredentials: (query) =>
+      request<PaginatedCollection<ApiCredential>>("/api/v1/governance/api-credentials", {
+        query: { page: query?.page, pageSize: query?.pageSize },
+      }),
+
+    createApiCredential: (payload) =>
+      request<ApiCredential>("/api/v1/governance/api-credentials", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    deleteApiCredential: async (id) => {
+      await request<unknown>(`/api/v1/governance/api-credentials/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+    },
   };
 }

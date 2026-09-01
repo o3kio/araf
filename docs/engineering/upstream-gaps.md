@@ -174,3 +174,12 @@ Implementation phases must add new gaps here instead of inventing production O3K
 - **Current status:** Confirmed missing.
 - **Blocked Araf feature:** Tenant governance and operator identity management surfaces.
 - **Acceptable fallback:** Keep governance pages as placeholders/fixtures for M7; defer to M8 after confirming the upstream IAM contract.
+
+## M8-O3K-001: Tenant governance management endpoints
+
+- **Gap id:** `M8-O3K-001`
+- **Required O3K contract:** Authoritative O3K endpoints to list and manage tenant projects, users, roles, effective project membership, per-project quotas and usage, audit/event history, and API credentials (service accounts and application credentials).
+- **Why Araf M8 needs it:** Tenant governance surfaces require server-bounded, scope-safe reads and mutations for projects, users, roles, quotas, audit events, and API credentials. The current O3K `/o3k/v1/identity/me` and token routes provide no management contract for these entities.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Real O3K-backed tenant governance (Projects, Users & Access, Quotas, Audit, Developer API credentials).
+- **Acceptable fallback:** Implement governance reads and API-credential lifecycle in the deterministic fixture adapter only. Expose the same BFF presentation contract so the frontend can integrate, but leave the production `O3kAdapter` methods returning `501 Not Implemented` with clear Problem Details messages. Do not invent production O3K endpoints, resource states, or permission decisions.

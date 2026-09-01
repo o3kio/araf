@@ -10,8 +10,11 @@ use axum::{
     http::{Request, StatusCode},
     response::Response,
 };
-use console_bff_core::fixture_router;
+use console_bff_core::{
+    fixture_router, O3kAdapter, O3kClientConfig, RequestContext, SessionState, Upstream,
+};
 use serde_json::json;
+use std::sync::Arc;
 use tower::ServiceExt;
 
 const TENANT: &str = "tenant-bff";
@@ -41,6 +44,14 @@ async fn assert_problem_details(
     assert!(json["type"].is_string());
     assert!(json["title"].is_string());
     json
+}
+
+fn capability_present(ctx: &serde_json::Value, resource_type: &str, action: &str) -> bool {
+    ctx["capabilities"]
+        .as_array()
+        .expect("capabilities array")
+        .iter()
+        .any(|c| c["resourceType"] == resource_type && c["action"] == action)
 }
 
 #[tokio::test]
@@ -1254,4 +1265,359 @@ async fn operation_detail_returns_event_timeline() {
     assert!(first["occurredAt"].is_string());
     assert!(first["message"].is_string());
     assert_eq!(first["correlationId"], correlation);
+}
+
+#[tokio::test]
+async fn tenant_context_includes_governance_capabilities() {
+    let ctx = body_json(
+        fixture_router(TENANT)
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/context")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    assert!(capability_present(&ctx, "tenant.project", "list"));
+    assert!(capability_present(&ctx, "tenant.project", "read"));
+    assert!(capability_present(&ctx, "tenant.user", "list"));
+    assert!(capability_present(&ctx, "tenant.user", "read"));
+    assert!(capability_present(&ctx, "tenant.role", "list"));
+    assert!(capability_present(&ctx, "tenant.quota", "read"));
+    assert!(capability_present(&ctx, "tenant.audit", "read"));
+    assert!(capability_present(&ctx, "tenant.api-credential", "list"));
+    assert!(capability_present(&ctx, "tenant.api-credential", "create"));
+    assert!(capability_present(&ctx, "tenant.api-credential", "delete"));
+}
+
+#[tokio::test]
+async fn governance_lists_are_bounded_and_paginated() {
+    let app = fixture_router(TENANT);
+
+    let projects = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/governance/projects")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+    assert!(projects["items"].as_array().unwrap().len() <= 6);
+    assert_eq!(projects["hasMore"], false);
+
+    let users = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/governance/users?pageSize=10")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+    assert!(
+        users["items"].as_array().unwrap().len() <= 25,
+        "user list must remain server-bounded"
+    );
+    assert_eq!(users["total"], 50);
+    assert_eq!(users["hasMore"], true);
+
+    let roles = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/governance/roles")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+    assert_eq!(roles["total"], 4);
+
+    let audit = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/governance/audit?pageSize=5")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+    assert_eq!(audit["items"].as_array().unwrap().len(), 5);
+    assert_eq!(audit["total"], 200);
+    assert_eq!(audit["hasMore"], true);
+
+    let quotas = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri("/api/v1/governance/quotas")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+    assert!(!quotas["items"].as_array().unwrap().is_empty());
+    for quota in quotas["items"].as_array().unwrap() {
+        assert!(!quota["entries"].as_array().unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn get_project_returns_requested_project() {
+    let app = fixture_router(TENANT);
+
+    let project = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri("/api/v1/governance/projects/project-1")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    assert_eq!(project["id"], "project-1");
+    assert_eq!(project["status"], "active");
+    assert!(project["name"].is_string());
+    assert!(project["organizationId"].is_string());
+}
+
+#[tokio::test]
+async fn cross_project_access_is_rejected() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-cross-project";
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/governance/projects/project-99")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_problem_details(response, StatusCode::NOT_FOUND, correlation).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/governance/quotas?projectId=project-99")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_problem_details(response, StatusCode::NOT_FOUND, correlation).await;
+}
+
+#[tokio::test]
+async fn governance_missing_capability_returns_403() {
+    let app = fixture_router(OPERATOR);
+    let correlation = "corr-governance-forbidden";
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/governance/projects")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_problem_details(response, StatusCode::FORBIDDEN, correlation).await;
+}
+
+#[tokio::test]
+async fn audit_events_are_distinct_from_operations() {
+    let app = fixture_router(TENANT);
+
+    let audit = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/governance/audit?pageSize=5")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    assert!(!audit["items"].as_array().unwrap().is_empty());
+    for event in audit["items"].as_array().unwrap() {
+        assert!(event["outcome"].is_string());
+        assert!(event["recordedAt"].is_string());
+        assert!(event["actor"].is_string());
+        assert!(event["state"].is_null());
+    }
+
+    let operations = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri("/api/v1/operations?pageSize=5")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    for op in operations["items"].as_array().unwrap() {
+        assert!(op["state"].is_string());
+        assert!(op["outcome"].is_null());
+    }
+}
+
+#[tokio::test]
+async fn api_credential_creation_returns_secret_and_list_hides_it() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-credential";
+
+    let create = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/governance/api-credentials")
+                    .header("content-type", "application/json")
+                    .header(CORRELATION_HEADER, correlation)
+                    .body(Body::from(
+                        json!({
+                            "name": "test-credential",
+                            "kind": "service-account",
+                            "projectId": "project-1"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    assert_eq!(create["name"], "test-credential");
+    assert_eq!(create["kind"], "service-account");
+    assert_eq!(create["projectId"], "project-1");
+    let secret = create["secret"].as_str().expect("secret present on create");
+    assert!(secret.starts_with("secret-"));
+    let credential_id = create["id"].as_str().expect("credential id");
+
+    let list = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/governance/api-credentials")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    assert_eq!(list["total"], 1);
+    let item = &list["items"][0];
+    assert_eq!(item["id"], credential_id);
+    assert!(item["secret"].is_null());
+
+    let delete = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/v1/governance/api-credentials/{credential_id}"
+                ))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(delete.status(), StatusCode::NO_CONTENT);
+
+    let list = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri("/api/v1/governance/api-credentials")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+    assert_eq!(list["total"], 0);
+}
+
+#[tokio::test]
+async fn o3k_adapter_governance_methods_return_501() {
+    let adapter = O3kAdapter::new(
+        "tenant-bff",
+        O3kClientConfig {
+            base_url: "http://localhost:9999".to_owned(),
+            token: "unused-token".to_owned(),
+        },
+    );
+    let ctx = RequestContext::new(
+        "req-test".to_owned(),
+        "corr-test".to_owned(),
+        Arc::new(SessionState::default()),
+    );
+
+    macro_rules! assert_not_implemented {
+        ($expr:expr) => {
+            let err = $expr.expect_err("expected NotImplemented");
+            assert_eq!(err.status(), StatusCode::NOT_IMPLEMENTED);
+        };
+    }
+
+    assert_not_implemented!(adapter.list_projects(&ctx).await);
+    assert_not_implemented!(adapter.get_project(&ctx, "project-1").await);
+    assert_not_implemented!(adapter.list_users(&ctx).await);
+    assert_not_implemented!(adapter.get_user(&ctx, "user-001").await);
+    assert_not_implemented!(adapter.list_roles(&ctx).await);
+    assert_not_implemented!(adapter.list_quotas(&ctx, None).await);
+    assert_not_implemented!(adapter.list_audit_events(&ctx, Default::default()).await);
+    assert_not_implemented!(adapter.list_api_credentials(&ctx).await);
+    assert_not_implemented!(
+        adapter
+            .create_api_credential(
+                &ctx,
+                console_bff_core::model::CreateApiCredentialRequest {
+                    name: "x".to_owned(),
+                    kind: "service-account".to_owned(),
+                    project_id: "project-1".to_owned(),
+                    expires_at: None,
+                },
+            )
+            .await
+    );
+    assert_not_implemented!(adapter.delete_api_credential(&ctx, "cred-1").await);
 }
