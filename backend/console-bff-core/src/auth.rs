@@ -143,13 +143,17 @@ fn clear_session_cookie(response: &mut Response, surface: &str) {
 /// Initiate OIDC login.
 /// In production this redirects to the IdP authorization endpoint.
 /// In fixture mode, redirects to the callback.
-pub async fn login(State(config): State<OidcConfig>) -> Redirect {
+pub async fn login(
+    State(config): State<OidcConfig>,
+    State(session_store): State<Arc<SessionStore>>,
+) -> Redirect {
     if config.fixture_mode {
         return Redirect::to(&config.authorization_url);
     }
+    let state = session_store.issue_auth_state().await;
     Redirect::to(&format!(
-        "{}?response_type=code&client_id={}&redirect_uri={}&scope=openid%20profile&state=unsupported",
-        config.authorization_url, config.client_id, config.redirect_uri
+        "{}?response_type=code&client_id={}&redirect_uri={}&scope=openid%20profile&state={}",
+        config.authorization_url, config.client_id, config.redirect_uri, state
     ))
 }
 
@@ -162,8 +166,13 @@ pub async fn auth_callback(
     State(session_store): State<Arc<SessionStore>>,
     Query(params): Query<AuthCallbackQuery>,
 ) -> Result<Response, BffError> {
-    if !oidc_config.fixture_mode && params.state.as_deref().is_none_or(str::is_empty) {
-        return Err(BffError::new(ApiError::Unauthorized, "auth"));
+    if !oidc_config.fixture_mode {
+        let Some(state) = params.state.as_deref() else {
+            return Err(BffError::new(ApiError::Unauthorized, "auth"));
+        };
+        if !session_store.consume_auth_state(state).await {
+            return Err(BffError::new(ApiError::Unauthorized, "auth"));
+        }
     }
     let session_token = if params.code == "fixture" && oidc_config.fixture_mode {
         session_store

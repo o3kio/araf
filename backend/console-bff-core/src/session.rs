@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 /// Default session lifetime (24 hours).
 pub const DEFAULT_SESSION_TTL: Duration = Duration::from_secs(86400);
+const AUTH_STATE_TTL: Duration = Duration::from_secs(600);
 
 /// Server-side session data.
 ///
@@ -48,6 +49,7 @@ impl SessionData {
 #[derive(Debug, Default)]
 pub struct SessionStore {
     sessions: RwLock<HashMap<String, SessionData>>,
+    auth_states: RwLock<HashMap<String, Instant>>,
 }
 
 impl SessionStore {
@@ -86,6 +88,25 @@ impl SessionStore {
             .await
             .insert(session_token.clone(), session);
         session_token
+    }
+
+    /// Issue a short-lived, single-use OIDC callback state value.
+    pub async fn issue_auth_state(&self) -> String {
+        let state = Uuid::new_v4().to_string();
+        self.auth_states
+            .write()
+            .await
+            .insert(state.clone(), Instant::now() + AUTH_STATE_TTL);
+        state
+    }
+
+    /// Consume an OIDC callback state value, rejecting expiry and replay.
+    pub async fn consume_auth_state(&self, state: &str) -> bool {
+        let mut states = self.auth_states.write().await;
+        match states.remove(state) {
+            Some(expires_at) if Instant::now() < expires_at => true,
+            _ => false,
+        }
     }
 
     /// Look up a session by its opaque token.
@@ -221,5 +242,13 @@ mod tests {
         assert!(store.validate(&old).await.is_none());
         // New token is valid
         assert!(store.validate(&new).await.is_some());
+    }
+
+    #[tokio::test]
+    async fn auth_state_is_single_use() {
+        let store = SessionStore::new();
+        let state = store.issue_auth_state().await;
+        assert!(store.consume_auth_state(&state).await);
+        assert!(!store.consume_auth_state(&state).await);
     }
 }
