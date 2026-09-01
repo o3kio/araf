@@ -60,6 +60,17 @@ function TestWrapper({ children, client }: { children: React.ReactNode; client?:
     submitAction: vi.fn(),
     listOperations: vi.fn(),
     getOperation: vi.fn().mockResolvedValue(pendingOperation),
+    listProjects: vi.fn(),
+    getProject: vi.fn(),
+    listProjectMembers: vi.fn(),
+    listUsers: vi.fn(),
+    getUser: vi.fn(),
+    listRoles: vi.fn(),
+    listQuotas: vi.fn(),
+    listAuditEvents: vi.fn(),
+    listApiCredentials: vi.fn(),
+    createApiCredential: vi.fn(),
+    deleteApiCredential: vi.fn(),
   };
   return (
     <OperationsClientProvider client={client ?? defaultClient}>
@@ -111,6 +122,17 @@ describe("OperationDetailPage", () => {
       submitAction: vi.fn(),
       listOperations: vi.fn(),
       getOperation: vi.fn().mockResolvedValue(failedOperation),
+      listProjects: vi.fn(),
+      getProject: vi.fn(),
+      listProjectMembers: vi.fn(),
+      listUsers: vi.fn(),
+      getUser: vi.fn(),
+      listRoles: vi.fn(),
+      listQuotas: vi.fn(),
+      listAuditEvents: vi.fn(),
+      listApiCredentials: vi.fn(),
+      createApiCredential: vi.fn(),
+      deleteApiCredential: vi.fn(),
     };
 
     render(
@@ -146,6 +168,17 @@ describe("OperationDetailPage", () => {
       submitAction: vi.fn(),
       listOperations: vi.fn(),
       getOperation: vi.fn().mockResolvedValue(operationWithoutEvents),
+      listProjects: vi.fn(),
+      getProject: vi.fn(),
+      listProjectMembers: vi.fn(),
+      listUsers: vi.fn(),
+      getUser: vi.fn(),
+      listRoles: vi.fn(),
+      listQuotas: vi.fn(),
+      listAuditEvents: vi.fn(),
+      listApiCredentials: vi.fn(),
+      createApiCredential: vi.fn(),
+      deleteApiCredential: vi.fn(),
     };
 
     render(
@@ -183,6 +216,17 @@ describe("OperationDetailPage", () => {
       submitAction: vi.fn(),
       listOperations: vi.fn(),
       getOperation: vi.fn().mockResolvedValue(retryableOperation),
+      listProjects: vi.fn(),
+      getProject: vi.fn(),
+      listProjectMembers: vi.fn(),
+      listUsers: vi.fn(),
+      getUser: vi.fn(),
+      listRoles: vi.fn(),
+      listQuotas: vi.fn(),
+      listAuditEvents: vi.fn(),
+      listApiCredentials: vi.fn(),
+      createApiCredential: vi.fn(),
+      deleteApiCredential: vi.fn(),
     };
 
     render(
@@ -209,6 +253,17 @@ describe("OperationDetailPage", () => {
       submitAction: vi.fn(),
       listOperations: vi.fn(),
       getOperation: vi.fn().mockRejectedValue(new Error("Not found")),
+      listProjects: vi.fn(),
+      getProject: vi.fn(),
+      listProjectMembers: vi.fn(),
+      listUsers: vi.fn(),
+      getUser: vi.fn(),
+      listRoles: vi.fn(),
+      listQuotas: vi.fn(),
+      listAuditEvents: vi.fn(),
+      listApiCredentials: vi.fn(),
+      createApiCredential: vi.fn(),
+      deleteApiCredential: vi.fn(),
     };
 
     render(

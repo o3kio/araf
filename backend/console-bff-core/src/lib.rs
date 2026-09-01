@@ -20,7 +20,7 @@ pub mod upstream;
 use std::sync::Arc;
 
 use axum::{
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 pub use error::{ApiError, BffError, ProblemDetails, UpstreamError};
@@ -63,6 +63,28 @@ pub fn api_router(upstream: Arc<dyn Upstream>) -> Router {
         )
         .route("/api/v1/operations", get(handlers::list_operations))
         .route("/api/v1/operations/{id}", get(handlers::get_operation))
+        .route("/api/v1/governance/projects", get(handlers::list_projects))
+        .route(
+            "/api/v1/governance/projects/{id}",
+            get(handlers::get_project),
+        )
+        .route(
+            "/api/v1/governance/projects/{id}/members",
+            get(handlers::list_project_members),
+        )
+        .route("/api/v1/governance/users", get(handlers::list_users))
+        .route("/api/v1/governance/users/{id}", get(handlers::get_user))
+        .route("/api/v1/governance/roles", get(handlers::list_roles))
+        .route("/api/v1/governance/quotas", get(handlers::list_quotas))
+        .route("/api/v1/governance/audit", get(handlers::list_audit_events))
+        .route(
+            "/api/v1/governance/api-credentials",
+            get(handlers::list_api_credentials).post(handlers::create_api_credential),
+        )
+        .route(
+            "/api/v1/governance/api-credentials/{id}",
+            delete(handlers::delete_api_credential),
+        )
         .with_state(state)
 }
 

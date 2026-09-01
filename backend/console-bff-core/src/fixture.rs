@@ -17,11 +17,13 @@ use time::OffsetDateTime;
 use crate::{
     error::ApiError,
     model::{
-        ActionDescriptor, ActionRequest, ActionRiskClass, Capability, ColumnDescriptor,
-        CreateResourceRequest, DetailsSectionDescriptor, FilterDescriptor, FilterKind, JsonSchema,
-        Operation, OperationError, OperationEvent, OperationState, PaginatedCollection,
-        RelationshipDescriptor, RelationshipDirection, Resource, ResourceStatus,
-        ResourceTypeDescriptor, ServiceDescriptor, SessionContext, SortDirection,
+        ActionDescriptor, ActionRequest, ActionRiskClass, ApiCredential, AuditEvent, Capability,
+        ColumnDescriptor, CreateApiCredentialRequest, CreateResourceRequest,
+        DetailsSectionDescriptor, FilterDescriptor, FilterKind, JsonSchema, ListAuditEventsParams,
+        Operation, OperationError, OperationEvent, OperationState, PaginatedCollection, Project,
+        ProjectMember, ProjectQuota, QuotaEntry, RelationshipDescriptor, RelationshipDirection,
+        Resource, ResourceStatus, ResourceTypeDescriptor, Role, ServiceDescriptor, SessionContext,
+        SortDirection, User,
     },
     request::RequestContext,
     upstream::{ListOperationsParams, ListResourcesParams, Upstream},
@@ -35,6 +37,18 @@ pub const FIXTURE_VPC_TOTAL: u64 = 1_000;
 
 /// Total number of synthetic volume resources.
 pub const FIXTURE_VOLUME_TOTAL: u64 = 5_000;
+
+/// Total number of synthetic users in the fixture tenant.
+const FIXTURE_USER_TOTAL: u64 = 50;
+
+/// Total number of synthetic roles in the fixture tenant.
+const FIXTURE_ROLE_TOTAL: u64 = 4;
+
+/// Total number of synthetic audit events in the fixture tenant.
+const FIXTURE_AUDIT_TOTAL: u64 = 200;
+
+/// Valid API credential kinds.
+const API_CREDENTIAL_KINDS: &[&str] = &["service-account", "application-credential"];
 
 /// Seconds before a Pending fixture operation transitions to Running.
 const PENDING_TO_RUNNING_SECS: i64 = 1;
@@ -50,6 +64,7 @@ const RUNNING_TO_TERMINAL_SECS: i64 = 3;
 #[derive(Debug, Default)]
 struct OperationStore {
     operations: Vec<Operation>,
+    api_credentials: Vec<ApiCredential>,
 }
 
 /// Fixture adapter configured for a specific BFF surface.
@@ -392,6 +407,173 @@ impl FixtureAdapter {
         let mut store = self.store.lock().expect("fixture operation store poisoned");
         for op in &mut store.operations {
             Self::advance_operation(op, now);
+        }
+    }
+
+    fn hash_id(id: &str) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        id.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn accessible_project_ids(session: &SessionContext) -> Vec<String> {
+        let mut ids: Vec<String> = (1..=5).map(|i| format!("project-{i}")).collect();
+        if let Some(pid) = &session.project_id {
+            if !ids.contains(pid) {
+                ids.push(pid.clone());
+            }
+        }
+        ids
+    }
+
+    fn project_for(session: &SessionContext, id: &str) -> Option<Project> {
+        let accessible = Self::accessible_project_ids(session);
+        if !accessible.iter().any(|pid| pid == id) {
+            return None;
+        }
+        let seed = Self::hash_id(id);
+        let name = if id == "project-fixture" {
+            "Fixture Project".to_owned()
+        } else {
+            format!("Project {}", id.strip_prefix("project-").unwrap_or(id))
+        };
+        let status = if seed % 10 == 0 {
+            "suspended"
+        } else {
+            "active"
+        };
+        let created =
+            OffsetDateTime::UNIX_EPOCH + time::Duration::seconds((seed % 1_000_000) as i64);
+        Some(Project {
+            id: id.to_owned(),
+            name,
+            organization_id: session
+                .organization_id
+                .clone()
+                .unwrap_or_else(|| "org-fixture".to_owned()),
+            status: status.to_owned(),
+            created_at: created,
+            updated_at: created + time::Duration::seconds(60),
+        })
+    }
+
+    fn user_at(id: u64) -> User {
+        let seed = Self::seed_from_id(id ^ 0xdead_beef);
+        let status = if seed % 7 == 0 { "suspended" } else { "active" };
+        let email = if seed % 3 == 0 {
+            None
+        } else {
+            Some(format!("user-{id:03}@example.com"))
+        };
+        User {
+            id: format!("user-{id:03}"),
+            name: format!("Fixture User {id}"),
+            email,
+            status: status.to_owned(),
+            created_at: OffsetDateTime::UNIX_EPOCH
+                + time::Duration::seconds((seed % 1_000_000) as i64),
+        }
+    }
+
+    fn role_at(id: u64) -> Role {
+        match id % FIXTURE_ROLE_TOTAL {
+            0 => Role {
+                id: "role-tenant-admin".to_owned(),
+                name: "Tenant Admin".to_owned(),
+                description: Some("Full tenant project administration".to_owned()),
+            },
+            1 => Role {
+                id: "role-tenant-member".to_owned(),
+                name: "Tenant Member".to_owned(),
+                description: Some("Can manage resources within assigned projects".to_owned()),
+            },
+            2 => Role {
+                id: "role-tenant-reader".to_owned(),
+                name: "Tenant Reader".to_owned(),
+                description: Some("Read-only access to assigned projects".to_owned()),
+            },
+            _ => Role {
+                id: "role-developer".to_owned(),
+                name: "Developer".to_owned(),
+                description: Some("Can manage API credentials and developer resources".to_owned()),
+            },
+        }
+    }
+
+    fn quota_for(project_id: &str) -> ProjectQuota {
+        let seed = Self::hash_id(project_id);
+        let entries = [
+            ("compute.server", 100_u64, "instances"),
+            ("storage.volume", 5000_u64, "gibibytes"),
+            ("network.vpc", 20_u64, "networks"),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(idx, (resource_type, limit, unit))| {
+            let used = ((seed >> (idx * 8)) % (limit.max(1))).min(limit);
+            QuotaEntry {
+                resource_type: resource_type.to_owned(),
+                limit,
+                used,
+                unit: unit.to_owned(),
+            }
+        })
+        .collect();
+        ProjectQuota {
+            project_id: project_id.to_owned(),
+            entries,
+        }
+    }
+
+    fn audit_event_at(id: u64, session: &SessionContext) -> AuditEvent {
+        let seed = Self::seed_from_id(id ^ 0xc0ff_ee00);
+        let accessible = Self::accessible_project_ids(session);
+        let project_id = if accessible.is_empty() {
+            None
+        } else {
+            Some(accessible[(id as usize) % accessible.len()].clone())
+        };
+        let actor = format!("user-{:03}", id % FIXTURE_USER_TOTAL);
+        let action = match id % 5 {
+            0 => "create",
+            1 => "delete",
+            2 => "update",
+            3 => "login",
+            _ => "logout",
+        };
+        let resource_type = if id % 3 == 0 {
+            None
+        } else {
+            Some(match id % 4 {
+                0 => "compute.server",
+                1 => "storage.volume",
+                2 => "network.vpc",
+                _ => "tenant.project",
+            })
+        };
+        let resource_id = resource_type.as_ref().map(|rt| format!("{rt}-{id:010}"));
+        let outcome = if seed % 8 == 0 { "failed" } else { "succeeded" };
+        AuditEvent {
+            id: format!("audit-{id:010}"),
+            actor,
+            action: action.to_owned(),
+            resource_type: resource_type.map(|s| s.to_owned()),
+            resource_id,
+            project_id,
+            outcome: outcome.to_owned(),
+            recorded_at: OffsetDateTime::UNIX_EPOCH
+                + time::Duration::seconds((seed % 1_000_000) as i64),
+            correlation_id: format!("corr-audit-{id}"),
+        }
+    }
+
+    fn validate_api_credential_kind(kind: &str) -> Result<(), ApiError> {
+        if API_CREDENTIAL_KINDS.contains(&kind) {
+            Ok(())
+        } else {
+            Err(ApiError::BadRequest(format!(
+                "invalid credential kind: {kind}"
+            )))
         }
     }
 
@@ -1083,6 +1265,301 @@ impl Upstream for FixtureAdapter {
 
         Ok(Self::operation_at(numeric_id))
     }
+
+    async fn list_projects(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<PaginatedCollection<Project>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("tenant.project", "list") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let items: Vec<Project> = Self::accessible_project_ids(&session)
+            .into_iter()
+            .filter_map(|id| Self::project_for(&session, &id))
+            .collect();
+
+        Ok(PaginatedCollection {
+            total: items.len() as u64,
+            has_more: false,
+            page: 0,
+            page_size: items.len() as u32,
+            items,
+        })
+    }
+
+    async fn get_project(&self, ctx: &RequestContext, id: &str) -> Result<Project, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("tenant.project", "read") {
+            return Err(ApiError::Forbidden);
+        }
+
+        Self::project_for(&session, id).ok_or(ApiError::NotFound)
+    }
+
+    async fn list_project_members(
+        &self,
+        ctx: &RequestContext,
+        id: &str,
+    ) -> Result<Vec<ProjectMember>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("tenant.project", "read") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let accessible = Self::accessible_project_ids(&session);
+        if !accessible.iter().any(|pid| pid == id) {
+            return Err(ApiError::NotFound);
+        }
+
+        let seed = Self::hash_id(id);
+        let member_count = ((seed % 5) + 1) as usize;
+        let members: Vec<ProjectMember> = (0..member_count)
+            .map(|idx| {
+                let user_id = (seed + idx as u64) % FIXTURE_USER_TOTAL;
+                let role = Self::role_at((seed + idx as u64) % FIXTURE_ROLE_TOTAL);
+                ProjectMember {
+                    user: Self::user_at(user_id),
+                    roles: vec![role.name],
+                }
+            })
+            .collect();
+        Ok(members)
+    }
+
+    async fn list_users(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<PaginatedCollection<User>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("tenant.user", "list") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let all: Vec<User> = (0..FIXTURE_USER_TOTAL).map(Self::user_at).collect();
+        let page_size = 25_u32;
+        let items = all.iter().take(page_size as usize).cloned().collect();
+        Ok(PaginatedCollection {
+            total: all.len() as u64,
+            has_more: all.len() > page_size as usize,
+            page: 0,
+            page_size,
+            items,
+        })
+    }
+
+    async fn get_user(&self, ctx: &RequestContext, id: &str) -> Result<User, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("tenant.user", "read") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let numeric_id = id
+            .strip_prefix("user-")
+            .and_then(|s| s.parse::<u64>().ok())
+            .filter(|n| *n < FIXTURE_USER_TOTAL)
+            .ok_or(ApiError::NotFound)?;
+        Ok(Self::user_at(numeric_id))
+    }
+
+    async fn list_roles(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<PaginatedCollection<Role>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("tenant.role", "list") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let items: Vec<Role> = (0..FIXTURE_ROLE_TOTAL).map(Self::role_at).collect();
+        Ok(PaginatedCollection {
+            total: items.len() as u64,
+            has_more: false,
+            page: 0,
+            page_size: items.len() as u32,
+            items,
+        })
+    }
+
+    async fn list_quotas(
+        &self,
+        ctx: &RequestContext,
+        project_id: Option<&str>,
+    ) -> Result<PaginatedCollection<ProjectQuota>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("tenant.quota", "read") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let accessible = Self::accessible_project_ids(&session);
+        let ids: Vec<String> = match project_id {
+            Some(pid) => {
+                if !accessible.iter().any(|id| id == pid) {
+                    return Err(ApiError::NotFound);
+                }
+                vec![pid.to_owned()]
+            }
+            None => accessible,
+        };
+
+        let items: Vec<ProjectQuota> = ids.iter().map(|id| Self::quota_for(id)).collect();
+        Ok(PaginatedCollection {
+            total: items.len() as u64,
+            has_more: false,
+            page: 0,
+            page_size: items.len() as u32,
+            items,
+        })
+    }
+
+    async fn list_audit_events(
+        &self,
+        ctx: &RequestContext,
+        params: ListAuditEventsParams,
+    ) -> Result<PaginatedCollection<AuditEvent>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("tenant.audit", "read") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let accessible = Self::accessible_project_ids(&session);
+        if let Some(pid) = &params.project_id {
+            if !accessible.iter().any(|id| id == pid) {
+                return Err(ApiError::NotFound);
+            }
+        }
+
+        let mut events: Vec<AuditEvent> = (0..FIXTURE_AUDIT_TOTAL)
+            .map(|id| Self::audit_event_at(id, &session))
+            .filter(|e| {
+                params
+                    .project_id
+                    .as_ref()
+                    .map(|pid| e.project_id.as_ref() == Some(pid))
+                    .unwrap_or(true)
+            })
+            .filter(|e| {
+                params
+                    .action
+                    .as_ref()
+                    .map(|a| &e.action == a)
+                    .unwrap_or(true)
+            })
+            .filter(|e| params.actor.as_ref().map(|a| &e.actor == a).unwrap_or(true))
+            .filter(|e| {
+                params
+                    .since
+                    .map(|since| e.recorded_at >= since)
+                    .unwrap_or(true)
+            })
+            .filter(|e| {
+                params
+                    .until
+                    .map(|until| e.recorded_at <= until)
+                    .unwrap_or(true)
+            })
+            .collect();
+
+        events.sort_by_key(|b| std::cmp::Reverse(b.recorded_at));
+
+        let page_size = params.page_size.clamp(1, 100);
+        let total = events.len() as u64;
+        let offset = (params.page as u64).saturating_mul(page_size as u64);
+        let items = if offset >= total {
+            vec![]
+        } else {
+            let end = (offset + page_size as u64).min(total) as usize;
+            events[offset as usize..end].to_vec()
+        };
+
+        Ok(PaginatedCollection {
+            items,
+            total,
+            page: params.page,
+            page_size,
+            has_more: offset + (page_size as u64) < total,
+        })
+    }
+
+    async fn list_api_credentials(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<PaginatedCollection<ApiCredential>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("tenant.api-credential", "list") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let store = self.store.lock().expect("fixture operation store poisoned");
+        let items = store.api_credentials.clone();
+        let total = items.len() as u64;
+        Ok(PaginatedCollection {
+            items,
+            total,
+            page: 0,
+            page_size: total.max(1) as u32,
+            has_more: false,
+        })
+    }
+
+    async fn create_api_credential(
+        &self,
+        ctx: &RequestContext,
+        request: CreateApiCredentialRequest,
+    ) -> Result<ApiCredential, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("tenant.api-credential", "create") {
+            return Err(ApiError::Forbidden);
+        }
+
+        Self::validate_api_credential_kind(&request.kind)?;
+
+        let accessible = Self::accessible_project_ids(&session);
+        if !accessible.iter().any(|id| id == &request.project_id) {
+            return Err(ApiError::NotFound);
+        }
+
+        let id = format!("cred-{}", uuid::Uuid::new_v4());
+        let secret = format!("secret-{}", uuid::Uuid::new_v4());
+        let now = OffsetDateTime::now_utc();
+        let metadata = ApiCredential {
+            id: id.clone(),
+            name: request.name,
+            kind: request.kind,
+            project_id: request.project_id,
+            created_at: now,
+            expires_at: request.expires_at,
+            secret: None,
+        };
+
+        self.store
+            .lock()
+            .expect("fixture operation store poisoned")
+            .api_credentials
+            .push(metadata.clone());
+
+        Ok(ApiCredential {
+            secret: Some(secret),
+            ..metadata
+        })
+    }
+
+    async fn delete_api_credential(&self, ctx: &RequestContext, id: &str) -> Result<(), ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("tenant.api-credential", "delete") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let mut store = self.store.lock().expect("fixture operation store poisoned");
+        let pos = store
+            .api_credentials
+            .iter()
+            .position(|c| c.id == id)
+            .ok_or(ApiError::NotFound)?;
+        store.api_credentials.remove(pos);
+        Ok(())
+    }
 }
 
 impl SessionContext {
@@ -1108,6 +1585,51 @@ impl SessionContext {
                 action: "delete".to_string(),
             },
         ]);
+
+        if surface == "tenant-bff" {
+            capabilities.extend([
+                Capability {
+                    resource_type: "tenant.project".to_string(),
+                    action: "list".to_string(),
+                },
+                Capability {
+                    resource_type: "tenant.project".to_string(),
+                    action: "read".to_string(),
+                },
+                Capability {
+                    resource_type: "tenant.user".to_string(),
+                    action: "list".to_string(),
+                },
+                Capability {
+                    resource_type: "tenant.user".to_string(),
+                    action: "read".to_string(),
+                },
+                Capability {
+                    resource_type: "tenant.role".to_string(),
+                    action: "list".to_string(),
+                },
+                Capability {
+                    resource_type: "tenant.quota".to_string(),
+                    action: "read".to_string(),
+                },
+                Capability {
+                    resource_type: "tenant.audit".to_string(),
+                    action: "read".to_string(),
+                },
+                Capability {
+                    resource_type: "tenant.api-credential".to_string(),
+                    action: "list".to_string(),
+                },
+                Capability {
+                    resource_type: "tenant.api-credential".to_string(),
+                    action: "create".to_string(),
+                },
+                Capability {
+                    resource_type: "tenant.api-credential".to_string(),
+                    action: "delete".to_string(),
+                },
+            ]);
+        }
 
         if surface == "operator-bff" {
             capabilities.extend([

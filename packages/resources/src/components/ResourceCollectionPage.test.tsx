@@ -95,6 +95,17 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
     submitAction: vi.fn(),
     listOperations: vi.fn(),
     getOperation: vi.fn(),
+    listProjects: vi.fn(),
+    getProject: vi.fn(),
+    listProjectMembers: vi.fn(),
+    listUsers: vi.fn(),
+    getUser: vi.fn(),
+    listRoles: vi.fn(),
+    listQuotas: vi.fn(),
+    listAuditEvents: vi.fn(),
+    listApiCredentials: vi.fn(),
+    createApiCredential: vi.fn(),
+    deleteApiCredential: vi.fn(),
   };
 
   return (
@@ -159,6 +170,17 @@ describe("ResourceCollectionPage", () => {
         submitAction: vi.fn(),
         listOperations: vi.fn(),
         getOperation: vi.fn(),
+        listProjects: vi.fn(),
+        getProject: vi.fn(),
+        listProjectMembers: vi.fn(),
+        listUsers: vi.fn(),
+        getUser: vi.fn(),
+        listRoles: vi.fn(),
+        listQuotas: vi.fn(),
+        listAuditEvents: vi.fn(),
+        listApiCredentials: vi.fn(),
+        createApiCredential: vi.fn(),
+        deleteApiCredential: vi.fn(),
       };
 
       return (
