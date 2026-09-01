@@ -1,0 +1,75 @@
+# Araf MVP — Docker Compose deployment
+#
+# Starts four services:
+#   tenant-bff       — Rust BFF for the Tenant Console (port 8080)
+#   operator-bff     — Rust BFF for the Operator Console (port 8081)
+#   tenant-console   — Static SPA served by nginx (port 5173 → 80)
+#   operator-console — Static SPA served by nginx (port 5174 → 80)
+#
+# Usage:
+#   docker compose up --build
+#   Open http://localhost:5173 (tenant) or http://localhost:5174 (operator)
+
+services:
+
+  tenant-bff:
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    command: ["tenant-bff"]
+    ports:
+      - "8080:8080"
+    environment:
+      - ARAF_TENANT_BFF_PORT=8080
+      - ARAF_UPSTREAM_ADAPTER=fixture
+      - RUST_LOG=info
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  operator-bff:
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    command: ["operator-bff"]
+    ports:
+      - "8081:8081"
+    environment:
+      - ARAF_OPERATOR_BFF_PORT=8081
+      - ARAF_UPSTREAM_ADAPTER=fixture
+      - RUST_LOG=info
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  tenant-console:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        APP: tenant-console
+        VITE_TENANT_BFF_URL: http://localhost:8080
+    ports:
+      - "5173:80"
+    depends_on:
+      tenant-bff:
+        condition: service_healthy
+
+  operator-console:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        APP: operator-console
+        VITE_OPERATOR_BFF_URL: http://localhost:8081
+    ports:
+      - "5174:80"
+    depends_on:
+      operator-bff:
+        condition: service_healthy
