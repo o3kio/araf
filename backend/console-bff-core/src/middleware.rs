@@ -49,8 +49,11 @@ pub fn apply_default_layers(router: Router, surface: &'static str) -> Router {
 /// Authentication is intentionally fail-closed until the provider-backed
 /// session middleware is mounted. No request receives an authenticated
 /// identity merely because it reached the BFF.
-pub fn apply_production_layers(router: Router) -> Router {
-    apply_layers(router, Arc::new(SessionState::default()))
+pub fn apply_production_layers(
+    router: Router,
+    session_store: Arc<crate::session::SessionStore>,
+) -> Router {
+    apply_layers_with_session_store(router, session_store)
 }
 
 fn apply_layers(router: Router, session: Arc<SessionState>) -> Router {
@@ -127,12 +130,81 @@ fn apply_layers(router: Router, session: Arc<SessionState>) -> Router {
         .layer(axum::middleware::from_fn(redact_sensitive_logs))
 }
 
+fn apply_layers_with_session_store(
+    router: Router,
+    session_store: Arc<crate::session::SessionStore>,
+) -> Router {
+    let csp_header = SetResponseHeaderLayer::overriding(
+        axum::http::header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(CSP_POLICY),
+    );
+    let xframe = SetResponseHeaderLayer::overriding(
+        axum::http::header::HeaderName::from_static("x-frame-options"),
+        HeaderValue::from_static("DENY"),
+    );
+    let xcontent = SetResponseHeaderLayer::overriding(
+        axum::http::header::HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    let referrer = SetResponseHeaderLayer::overriding(
+        axum::http::header::HeaderName::from_static("referrer-policy"),
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+    let permissions = SetResponseHeaderLayer::overriding(
+        axum::http::header::HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+    );
+    router
+        .layer(csp_header)
+        .layer(xframe)
+        .layer(xcontent)
+        .layer(referrer)
+        .layer(permissions)
+        .layer(axum::middleware::from_fn_with_state(
+            session_store,
+            inject_validated_session,
+        ))
+        .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE_BYTES))
+        .layer(CompressionLayer::new())
+        .layer(CorsLayer::new().allow_origin(AllowOrigin::predicate(|_, _| true)))
+        .layer(axum::middleware::from_fn(propagate_id_headers))
+        .layer(TraceLayer::new_for_http())
+}
+
 async fn inject_session(
     State(session): State<Arc<SessionState>>,
     mut request: Request,
     next: Next,
 ) -> Response {
     request.extensions_mut().insert(session);
+    next.run(request).await
+}
+
+async fn inject_validated_session(
+    State(store): State<Arc<crate::session::SessionStore>>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    if let Some(token) = request
+        .headers()
+        .get(axum::http::header::COOKIE)
+        .and_then(|header| header.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|cookie| {
+                let (name, value) = cookie.trim().split_once('=')?;
+                (name == "araf_tenant_session" || name == "araf_operator_session")
+                    .then(|| (name, value))
+            })
+        })
+    {
+        if let Some(data) = store.validate(token.1).await {
+            request.extensions_mut().insert(Arc::new(SessionState {
+                surface: data.surface,
+                authenticated: true,
+                user_id: Some(data.user_id),
+            }));
+        }
+    }
     next.run(request).await
 }
 
@@ -187,7 +259,10 @@ mod tests {
 
     #[tokio::test]
     async fn production_middleware_does_not_inject_fixture_identity() {
-        let production = apply_production_layers(Router::new().route("/probe", get(session_probe)));
+        let production = apply_production_layers(
+            Router::new().route("/probe", get(session_probe)),
+            crate::session::SessionStore::new(),
+        );
         let fixture = apply_default_layers(
             Router::new().route("/probe", get(session_probe)),
             "tenant-bff",

@@ -286,11 +286,12 @@ pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
         oidc,
         sessions: session::SessionStore::new(),
     };
+    let sessions = state.sessions.clone();
     let router =
         routes_for_surface(config.surface, config.surface == "operator-bff").with_state(state);
     Ok(match config.adapter {
         UpstreamAdapter::Fixture => middleware::apply_default_layers(router, config.surface),
-        UpstreamAdapter::O3k => middleware::apply_production_layers(router),
+        UpstreamAdapter::O3k => middleware::apply_production_layers(router, sessions),
     })
 }
 
