@@ -33,6 +33,9 @@ pub struct OidcConfig {
     pub client_secret: String,
     pub issuer_url: String,
     pub redirect_uri: String,
+    pub authorization_url: String,
+    pub userinfo_url: String,
+    pub fixture_mode: bool,
     pub surface: &'static str,
 }
 
@@ -53,11 +56,24 @@ impl OidcConfig {
             .unwrap_or_else(|_| "http://localhost:8080".into());
         let redirect_uri = std::env::var("ARAF_OIDC_REDIRECT_URI")
             .unwrap_or_else(|_| "http://localhost:3000/login/callback".into());
+        let authorization_url = std::env::var("ARAF_OIDC_AUTHORIZATION_URL").map_err(|_| {
+            ApiError::Upstream(crate::error::UpstreamError::Error(
+                "ARAF_OIDC_AUTHORIZATION_URL not set".into(),
+            ))
+        })?;
+        let userinfo_url = std::env::var("ARAF_OIDC_USERINFO_URL").map_err(|_| {
+            ApiError::Upstream(crate::error::UpstreamError::Error(
+                "ARAF_OIDC_USERINFO_URL not set".into(),
+            ))
+        })?;
         Ok(Self {
             client_id,
             client_secret,
             issuer_url,
             redirect_uri,
+            authorization_url,
+            userinfo_url,
+            fixture_mode: false,
             surface,
         })
     }
@@ -69,6 +85,9 @@ impl OidcConfig {
             client_secret: "unused-fixture-secret".into(),
             issuer_url: "http://localhost:8080".into(),
             redirect_uri: "http://localhost:3000/login/callback".into(),
+            authorization_url: "/api/v1/auth/callback?code=fixture&state=mock".into(),
+            userinfo_url: "http://localhost:8080/userinfo".into(),
+            fixture_mode: true,
             surface,
         }
     }
@@ -124,8 +143,14 @@ fn clear_session_cookie(response: &mut Response, surface: &str) {
 /// Initiate OIDC login.
 /// In production this redirects to the IdP authorization endpoint.
 /// In fixture mode, redirects to the callback.
-pub async fn login(State(_config): State<OidcConfig>) -> Redirect {
-    Redirect::to("/api/v1/auth/callback?code=fixture&state=mock")
+pub async fn login(State(config): State<OidcConfig>) -> Redirect {
+    if config.fixture_mode {
+        return Redirect::to(&config.authorization_url);
+    }
+    Redirect::to(&format!(
+        "{}?response_type=code&client_id={}&redirect_uri={}&scope=openid%20profile&state=unsupported",
+        config.authorization_url, config.client_id, config.redirect_uri
+    ))
 }
 
 /// Handle the OIDC authorization-code callback.
@@ -137,7 +162,10 @@ pub async fn auth_callback(
     State(session_store): State<Arc<SessionStore>>,
     Query(params): Query<AuthCallbackQuery>,
 ) -> Result<Response, BffError> {
-    let session_token = if params.code == "fixture" {
+    if !oidc_config.fixture_mode && params.state.as_deref().is_none_or(str::is_empty) {
+        return Err(BffError::new(ApiError::Unauthorized, "auth"));
+    }
+    let session_token = if params.code == "fixture" && oidc_config.fixture_mode {
         session_store
             .create(
                 "fixture-user".into(),
@@ -151,7 +179,8 @@ pub async fn auth_callback(
     } else {
         // Production path: exchange code for tokens at the IdP token endpoint.
         let token_response = exchange_code_for_tokens(&oidc_config, &params.code).await?;
-        let userinfo = fetch_userinfo(&token_response.access_token).await?;
+        let userinfo =
+            fetch_userinfo(&oidc_config.userinfo_url, &token_response.access_token).await?;
         session_store
             .create(
                 userinfo.sub,
@@ -276,10 +305,10 @@ async fn exchange_code_for_tokens(
 }
 
 /// Fetch userinfo from the OIDC provider.
-async fn fetch_userinfo(access_token: &str) -> Result<OidcUserinfo, ApiError> {
+async fn fetch_userinfo(userinfo_url: &str, access_token: &str) -> Result<OidcUserinfo, ApiError> {
     let client = reqwest::Client::new();
     let resp = client
-        .get("https://example.com/protocol/openid-connect/userinfo")
+        .get(userinfo_url)
         .bearer_auth(access_token)
         .send()
         .await

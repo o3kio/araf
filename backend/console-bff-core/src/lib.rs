@@ -222,6 +222,8 @@ impl BffConfig {
                 "ARAF_OIDC_CLIENT_SECRET",
                 "ARAF_OIDC_ISSUER_URL",
                 "ARAF_OIDC_REDIRECT_URI",
+                "ARAF_OIDC_AUTHORIZATION_URL",
+                "ARAF_OIDC_USERINFO_URL",
             ];
             if let Some(name) = required
                 .iter()

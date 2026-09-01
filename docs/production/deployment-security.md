@@ -8,6 +8,12 @@ adapters are available only outside production. In production,
 adapter causes the BFF to terminate during startup. This prevents a failed
 O3K configuration from silently presenting fixture cloud state.
 
+Production OIDC configuration must also provide `ARAF_OIDC_CLIENT_ID`,
+`ARAF_OIDC_CLIENT_SECRET`, `ARAF_OIDC_ISSUER_URL`,
+`ARAF_OIDC_REDIRECT_URI` (HTTPS), `ARAF_OIDC_AUTHORIZATION_URL`, and
+`ARAF_OIDC_USERINFO_URL`. Provider authorization and userinfo endpoints are
+explicit deployment inputs; the BFF does not invent or default them.
+
 The production browser origin is HTTPS. TLS is terminated by the deployment's
 ingress or reverse proxy, which must forward `Host`, `X-Forwarded-Proto`, and
 the client IP chain. Only a deployment-controlled, allowlisted proxy may set
@@ -29,6 +35,11 @@ The browser-facing API is same-origin under `/api/`. Session cookies must be
 opaque, `Secure`, `HttpOnly`, `SameSite=Lax` (or stricter where compatible),
 path-scoped, and cleared on logout. CSRF tokens are sent in a request header;
 state-changing requests without a valid token are rejected.
+
+The auth callback rejects synthetic fixture codes and missing callback state in
+production. The remaining OIDC state/nonce correlation and provider-backed
+session middleware are still an upstream integration dependency tracked in
+[`docs/engineering/upstream-gaps.md`](../engineering/upstream-gaps.md).
 
 The current MVP BFF still uses fixture session injection and in-memory session
 state. Therefore this document records the deployment boundary and fail-closed
