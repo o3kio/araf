@@ -354,6 +354,41 @@ mod tests {
         assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
     }
 
+    #[tokio::test]
+    async fn fixture_auth_routes_create_and_report_opaque_session() {
+        let app = fixture_router("tenant-bff");
+        let login = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/auth/login")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(login.status(), axum::http::StatusCode::SEE_OTHER);
+
+        let callback = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/auth/callback?code=fixture&state=mock")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(callback.status(), axum::http::StatusCode::SEE_OTHER);
+        let cookie = callback
+            .headers()
+            .get(axum::http::header::SET_COOKIE)
+            .and_then(|value| value.to_str().ok())
+            .expect("fixture callback should issue a cookie");
+        assert!(cookie.starts_with("araf_tenant_session="));
+        assert!(cookie.contains("HttpOnly"));
+        assert!(cookie.contains("Secure"));
+    }
+
     #[test]
     fn production_configuration_cannot_select_fixtures() {
         // Keep this invariant close to the parser; the process-level environment
