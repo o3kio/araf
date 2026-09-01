@@ -283,6 +283,27 @@ export interface AuditEvent {
   correlationId: string;
 }
 
+export interface UsageRecord {
+  resourceType: string;
+  value: number;
+  unit: string;
+  timestamp: string;
+}
+
+export interface UsageSummary {
+  projectId: string;
+  records: UsageRecord[];
+  since: string;
+  until: string;
+}
+
+export interface ListUsageQuery {
+  projectId?: string;
+  resourceType?: string;
+  since?: string;
+  until?: string;
+}
+
 // Operator platform types
 
 export type RegionStatus = "healthy" | "degraded" | "unavailable" | "maintenance";
@@ -545,6 +566,7 @@ export interface ArafClient {
   getUser(id: string): Promise<User>;
   listRoles(query?: ListRolesQuery): Promise<PaginatedCollection<Role>>;
   listQuotas(query?: ListQuotasQuery): Promise<PaginatedCollection<ProjectQuota>>;
+  listUsage(query?: ListUsageQuery): Promise<UsageSummary>;
   listAuditEvents(query?: ListAuditEventsQuery): Promise<PaginatedCollection<AuditEvent>>;
   listApiCredentials(query?: ListApiCredentialsQuery): Promise<PaginatedCollection<ApiCredential>>;
   createApiCredential(payload: CreateApiCredentialRequest): Promise<ApiCredential>;
@@ -702,6 +724,16 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
     listQuotas: (query) =>
       request<PaginatedCollection<ProjectQuota>>("/api/v1/governance/quotas", {
         query: { page: query?.page, pageSize: query?.pageSize, projectId: query?.projectId },
+      }),
+
+    listUsage: (query) =>
+      request<UsageSummary>("/api/v1/governance/usage", {
+        query: {
+          projectId: query?.projectId,
+          resourceType: query?.resourceType,
+          since: query?.since,
+          until: query?.until,
+        },
       }),
 
     listAuditEvents: (query) =>

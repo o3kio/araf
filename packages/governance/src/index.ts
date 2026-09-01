@@ -15,6 +15,7 @@ export { useUsers, type UseUsersResult, type UseUsersOptions } from "./hooks/use
 export { useUser, type UseUserResult } from "./hooks/useUser";
 export { useRoles, type UseRolesResult, type UseRolesOptions } from "./hooks/useRoles";
 export { useQuotas, type UseQuotasResult, type UseQuotasOptions } from "./hooks/useQuotas";
+export { useUsage, type UseUsageResult, type UseUsageOptions } from "./hooks/useUsage";
 export {
   useAuditEvents,
   type UseAuditEventsResult,
@@ -40,5 +41,6 @@ export { ProjectDetailPage } from "./pages/ProjectDetailPage";
 export { UsersPage } from "./pages/UsersPage";
 export { UserDetailPage } from "./pages/UserDetailPage";
 export { QuotasPage } from "./pages/QuotasPage";
+export { UsagePage } from "./pages/UsagePage";
 export { AuditPage } from "./pages/AuditPage";
 export { ApiCredentialsPage } from "./pages/ApiCredentialsPage";

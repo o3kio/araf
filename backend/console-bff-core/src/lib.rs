@@ -80,6 +80,7 @@ fn governance_routes(router: Router<AppState>) -> Router<AppState> {
         .route("/api/v1/governance/users/{id}", get(handlers::get_user))
         .route("/api/v1/governance/roles", get(handlers::list_roles))
         .route("/api/v1/governance/quotas", get(handlers::list_quotas))
+        .route("/api/v1/governance/usage", get(handlers::list_usage))
         .route("/api/v1/governance/audit", get(handlers::list_audit_events))
         .route(
             "/api/v1/governance/api-credentials",

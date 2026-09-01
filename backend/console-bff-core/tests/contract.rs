@@ -13,7 +13,7 @@ use axum::{
 };
 use console_bff_core::model::{
     ActionRequest, CreateResourceRequest, Operation, PaginatedCollection, Resource,
-    ServiceDescriptor, SessionContext,
+    ServiceDescriptor, SessionContext, UsageQuery,
 };
 use console_bff_core::{
     api_router, fixture_router, ApiError, O3kAdapter, O3kClientConfig, RequestContext,
@@ -1583,6 +1583,102 @@ async fn api_credential_creation_returns_secret_and_list_hides_it() {
 }
 
 #[tokio::test]
+async fn tenant_can_list_usage_and_cross_project_is_rejected() {
+    let app = fixture_router(TENANT);
+
+    // Tenant can list usage for own accessible project.
+    let usage = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/governance/usage?projectId=project-1")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    assert_eq!(usage["projectId"], "project-1");
+    let records = usage["records"].as_array().expect("usage records array");
+    assert!(!records.is_empty(), "should have at least one data point");
+    let resource_types: Vec<&str> = records
+        .iter()
+        .map(|r| r["resourceType"].as_str().unwrap())
+        .collect();
+    assert!(
+        resource_types.contains(&"compute.server"),
+        "should include compute.server"
+    );
+    assert!(
+        resource_types.contains(&"storage.volume"),
+        "should include storage.volume"
+    );
+
+    // Cross-project access to an inaccessible project is denied.
+    let bad = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/governance/usage?projectId=project-99")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(bad.status(), StatusCode::NOT_FOUND);
+
+    // Access without tenant.quota/read capability is forbidden.
+    let operator_app = fixture_router(OPERATOR);
+    let forbidden = operator_app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/governance/usage?projectId=project-1")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert!(forbidden.status() == StatusCode::FORBIDDEN || forbidden.status() == StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn usage_date_range_is_bounded() {
+    let app = fixture_router(TENANT);
+
+    // Request an unbounded range > 90 days is rejected.
+    let bad = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(
+                    "/api/v1/governance/usage?since=2024-01-01T00:00:00Z&until=2024-12-31T23:59:59Z",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+
+    // Request where since > until is rejected.
+    let bad = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(
+                    "/api/v1/governance/usage?since=2024-06-01T00:00:00Z&until=2024-01-01T00:00:00Z",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn o3k_adapter_governance_methods_return_501() {
     let adapter = O3kAdapter::new(
         "tenant-bff",
@@ -1610,6 +1706,19 @@ async fn o3k_adapter_governance_methods_return_501() {
     assert_not_implemented!(adapter.get_user(&ctx, "user-001").await);
     assert_not_implemented!(adapter.list_roles(&ctx).await);
     assert_not_implemented!(adapter.list_quotas(&ctx, None).await);
+    assert_not_implemented!(
+        adapter
+            .list_usage(
+                &ctx,
+                UsageQuery {
+                    project_id: None,
+                    resource_type: None,
+                    since: None,
+                    until: None,
+                },
+            )
+            .await
+    );
     assert_not_implemented!(adapter.list_audit_events(&ctx, Default::default()).await);
     assert_not_implemented!(adapter.list_api_credentials(&ctx).await);
     assert_not_implemented!(

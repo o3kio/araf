@@ -20,7 +20,7 @@ use crate::{
         ListAuditEventsParams, Operation, OperationState, OperatorAuditEvent, OperatorProject,
         PaginatedCollection, PlatformOverview, Project, ProjectMember, ProjectQuota,
         ProviderHealth, Region, Resource, Role, ServiceCatalogEntry, ServiceDescriptor,
-        ServiceHealth, SessionContext, SortDirection, User,
+        ServiceHealth, SessionContext, SortDirection, UsageQuery, UsageSummary, User,
     },
     request::RequestContext,
     upstream::{
@@ -491,6 +491,34 @@ pub async fn list_quotas(
         .await
         .map_err(|e| with_ctx(e, &ctx))?;
     Ok(Json(quotas))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListUsageQuery {
+    pub project_id: Option<String>,
+    pub resource_type: Option<String>,
+    pub since: Option<time::OffsetDateTime>,
+    pub until: Option<time::OffsetDateTime>,
+}
+
+pub async fn list_usage(
+    State(state): State<AppState>,
+    Query(query): Query<ListUsageQuery>,
+    ctx: RequestContext,
+) -> Result<Json<UsageSummary>, BffError> {
+    let usage_query = UsageQuery {
+        project_id: query.project_id,
+        resource_type: query.resource_type,
+        since: query.since,
+        until: query.until,
+    };
+    let summary = state
+        .upstream
+        .list_usage(&ctx, usage_query)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(summary))
 }
 
 pub async fn list_audit_events(

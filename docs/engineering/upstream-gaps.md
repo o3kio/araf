@@ -274,6 +274,33 @@ Implementation phases must add new gaps here instead of inventing production O3K
 - **Blocked Araf feature:** Real operator installed-services management page.
 - **Acceptable fallback:** The fixture adapter returns deterministic installed service records with all fields populated. The `O3kAdapter` returns a minimal projection from `/o3k/v1/services` and documents this gap in the response.
 
+## M11-O3K-001: Tenant usage and metering API
+
+- **Gap id:** `M11-O3K-001`
+- **Required O3K contract:** Authoritative tenant-facing usage/metering endpoints that return time-series resource consumption data per project, filterable by resource type and bounded date range, with ISO-8601 timestamps.
+- **Why Araf M11 needs it:** `Upstream::list_usage` must return `UsageSummary` with `UsageRecord[]` over a bounded window. O3K's kernel has `Usage` and `Reservation` types but no live HTTP metering endpoint; the bootstrap API covers only auth, server, image, and network CRUD.
+- **Current status:** Confirmed missing — no O3K production HTTP endpoint for usage/metering.
+- **Blocked Araf feature:** Real O3K-backed usage dashboards and date-range querying in the tenant console.
+- **Acceptable fallback:** Fixture adapter returns deterministic hourly usage records for `compute.server`, `compute.vcpus`, `network.vpc`, and `storage.volume`, bounded to 72 hours and validated against the 90-day max-range rule. The `O3kAdapter` returns `501 Not Implemented`.
+
+## M11-O3K-002: Authoritative pricing and cost contract
+
+- **Gap id:** `M11-O3K-002`
+- **Required O3K contract:** A trustworthy price/catalog contract per resource type and unit, with currency code, per-unit price, effective dates, and a clear estimate/invoice label for derived costs.
+- **Why Araf M11 needs it:** The M11 prompt requires cost to be shown only from authoritative price + usage data and labeled as estimate when appropriate. Without an upstream price catalog, any cost figure shown to the tenant would be fabricated currency data that Araf must not produce.
+- **Current status:** Confirmed missing — O3K has no pricing, billing, or cost model.
+- **Blocked Araf feature:** Cost estimates, budget tracking, or any currency-denominated usage display.
+- **Acceptable fallback:** The UsagePage explicitly states that cost estimates are shown only when authoritative pricing data is available. No cost, currency, or billing data is displayed. The upstream gap is documented on the page itself.
+
+## M11-O3K-003: Quota dimension parity with O3K kernel
+
+- **Gap id:** `M11-O3K-003`
+- **Required O3K contract:** A server-bounded quota endpoint that returns per-project limits for the same dimensions O3K's kernel recognizes (`compute:servers`, `compute:vcpus`, `compute:memory_mb`, `compute:disk_gb`, `network:networks`/`subnets`/`ports`, `image:images`/`bytes`).
+- **Why Araf M11 needs it:** The fixture adapter now exposes nine quota dimensions aligned with O3K's `LimitKey::KNOWN_DIMENSIONS`. The production O3K adapter returns `501 Not Implemented` for `list_quotas`; there is no production HTTP endpoint.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Real quota management backed by O3K with dimension parity.
+- **Acceptable fallback:** Fixture adapter returns synthetic quotas with all nine dimensions. Frontend QuotasPage renders limit/usage/percentage columns from fixture data. The page works identically with real O3K data when the upstream contract becomes available.
+
 ## M10-O3K-004: Resource type lifecycle action contract
 
 - **Gap id:** `M10-O3K-004`

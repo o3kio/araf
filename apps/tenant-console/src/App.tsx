@@ -28,6 +28,7 @@ import {
   UsersPage,
   UserDetailPage,
   QuotasPage,
+  UsagePage,
   AuditPage,
   ApiCredentialsPage,
 } from "@araf/governance";
@@ -318,7 +319,7 @@ export function App() {
                         path="/usage"
                         element={
                           <TenantRouterShell>
-                            <PlaceholderPage title="Usage & Cost" />
+                            <UsagePage />
                           </TenantRouterShell>
                         }
                       />

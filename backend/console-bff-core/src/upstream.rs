@@ -18,7 +18,7 @@ use crate::{
         Operation, OperationState, OperatorAuditEvent, OperatorProject, PaginatedCollection,
         PlatformOverview, Project, ProjectMember, ProjectQuota, ProviderHealth, Region, Resource,
         Role, ServiceCatalogEntry, ServiceDescriptor, ServiceHealth, SessionContext, SortDirection,
-        User,
+        UsageQuery, UsageSummary, User,
     },
     request::RequestContext,
 };
@@ -225,6 +225,18 @@ pub trait Upstream: Send + Sync + 'static {
     ) -> Result<PaginatedCollection<ProjectQuota>, ApiError> {
         Err(ApiError::NotImplemented(
             "tenant governance quota endpoints are not implemented by upstream O3K".to_owned(),
+        ))
+    }
+
+    /// List usage records for the authorized scope with bounded date-range querying.
+    async fn list_usage(
+        &self,
+        _ctx: &RequestContext,
+        _query: UsageQuery,
+    ) -> Result<UsageSummary, ApiError> {
+        Err(ApiError::NotImplemented(
+            "tenant governance usage/metering endpoints are not implemented by upstream O3K"
+                .to_owned(),
         ))
     }
 

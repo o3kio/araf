@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::error::ApiError;
+
 /// Identity and capabilities for the current console session.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -386,6 +388,69 @@ pub struct QuotaEntry {
 pub struct ProjectQuota {
     pub project_id: String,
     pub entries: Vec<QuotaEntry>,
+}
+
+/// A single usage data point for a resource type, aggregated over a time window.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageRecord {
+    pub resource_type: String,
+    /// Number of resources in use at this data point.
+    pub value: u64,
+    /// Unit label (e.g. "instances", "gibibytes", "cores").
+    pub unit: String,
+    /// ISO-8601 timestamp for this data point.
+    pub timestamp: OffsetDateTime,
+}
+
+/// Parameters for querying usage records with bounded date ranges.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageQuery {
+    pub project_id: Option<String>,
+    pub resource_type: Option<String>,
+    pub since: Option<OffsetDateTime>,
+    pub until: Option<OffsetDateTime>,
+}
+
+impl UsageQuery {
+    /// Maximum allowed date range in days. Keeps queries bounded server-side.
+    pub const MAX_RANGE_DAYS: i64 = 90;
+
+    /// Validate and bound the date range.
+    /// Returns a normalized (since, until) pair clamped to MAX_RANGE_DAYS.
+    pub fn bounded_range(&self) -> Result<(OffsetDateTime, OffsetDateTime), ApiError> {
+        let until = self.until.unwrap_or_else(OffsetDateTime::now_utc);
+        let since = self
+            .since
+            .unwrap_or_else(|| until - time::Duration::days(Self::MAX_RANGE_DAYS));
+
+        if since > until {
+            return Err(ApiError::BadRequest(
+                "since must be before until".to_owned(),
+            ));
+        }
+
+        let range_days = (until - since).whole_days();
+        if range_days > Self::MAX_RANGE_DAYS {
+            return Err(ApiError::BadRequest(format!(
+                "usage date range cannot exceed {} days",
+                Self::MAX_RANGE_DAYS
+            )));
+        }
+
+        Ok((since, until))
+    }
+}
+
+/// Aggregated usage summary for a project over a requested period.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageSummary {
+    pub project_id: String,
+    pub records: Vec<UsageRecord>,
+    pub since: OffsetDateTime,
+    pub until: OffsetDateTime,
 }
 
 /// Audit event describing who invoked or changed something.
