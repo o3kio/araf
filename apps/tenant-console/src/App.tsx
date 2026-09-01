@@ -14,6 +14,7 @@ import {
   ResourceCollectionPage,
   ResourceDetailPage,
   ResourceCreatePage,
+  ServiceCatalogPage,
 } from "@araf/resources";
 import {
   OperationsClientProvider,
@@ -31,7 +32,8 @@ import {
   ApiCredentialsPage,
 } from "@araf/governance";
 import { createArafClient } from "@araf/api-client";
-import { useState, type ReactNode } from "react";
+import { useResourceClient } from "@araf/resources";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useParams } from "react-router";
 
 const projects: ProjectOption[] = [
@@ -52,19 +54,8 @@ const tenantBffUrl =
   (import.meta.env.VITE_TENANT_BFF_URL as string | undefined) ?? "http://127.0.0.1:8080";
 const arafClient = createArafClient(tenantBffUrl);
 
-const navigationItems: TenantNavigationItem[] = [
+const staticNavigationItems: TenantNavigationItem[] = [
   { id: "home", type: "link", text: "Home", href: "/" },
-  {
-    id: "services",
-    type: "section",
-    text: "Services",
-    items: [
-      { id: "compute", type: "link", text: "Compute", href: "/resources/compute.server" },
-      { id: "networking", type: "link", text: "Networking", href: "/resources/network.vpc" },
-      { id: "storage", type: "link", text: "Storage", href: "/resources/storage.volume" },
-      { id: "images", type: "link", text: "Images", href: "/services/images" },
-    ],
-  },
   {
     id: "manage",
     type: "section",
@@ -93,6 +84,74 @@ const navigationItems: TenantNavigationItem[] = [
     items: [{ id: "api", type: "link", text: "API & CLI", href: "/developer/api" }],
   },
 ];
+
+/**
+ * Build the tenant navigation from the BFF service catalog.
+ *
+ * The "Services" section is derived from `listServices()` so that newly
+ * discovered resource types appear automatically without a console code change.
+ */
+function useTenantNavigation(): TenantNavigationItem[] {
+  const client = useResourceClient();
+  const [services, setServices] = useState<
+    { id: string; name: string; resourceTypes: { id: string; pluralName: string }[] }[] | undefined
+  >(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    client
+      .listServices()
+      .then((result) => {
+        if (cancelled) return;
+        setServices(
+          result.map((service) => ({
+            id: service.id,
+            name: service.name,
+            resourceTypes: service.resourceTypes.map((rt) => ({
+              id: rt.id,
+              pluralName: rt.pluralName,
+            })),
+          })),
+        );
+      })
+      .catch(() => {
+        // Fail closed: omit dynamic service links until the catalog is available.
+        if (!cancelled) setServices([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  return useMemo(() => {
+    const serviceLinks: TenantNavigationItem[] = [
+      { id: "catalog", type: "link", text: "Service catalog", href: "/services/catalog" },
+      ...(services ?? []).flatMap((service) =>
+        service.resourceTypes.map((rt) => ({
+          id: rt.id,
+          type: "link" as const,
+          text: rt.pluralName,
+          href: `/resources/${encodeURIComponent(rt.id)}`,
+        })),
+      ),
+    ];
+
+    const servicesSection: TenantNavigationItem = {
+      id: "services",
+      type: "section",
+      text: "Services",
+      items: serviceLinks,
+    };
+
+    return [
+      ...staticNavigationItems.slice(0, 1),
+      servicesSection,
+      ...staticNavigationItems.slice(1),
+    ];
+  }, [services]);
+}
 
 function HomePage() {
   return (
@@ -124,6 +183,7 @@ function NotFound() {
 
 function TenantRouterShell({ children }: { children: ReactNode }) {
   const location = useLocation();
+  const navigationItems = useTenantNavigation();
   return (
     <TenantShell
       navigationItems={navigationItems}
@@ -187,6 +247,14 @@ export function App() {
                         element={
                           <TenantRouterShell>
                             <HomePage />
+                          </TenantRouterShell>
+                        }
+                      />
+                      <Route
+                        path="/services/catalog"
+                        element={
+                          <TenantRouterShell>
+                            <ServiceCatalogPage />
                           </TenantRouterShell>
                         }
                       />

@@ -27,6 +27,14 @@ export {
   useOperatorAuditEvents,
   type UseOperatorAuditEventsResult,
 } from "./hooks/useOperatorAuditEvents";
+export {
+  useInstalledServices,
+  type UseInstalledServicesResult,
+} from "./hooks/useInstalledServices";
+export {
+  useDiscoveredResourceTypes,
+  type UseDiscoveredResourceTypesResult,
+} from "./hooks/useDiscoveredResourceTypes";
 
 // Pages
 export { PlatformOverviewPage } from "./pages/PlatformOverviewPage";
@@ -38,3 +46,4 @@ export { AccountsPage } from "./pages/AccountsPage";
 export { AccountProjectsPage } from "./pages/AccountProjectsPage";
 export { OperatorOperationsPage } from "./pages/OperatorOperationsPage";
 export { OperatorAuditPage } from "./pages/OperatorAuditPage";
+export { InstalledServicesPage } from "./pages/InstalledServicesPage";

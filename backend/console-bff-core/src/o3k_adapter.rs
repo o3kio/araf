@@ -28,10 +28,11 @@ use crate::{
     model::{
         ActionDescriptor, ActionRequest, ActionRiskClass, Capability, CapacitySummary,
         ColumnDescriptor, CreateResourceRequest, CustomerAccount, DetailsSectionDescriptor,
-        FilterDescriptor, FilterKind, JsonSchema, Operation, OperationError, OperationEvent,
-        OperationState, OperatorAuditEvent, OperatorProject, PaginatedCollection, PlatformOverview,
-        ProviderHealth, Region, Resource, ResourceStatus, ResourceTypeDescriptor,
-        ServiceDescriptor, ServiceHealth, SessionContext,
+        DiscoveredResourceType, FilterDescriptor, FilterKind, JsonSchema, Operation,
+        OperationError, OperationEvent, OperationState, OperatorAuditEvent, OperatorProject,
+        PaginatedCollection, PlatformOverview, ProviderHealth, Region, Resource, ResourceStatus,
+        ResourceTypeDescriptor, ServiceCatalogEntry, ServiceDescriptor, ServiceHealth,
+        SessionContext,
     },
     o3k_client::{
         MutationResult, NativeOperation, NativeResourceEnvelope, O3kClient, O3kClientConfig,
@@ -301,7 +302,7 @@ impl O3kAdapter {
         // We derive a fixed capability set from the resource types/actions that
         // the adapter supports in M7. Server-side authorization remains with
         // O3K; these capabilities are presentation-only.
-        let capabilities = vec![
+        let mut capabilities = vec![
             Capability {
                 resource_type: "compute.server".to_owned(),
                 action: "list".to_owned(),
@@ -323,6 +324,27 @@ impl O3kAdapter {
                 action: "list".to_owned(),
             },
         ];
+
+        // Surface-aware catalog/service capabilities keep tenant and operator
+        // authorization audiences separate while still allowing shared compute
+        // resource presentation.
+        if self.surface == "tenant-bff" {
+            capabilities.push(Capability {
+                resource_type: "tenant.service-catalog".to_owned(),
+                action: "list".to_owned(),
+            });
+        } else if self.surface == "operator-bff" {
+            capabilities.extend([
+                Capability {
+                    resource_type: "operator.service".to_owned(),
+                    action: "list".to_owned(),
+                },
+                Capability {
+                    resource_type: "operator.service".to_owned(),
+                    action: "read".to_owned(),
+                },
+            ]);
+        }
 
         Ok(SessionContext {
             surface: self.surface,
@@ -619,6 +641,52 @@ impl O3kAdapter {
             _ => None,
         }
     }
+
+    fn service_name_from_id(id: &str) -> String {
+        id.split('.')
+            .next()
+            .map(|s| {
+                let mut chars = s.chars();
+                match chars.next() {
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                    None => s.to_owned(),
+                }
+            })
+            .unwrap_or_else(|| id.to_owned())
+    }
+
+    fn map_discovered_service(s: crate::o3k_client::DiscoveredService) -> ServiceCatalogEntry {
+        ServiceCatalogEntry {
+            id: s.id.clone(),
+            namespace: s.namespace.clone(),
+            name: Self::service_name_from_id(&s.id),
+            version: s.service_version.clone(),
+            ownership: s.ownership.clone(),
+            lifecycle_state: s
+                .lifecycle_state
+                .clone()
+                .unwrap_or_else(|| "unknown".to_owned()),
+            capabilities: vec![],
+            regions: vec![],
+            description: None,
+            documentation_url: None,
+        }
+    }
+
+    fn map_discovered_resource_type(
+        rt: crate::o3k_client::DiscoveredResourceType,
+    ) -> DiscoveredResourceType {
+        DiscoveredResourceType {
+            namespace: rt.namespace,
+            name: rt.name,
+            service_id: rt.service,
+            schema_version: rt.schema_version,
+            collection: rt.collection,
+            scope: rt.scope,
+            ready: rt.ready,
+            lifecycle_actions: rt.lifecycle_actions,
+        }
+    }
 }
 
 #[async_trait]
@@ -723,6 +791,51 @@ impl Upstream for O3kAdapter {
         }
 
         Ok(services)
+    }
+
+    async fn list_discovered_services(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<Vec<ServiceCatalogEntry>, ApiError> {
+        let session = self.context(ctx).await?;
+        let required_capability = if self.surface == "operator-bff" {
+            ("operator.service", "list")
+        } else {
+            ("tenant.service-catalog", "list")
+        };
+        if !session.has_capability(required_capability.0, required_capability.1) {
+            return Err(ApiError::Forbidden);
+        }
+
+        let discovered = self
+            .client
+            .list_services()
+            .await
+            .map_err(Self::map_client_error)?;
+        Ok(discovered
+            .into_iter()
+            .map(Self::map_discovered_service)
+            .collect())
+    }
+
+    async fn list_discovered_resource_types(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<Vec<DiscoveredResourceType>, ApiError> {
+        let session = self.context(ctx).await?;
+        if !session.has_capability("operator.service", "read") {
+            return Err(ApiError::Forbidden);
+        }
+
+        let resource_types = self
+            .client
+            .list_resource_types()
+            .await
+            .map_err(Self::map_client_error)?;
+        Ok(resource_types
+            .into_iter()
+            .map(Self::map_discovered_resource_type)
+            .collect())
     }
 
     async fn list_resources(

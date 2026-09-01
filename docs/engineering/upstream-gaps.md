@@ -246,3 +246,39 @@ Implementation phases must add new gaps here instead of inventing production O3K
 - **Current status:** Confirmed missing.
 - **Blocked Araf feature:** Real O3K-backed tenant governance (Projects, Users & Access, Quotas, Audit, Developer API credentials).
 - **Acceptable fallback:** Implement governance reads and API-credential lifecycle in the deterministic fixture adapter only. Expose the same BFF presentation contract so the frontend can integrate, but leave the production `O3kAdapter` methods returning `501 Not Implemented` with clear Problem Details messages. Do not invent production O3K endpoints, resource states, or permission decisions.
+
+## M10-O3K-001: Service catalog tenant capability contract
+
+- **Gap id:** `M10-O3K-001`
+- **Required O3K contract:** An authoritative capability or permission model that distinguishes the tenant service-catalog view (`tenant.service-catalog:list`) from the operator service-management view (`operator.service:list`/`read`).
+- **Why Araf M10 needs it:** The tenant catalog and operator installed-services pages must be gated by surface-specific capabilities so tenants cannot enumerate control-plane internals and operators receive management-oriented fields. O3K does not expose evaluated capabilities for service catalog access.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Production authorization boundary between tenant service catalog and operator service management.
+- **Acceptable fallback:** The fixture adapter grants `tenant.service-catalog:list` to tenant sessions and `operator.service:list`/`read` to operator sessions. The `O3kAdapter` derives the same capabilities from the fixed M7 capability set and relies on upstream authorization for the underlying endpoints.
+
+## M10-O3K-002: Service catalog presentation fields
+
+- **Gap id:** `M10-O3K-002`
+- **Required O3K contract:** Rich service metadata on `GET /o3k/v1/services` including human-readable description, documentation URL, declared capabilities, available regions, and ownership information.
+- **Why Araf M10 needs it:** `ServiceCatalogEntry` exposes `description`, `documentationUrl`, `capabilities`, `regions`, and `ownership` to the tenant console. The native O3K service discovery response contains only `id`, `namespace`, `version`, `ownership`, and `lifecycle_state`.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Fully descriptive tenant service catalog backed by real O3K data.
+- **Acceptable fallback:** The `O3kAdapter` maps the fields that exist and leaves presentation-only fields unset. The fixture adapter supplies deterministic values for all fields so the tenant UI can be exercised.
+
+## M10-O3K-003: Installed service health and inventory details
+
+- **Gap id:** `M10-O3K-003`
+- **Required O3K contract:** An operator-facing service inventory endpoint that returns installed service health, controller information, installed/updated timestamps, and the resource types owned by each service.
+- **Why Araf M10 needs it:** `InstalledService` exposes `health`, `controllerInfo`, `installedAt`, `updatedAt`, and `resourceTypes`. The O3K `GET /o3k/v1/services` endpoint does not include health, installation time, or controller metadata, and it does not enumerate the resource types owned by a service.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Real operator installed-services management page.
+- **Acceptable fallback:** The fixture adapter returns deterministic installed service records with all fields populated. The `O3kAdapter` returns a minimal projection from `/o3k/v1/services` and documents this gap in the response.
+
+## M10-O3K-004: Resource type lifecycle action contract
+
+- **Gap id:** `M10-O3K-004`
+- **Required O3K contract:** A stable mapping from O3K resource type lifecycle actions to Araf action ids, plus a contract guaranteeing that descriptor content (schemas, labels, help text) is free of executable or unsafe content.
+- **Why Araf M10 needs it:** `DiscoveredResourceType` exposes `lifecycleActions` as a mapping of action names to canonical operations, and the tenant console renders descriptors without sandboxing. Araf must validate descriptors to prevent arbitrary executable JavaScript from reaching the browser, but there is no upstream guarantee that descriptor content is safe.
+- **Current status:** Confirmed missing.
+- **Blocked Araf feature:** Trustworthy, directly consumable resource type descriptors from O3K without server-side sanitization.
+- **Acceptable fallback:** The BFF validates every descriptor using `descriptor_validation.rs` and rejects keys/values that could carry executable or unsafe content. The fixture adapter only produces known-safe descriptors; lifecycle actions are derived from the manifest-driven fixture set.

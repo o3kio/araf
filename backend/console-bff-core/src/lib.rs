@@ -7,6 +7,7 @@
 //!
 //! The BFF must never become a generic upstream proxy (ADR 0002).
 
+pub mod descriptor_validation;
 pub mod error;
 pub mod fixture;
 pub mod handlers;
@@ -23,6 +24,7 @@ use axum::{
     routing::{delete, get, post},
     Router,
 };
+pub use descriptor_validation::validate_descriptor_json;
 pub use error::{ApiError, BffError, ProblemDetails, UpstreamError};
 pub use fixture::{FixtureAdapter, FIXTURE_RESOURCE_TOTAL};
 pub use handlers::AppState;
@@ -43,6 +45,10 @@ fn base_routes(router: Router<AppState>) -> Router<AppState> {
         .route("/healthz", get(handlers::healthz))
         .route("/api/v1/context", get(handlers::get_context))
         .route("/api/v1/services", get(handlers::list_services))
+        .route(
+            "/api/v1/services/catalog",
+            get(handlers::list_service_catalog),
+        )
         .route(
             "/api/v1/resources/{resource_type}",
             get(handlers::list_resources).post(handlers::create_resource),
@@ -103,6 +109,14 @@ fn operator_routes(router: Router<AppState>) -> Router<AppState> {
         .route(
             "/api/v1/operator/services/health",
             get(handlers::list_service_health),
+        )
+        .route(
+            "/api/v1/operator/services/installed",
+            get(handlers::list_installed_services),
+        )
+        .route(
+            "/api/v1/operator/services/resource-types",
+            get(handlers::list_discovered_resource_types),
         )
         .route(
             "/api/v1/operator/capacity",

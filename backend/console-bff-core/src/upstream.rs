@@ -14,10 +14,11 @@ use crate::{
     error::ApiError,
     model::{
         ActionRequest, ApiCredential, AuditEvent, CapacitySummary, CreateApiCredentialRequest,
-        CreateResourceRequest, CustomerAccount, ListAuditEventsParams, Operation, OperationState,
-        OperatorAuditEvent, OperatorProject, PaginatedCollection, PlatformOverview, Project,
-        ProjectMember, ProjectQuota, ProviderHealth, Region, Resource, Role, ServiceDescriptor,
-        ServiceHealth, SessionContext, SortDirection, User,
+        CreateResourceRequest, CustomerAccount, DiscoveredResourceType, ListAuditEventsParams,
+        Operation, OperationState, OperatorAuditEvent, OperatorProject, PaginatedCollection,
+        PlatformOverview, Project, ProjectMember, ProjectQuota, ProviderHealth, Region, Resource,
+        Role, ServiceCatalogEntry, ServiceDescriptor, ServiceHealth, SessionContext, SortDirection,
+        User,
     },
     request::RequestContext,
 };
@@ -96,6 +97,26 @@ pub trait Upstream: Send + Sync + 'static {
 
     /// Discover service/resource descriptors available to this session.
     async fn services(&self, ctx: &RequestContext) -> Result<Vec<ServiceDescriptor>, ApiError>;
+
+    /// Discover service catalog entries (tenant view).
+    async fn list_discovered_services(
+        &self,
+        _ctx: &RequestContext,
+    ) -> Result<Vec<ServiceCatalogEntry>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "service catalog discovery is not implemented by upstream O3K".to_owned(),
+        ))
+    }
+
+    /// Discover resource types advertised by installed services (operator view).
+    async fn list_discovered_resource_types(
+        &self,
+        _ctx: &RequestContext,
+    ) -> Result<Vec<DiscoveredResourceType>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "resource type discovery is not implemented by upstream O3K".to_owned(),
+        ))
+    }
 
     /// List resources with server-bounded pagination.
     async fn list_resources(

@@ -12,12 +12,14 @@ use serde::Deserialize;
 use tracing::info;
 
 use crate::{
+    descriptor_validation::validate_descriptor_json,
     error::{ApiError, BffError},
     model::{
         ActionRequest, ApiCredential, AuditEvent, CapacitySummary, CreateApiCredentialRequest,
-        CreateResourceRequest, CustomerAccount, ListAuditEventsParams, Operation, OperationState,
-        OperatorAuditEvent, OperatorProject, PaginatedCollection, PlatformOverview, Project,
-        ProjectMember, ProjectQuota, ProviderHealth, Region, Resource, Role, ServiceDescriptor,
+        CreateResourceRequest, CustomerAccount, DiscoveredResourceType, InstalledService,
+        ListAuditEventsParams, Operation, OperationState, OperatorAuditEvent, OperatorProject,
+        PaginatedCollection, PlatformOverview, Project, ProjectMember, ProjectQuota,
+        ProviderHealth, Region, Resource, Role, ServiceCatalogEntry, ServiceDescriptor,
         ServiceHealth, SessionContext, SortDirection, User,
     },
     request::RequestContext,
@@ -136,7 +138,144 @@ pub async fn list_services(
         .services(&ctx)
         .await
         .map_err(|e| with_ctx(e, &ctx))?;
+
+    // Fail closed on unsafe descriptor content before it reaches the browser.
+    if let Err(err) = validate_descriptor_json(&serde_json::to_value(&services).unwrap_or_default())
+    {
+        return Err(with_ctx(err, &ctx));
+    }
+
     Ok(Json(services))
+}
+
+pub async fn list_service_catalog(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+) -> Result<Json<Vec<ServiceCatalogEntry>>, BffError> {
+    let session = state
+        .upstream
+        .context(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    if !session.has_capability("tenant.service-catalog", "list") {
+        return Err(with_ctx(ApiError::Forbidden, &ctx));
+    }
+
+    let catalog = state
+        .upstream
+        .list_discovered_services(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+
+    // Fail closed on unsafe descriptor-like content before it reaches the browser.
+    if let Err(err) = validate_descriptor_json(&serde_json::to_value(&catalog).unwrap_or_default())
+    {
+        return Err(with_ctx(err, &ctx));
+    }
+
+    Ok(Json(catalog))
+}
+
+pub async fn list_installed_services(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+) -> Result<Json<Vec<InstalledService>>, BffError> {
+    let session = state
+        .upstream
+        .context(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    if !session.has_capability("operator.service", "list") {
+        return Err(with_ctx(ApiError::Forbidden, &ctx));
+    }
+
+    let catalog = state
+        .upstream
+        .list_discovered_services(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+
+    let resource_types = state
+        .upstream
+        .list_discovered_resource_types(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+
+    let types_by_service: std::collections::HashMap<String, Vec<String>> = resource_types
+        .into_iter()
+        .fold(std::collections::HashMap::new(), |mut acc, rt| {
+            let full_type = format!("{}.{}", rt.namespace, rt.name);
+            acc.entry(rt.service_id).or_default().push(full_type);
+            acc
+        });
+
+    let installed: Vec<InstalledService> = catalog
+        .into_iter()
+        .map(|entry| InstalledService {
+            resource_types: types_by_service.get(&entry.id).cloned().unwrap_or_default(),
+            health: match entry.lifecycle_state.as_str() {
+                "ready" => "healthy".to_owned(),
+                "degraded" => "degraded".to_owned(),
+                "unavailable" => "unavailable".to_owned(),
+                _ => "unknown".to_owned(),
+            },
+            ..installed_service_from_catalog_entry(&entry)
+        })
+        .collect();
+
+    // Fail closed on unsafe descriptor-like content before it reaches the browser.
+    if let Err(err) =
+        validate_descriptor_json(&serde_json::to_value(&installed).unwrap_or_default())
+    {
+        return Err(with_ctx(err, &ctx));
+    }
+
+    Ok(Json(installed))
+}
+
+pub async fn list_discovered_resource_types(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+) -> Result<Json<Vec<DiscoveredResourceType>>, BffError> {
+    let session = state
+        .upstream
+        .context(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    if !session.has_capability("operator.service", "read") {
+        return Err(with_ctx(ApiError::Forbidden, &ctx));
+    }
+
+    let resource_types = state
+        .upstream
+        .list_discovered_resource_types(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+
+    // Fail closed on unsafe descriptor-like content before it reaches the browser.
+    if let Err(err) =
+        validate_descriptor_json(&serde_json::to_value(&resource_types).unwrap_or_default())
+    {
+        return Err(with_ctx(err, &ctx));
+    }
+
+    Ok(Json(resource_types))
+}
+
+fn installed_service_from_catalog_entry(entry: &ServiceCatalogEntry) -> InstalledService {
+    InstalledService {
+        id: entry.id.clone(),
+        namespace: entry.namespace.clone(),
+        name: entry.name.clone(),
+        version: entry.version.clone(),
+        ownership: entry.ownership.clone(),
+        lifecycle_state: entry.lifecycle_state.clone(),
+        health: "unknown".to_owned(),
+        resource_types: vec![],
+        controller_info: None,
+        installed_at: None,
+        updated_at: None,
+    }
 }
 
 pub async fn list_resources(

@@ -5,13 +5,19 @@
 //! verify that the fixture adapter is bounded, deterministic, and not a generic
 //! proxy.
 
+use async_trait::async_trait;
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
     response::Response,
 };
+use console_bff_core::model::{
+    ActionRequest, CreateResourceRequest, Operation, PaginatedCollection, Resource,
+    ServiceDescriptor, SessionContext,
+};
 use console_bff_core::{
-    fixture_router, O3kAdapter, O3kClientConfig, RequestContext, SessionState, Upstream,
+    api_router, fixture_router, ApiError, O3kAdapter, O3kClientConfig, RequestContext,
+    SessionState, Upstream,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -1929,4 +1935,279 @@ async fn o3k_adapter_operator_methods_return_501() {
             .await
     );
     assert_not_implemented!(adapter.get_platform_overview(&ctx).await);
+}
+
+#[tokio::test]
+async fn tenant_can_list_service_catalog() {
+    let app = fixture_router(TENANT);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/services/catalog")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_json(response).await;
+    let services = json.as_array().expect("services array");
+    let ids: Vec<_> = services.iter().map(|s| s["id"].as_str().unwrap()).collect();
+    assert!(ids.contains(&"compute"));
+    assert!(ids.contains(&"network"));
+    assert!(ids.contains(&"object.storage"));
+
+    let object_storage = services
+        .iter()
+        .find(|s| s["id"] == "object.storage")
+        .expect("object.storage in catalog");
+    assert_eq!(object_storage["name"], "Object Storage");
+    assert_eq!(object_storage["lifecycleState"], "ready");
+    assert!(!object_storage["regions"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn operator_can_list_installed_services_and_resource_types() {
+    let app = fixture_router(OPERATOR);
+
+    let installed = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/operator/services/installed")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+
+    let services = installed.as_array().expect("installed services array");
+    assert!(!services.is_empty());
+    let ids: Vec<_> = services.iter().map(|s| s["id"].as_str().unwrap()).collect();
+    assert!(ids.contains(&"object.storage"));
+
+    let object_storage = services
+        .iter()
+        .find(|s| s["id"] == "object.storage")
+        .expect("object.storage installed");
+    let resource_types = object_storage["resourceTypes"]
+        .as_array()
+        .expect("resource types");
+    assert!(resource_types
+        .iter()
+        .any(|rt| rt == "object.storage.bucket"));
+    assert!(object_storage["health"].is_string());
+
+    let resource_types = body_json(
+        app.oneshot(
+            Request::builder()
+                .uri("/api/v1/operator/services/resource-types")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response"),
+    )
+    .await;
+
+    let types = resource_types.as_array().expect("resource types array");
+    assert!(types.iter().any(|rt| rt["serviceId"] == "object.storage"));
+}
+
+#[tokio::test]
+async fn service_catalog_rejects_missing_capability() {
+    let app = fixture_router(OPERATOR);
+    let correlation = "corr-service-catalog-forbidden";
+
+    // Operator fixture session lacks tenant.service-catalog/list.
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/services/catalog")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_problem_details(response, StatusCode::FORBIDDEN, correlation).await;
+}
+
+#[tokio::test]
+async fn operator_resource_types_reject_tenant_session() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-resource-types-tenant-denied";
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/operator/services/resource-types")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    // Tenant BFF does not mount operator routes.
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn new_fixture_service_appears_in_services_without_app_changes() {
+    let app = fixture_router(TENANT);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/services")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_json(response).await;
+    let services = json.as_array().expect("services array");
+    let ids: Vec<_> = services.iter().map(|s| s["id"].as_str().unwrap()).collect();
+    assert!(ids.contains(&"object.storage"));
+
+    let object_storage = services
+        .iter()
+        .find(|s| s["id"] == "object.storage")
+        .expect("object.storage service");
+    let resource_types = object_storage["resourceTypes"].as_array().unwrap();
+    assert!(resource_types
+        .iter()
+        .any(|rt| rt["id"] == "object.storage.bucket"));
+}
+
+#[tokio::test]
+async fn new_fixture_resource_type_is_listable() {
+    let app = fixture_router(TENANT);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/resources/object.storage.bucket")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_json(response).await;
+    assert_eq!(json["total"], 2_000);
+    assert_eq!(json["items"][0]["resourceType"], "object.storage.bucket");
+    assert!(json["items"][0]["id"]
+        .as_str()
+        .unwrap()
+        .starts_with("bucket-"));
+    assert_eq!(json["hasMore"], true);
+}
+
+/// Upstream that returns an unsafe descriptor to prove handler validation.
+struct UnsafeDescriptorUpstream;
+
+#[async_trait]
+impl Upstream for UnsafeDescriptorUpstream {
+    fn surface(&self) -> &'static str {
+        "tenant-bff"
+    }
+
+    async fn context(&self, _ctx: &RequestContext) -> Result<SessionContext, ApiError> {
+        Ok(SessionContext::fixture_for_surface("tenant-bff"))
+    }
+
+    async fn services(&self, _ctx: &RequestContext) -> Result<Vec<ServiceDescriptor>, ApiError> {
+        let mut descriptor = console_bff_core::fixture::FixtureAdapter::new("tenant-bff")
+            .services(&RequestContext::new(
+                "req-test".to_owned(),
+                "corr-test".to_owned(),
+                Arc::new(SessionState::default()),
+            ))
+            .await?;
+        // Inject a dangerous field that must be rejected.
+        if let Some(first) = descriptor.first_mut() {
+            if let Some(rt) = first.resource_types.first_mut() {
+                rt.icon_token = "javascript:alert(1)".to_string();
+            }
+        }
+        Ok(descriptor)
+    }
+
+    async fn list_resources(
+        &self,
+        _ctx: &RequestContext,
+        _resource_type: &str,
+        _params: console_bff_core::upstream::ListResourcesParams,
+    ) -> Result<PaginatedCollection<Resource>, ApiError> {
+        Err(ApiError::NotImplemented("test".to_owned()))
+    }
+
+    async fn get_resource(
+        &self,
+        _ctx: &RequestContext,
+        _resource_type: &str,
+        _id: &str,
+    ) -> Result<Resource, ApiError> {
+        Err(ApiError::NotImplemented("test".to_owned()))
+    }
+
+    async fn submit_action(
+        &self,
+        _ctx: &RequestContext,
+        _resource_type: &str,
+        _id: &str,
+        _request: ActionRequest,
+    ) -> Result<Operation, ApiError> {
+        Err(ApiError::NotImplemented("test".to_owned()))
+    }
+
+    async fn create_resource(
+        &self,
+        _ctx: &RequestContext,
+        _resource_type: &str,
+        _request: CreateResourceRequest,
+    ) -> Result<Operation, ApiError> {
+        Err(ApiError::NotImplemented("test".to_owned()))
+    }
+
+    async fn list_operations(
+        &self,
+        _ctx: &RequestContext,
+        _params: console_bff_core::upstream::ListOperationsParams,
+    ) -> Result<PaginatedCollection<Operation>, ApiError> {
+        Err(ApiError::NotImplemented("test".to_owned()))
+    }
+
+    async fn get_operation(&self, _ctx: &RequestContext, _id: &str) -> Result<Operation, ApiError> {
+        Err(ApiError::NotImplemented("test".to_owned()))
+    }
+}
+
+#[tokio::test]
+async fn descriptor_validation_rejects_unsafe_content() {
+    let app = api_router(Arc::new(UnsafeDescriptorUpstream));
+    let correlation = "corr-unsafe-descriptor";
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/services")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_problem_details(response, StatusCode::BAD_REQUEST, correlation).await;
 }

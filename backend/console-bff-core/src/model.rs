@@ -62,6 +62,63 @@ pub struct ServiceDescriptor {
     pub resource_types: Vec<ResourceTypeDescriptor>,
 }
 
+/// Service catalog entry exposed to tenant consoles.
+///
+/// Mirrors the upstream `/o3k/v1/services` discovery shape with presentation-safe
+/// additions only. `name` is derived from `id` when upstream does not supply one.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceCatalogEntry {
+    pub id: String,
+    pub namespace: String,
+    pub name: String,
+    pub version: String,
+    pub ownership: Option<String>,
+    pub lifecycle_state: String,
+    pub capabilities: Vec<Capability>,
+    pub regions: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub documentation_url: Option<String>,
+}
+
+/// Installed service exposed to operator consoles.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledService {
+    pub id: String,
+    pub namespace: String,
+    pub name: String,
+    pub version: String,
+    pub ownership: Option<String>,
+    pub lifecycle_state: String,
+    pub health: String,
+    pub resource_types: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub controller_info: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub installed_at: Option<OffsetDateTime>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<OffsetDateTime>,
+}
+
+/// Discovered resource type exposed to operator consoles.
+///
+/// This is a presentation-oriented projection of `/o3k/v1/resource-types`.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveredResourceType {
+    pub namespace: String,
+    pub name: String,
+    pub service_id: String,
+    pub schema_version: String,
+    pub collection: String,
+    pub scope: String,
+    pub ready: bool,
+    pub lifecycle_actions: HashMap<String, String>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceTypeDescriptor {

@@ -19,6 +19,7 @@ import {
   AccountProjectsPage,
   OperatorOperationsPage,
   OperatorAuditPage,
+  InstalledServicesPage,
 } from "@araf/operator-platform";
 import { createArafClient } from "@araf/api-client";
 import { useState, type ReactNode } from "react";
@@ -54,7 +55,6 @@ const navigationItems: OperatorNavigationItem[] = [
     type: "section",
     text: "Services",
     items: [
-      { id: "catalog", type: "link", text: "Catalog", href: "/services/catalog" },
       { id: "installed", type: "link", text: "Installed Services", href: "/services/installed" },
       { id: "resources", type: "link", text: "Resources", href: "/resources" },
     ],
@@ -233,18 +233,10 @@ export function App() {
                     }
                   />
                   <Route
-                    path="/services/catalog"
-                    element={
-                      <OperatorRouterShell>
-                        <PlaceholderPage title="Catalog" />
-                      </OperatorRouterShell>
-                    }
-                  />
-                  <Route
                     path="/services/installed"
                     element={
                       <OperatorRouterShell>
-                        <PlaceholderPage title="Installed Services" />
+                        <InstalledServicesPage />
                       </OperatorRouterShell>
                     }
                   />
