@@ -15,6 +15,11 @@ import {
   ResourceDetailPage,
   ResourceCreatePage,
 } from "@araf/resources";
+import {
+  OperationsClientProvider,
+  OperationsListPage,
+  OperationDetailPage,
+} from "@araf/operations";
 import { createArafClient } from "@araf/api-client";
 import { useState, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useParams } from "react-router";
@@ -155,108 +160,118 @@ export function App() {
           }}
         >
           <ResourceClientProvider client={arafClient}>
-            <BrowserRouter>
-              <TenantRouteGuard
-                fallback={
-                  <main style={{ padding: "2rem" }}>
-                    <h1>Operator routes are not available in the tenant console</h1>
-                    <p>This session cannot access operator-only surfaces.</p>
-                  </main>
-                }
-              >
-                <Routes>
-                  <Route
-                    path="/"
-                    element={
-                      <TenantRouterShell>
-                        <HomePage />
-                      </TenantRouterShell>
-                    }
-                  />
-                  <Route
-                    path="/services/*"
-                    element={
-                      <TenantRouterShell>
-                        <PlaceholderPage title="Services" />
-                      </TenantRouterShell>
-                    }
-                  />
-                  <Route
-                    path="/operations"
-                    element={
-                      <TenantRouterShell>
-                        <PlaceholderPage title="Operations" />
-                      </TenantRouterShell>
-                    }
-                  />
-                  <Route
-                    path="/resources"
-                    element={
-                      <TenantRouterShell>
-                        <ResourceLandingPage />
-                      </TenantRouterShell>
-                    }
-                  />
-                  <Route
-                    path="/resources/:resourceType"
-                    element={
-                      <TenantRouterShell>
-                        <ResourceCollectionRoute />
-                      </TenantRouterShell>
-                    }
-                  />
-                  <Route
-                    path="/resources/:resourceType/create"
-                    element={
-                      <TenantRouterShell>
-                        <ResourceCreateRoute />
-                      </TenantRouterShell>
-                    }
-                  />
-                  <Route
-                    path="/resources/:resourceType/:id"
-                    element={
-                      <TenantRouterShell>
-                        <ResourceDetailRoute />
-                      </TenantRouterShell>
-                    }
-                  />
-                  <Route
-                    path="/usage"
-                    element={
-                      <TenantRouterShell>
-                        <PlaceholderPage title="Usage & Cost" />
-                      </TenantRouterShell>
-                    }
-                  />
-                  <Route
-                    path="/organization/*"
-                    element={
-                      <TenantRouterShell>
-                        <PlaceholderPage title="Organization" />
-                      </TenantRouterShell>
-                    }
-                  />
-                  <Route
-                    path="/developer/*"
-                    element={
-                      <TenantRouterShell>
-                        <PlaceholderPage title="Developer" />
-                      </TenantRouterShell>
-                    }
-                  />
-                  <Route path="/operator/*" element={<Navigate to="/" replace />} />
-                  <Route
-                    path="*"
-                    element={
-                      <TenantRouterShell>
-                        <NotFound />
-                      </TenantRouterShell>
-                    }
-                  />
-                </Routes>
-              </TenantRouteGuard>
-            </BrowserRouter>
+            <OperationsClientProvider client={arafClient}>
+              <BrowserRouter>
+                <TenantRouteGuard
+                  fallback={
+                    <main style={{ padding: "2rem" }}>
+                      <h1>Operator routes are not available in the tenant console</h1>
+                      <p>This session cannot access operator-only surfaces.</p>
+                    </main>
+                  }
+                >
+                  <Routes>
+                    <Route
+                      path="/"
+                      element={
+                        <TenantRouterShell>
+                          <HomePage />
+                        </TenantRouterShell>
+                      }
+                    />
+                    <Route
+                      path="/services/*"
+                      element={
+                        <TenantRouterShell>
+                          <PlaceholderPage title="Services" />
+                        </TenantRouterShell>
+                      }
+                    />
+                    <Route
+                      path="/operations"
+                      element={
+                        <TenantRouterShell>
+                          <OperationsListPage />
+                        </TenantRouterShell>
+                      }
+                    />
+                    <Route
+                      path="/operations/:id"
+                      element={
+                        <TenantRouterShell>
+                          <OperationDetailPage />
+                        </TenantRouterShell>
+                      }
+                    />
+                    <Route
+                      path="/resources"
+                      element={
+                        <TenantRouterShell>
+                          <ResourceLandingPage />
+                        </TenantRouterShell>
+                      }
+                    />
+                    <Route
+                      path="/resources/:resourceType"
+                      element={
+                        <TenantRouterShell>
+                          <ResourceCollectionRoute />
+                        </TenantRouterShell>
+                      }
+                    />
+                    <Route
+                      path="/resources/:resourceType/create"
+                      element={
+                        <TenantRouterShell>
+                          <ResourceCreateRoute />
+                        </TenantRouterShell>
+                      }
+                    />
+                    <Route
+                      path="/resources/:resourceType/:id"
+                      element={
+                        <TenantRouterShell>
+                          <ResourceDetailRoute />
+                        </TenantRouterShell>
+                      }
+                    />
+                    <Route
+                      path="/usage"
+                      element={
+                        <TenantRouterShell>
+                          <PlaceholderPage title="Usage & Cost" />
+                        </TenantRouterShell>
+                      }
+                    />
+                    <Route
+                      path="/organization/*"
+                      element={
+                        <TenantRouterShell>
+                          <PlaceholderPage title="Organization" />
+                        </TenantRouterShell>
+                      }
+                    />
+                    <Route
+                      path="/developer/*"
+                      element={
+                        <TenantRouterShell>
+                          <PlaceholderPage title="Developer" />
+                        </TenantRouterShell>
+                      }
+                    />
+                    <Route path="/operator/*" element={<Navigate to="/" replace />} />
+                    <Route
+                      path="*"
+                      element={
+                        <TenantRouterShell>
+                          <NotFound />
+                        </TenantRouterShell>
+                      }
+                    />
+                  </Routes>
+                </TenantRouteGuard>
+              </BrowserRouter>
+            </OperationsClientProvider>
           </ResourceClientProvider>
         </FixtureScopeProvider>
       </FixtureIdentityProvider>

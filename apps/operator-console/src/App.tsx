@@ -7,6 +7,11 @@ import {
   ResourceDetailPage,
   ResourceCreatePage,
 } from "@araf/resources";
+import {
+  OperationsClientProvider,
+  OperationsListPage,
+  OperationDetailPage,
+} from "@araf/operations";
 import { createArafClient } from "@araf/api-client";
 import { useState, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useParams } from "react-router";
@@ -151,115 +156,125 @@ export function App() {
         initialIdentity={{ userId: "fixture-operator", userName: "Platform Operator" }}
       >
         <ResourceClientProvider client={arafClient}>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Navigate to="/platform/overview" replace />} />
-              <Route
-                path="/platform/overview"
-                element={
-                  <OperatorRouterShell>
-                    <OverviewPage />
-                  </OperatorRouterShell>
-                }
-              />
-              <Route
-                path="/platform/*"
-                element={
-                  <OperatorRouterShell>
-                    <PlaceholderPage title="Platform" />
-                  </OperatorRouterShell>
-                }
-              />
-              <Route
-                path="/customers/*"
-                element={
-                  <OperatorRouterShell>
-                    <PlaceholderPage title="Customers" />
-                  </OperatorRouterShell>
-                }
-              />
-              <Route
-                path="/services/catalog"
-                element={
-                  <OperatorRouterShell>
-                    <PlaceholderPage title="Catalog" />
-                  </OperatorRouterShell>
-                }
-              />
-              <Route
-                path="/services/installed"
-                element={
-                  <OperatorRouterShell>
-                    <PlaceholderPage title="Installed Services" />
-                  </OperatorRouterShell>
-                }
-              />
-              <Route
-                path="/resources"
-                element={
-                  <OperatorRouterShell>
-                    <ResourceLandingPage />
-                  </OperatorRouterShell>
-                }
-              />
-              <Route
-                path="/resources/:resourceType"
-                element={
-                  <OperatorRouterShell>
-                    <ResourceCollectionRoute />
-                  </OperatorRouterShell>
-                }
-              />
-              <Route
-                path="/resources/:resourceType/create"
-                element={
-                  <OperatorRouterShell>
-                    <ResourceCreateRoute />
-                  </OperatorRouterShell>
-                }
-              />
-              <Route
-                path="/resources/:resourceType/:id"
-                element={
-                  <OperatorRouterShell>
-                    <ResourceDetailRoute />
-                  </OperatorRouterShell>
-                }
-              />
-              <Route
-                path="/infrastructure/*"
-                element={
-                  <OperatorRouterShell>
-                    <PlaceholderPage title="Infrastructure" />
-                  </OperatorRouterShell>
-                }
-              />
-              <Route
-                path="/operations"
-                element={
-                  <OperatorRouterShell>
-                    <PlaceholderPage title="Operations" />
-                  </OperatorRouterShell>
-                }
-              />
-              <Route
-                path="/governance/*"
-                element={
-                  <OperatorRouterShell>
-                    <PlaceholderPage title="Governance" />
-                  </OperatorRouterShell>
-                }
-              />
-              <Route
-                path="*"
-                element={
-                  <OperatorRouterShell>
-                    <NotFound />
-                  </OperatorRouterShell>
-                }
-              />
-            </Routes>
-          </BrowserRouter>
+          <OperationsClientProvider client={arafClient}>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<Navigate to="/platform/overview" replace />} />
+                <Route
+                  path="/platform/overview"
+                  element={
+                    <OperatorRouterShell>
+                      <OverviewPage />
+                    </OperatorRouterShell>
+                  }
+                />
+                <Route
+                  path="/platform/*"
+                  element={
+                    <OperatorRouterShell>
+                      <PlaceholderPage title="Platform" />
+                    </OperatorRouterShell>
+                  }
+                />
+                <Route
+                  path="/customers/*"
+                  element={
+                    <OperatorRouterShell>
+                      <PlaceholderPage title="Customers" />
+                    </OperatorRouterShell>
+                  }
+                />
+                <Route
+                  path="/services/catalog"
+                  element={
+                    <OperatorRouterShell>
+                      <PlaceholderPage title="Catalog" />
+                    </OperatorRouterShell>
+                  }
+                />
+                <Route
+                  path="/services/installed"
+                  element={
+                    <OperatorRouterShell>
+                      <PlaceholderPage title="Installed Services" />
+                    </OperatorRouterShell>
+                  }
+                />
+                <Route
+                  path="/resources"
+                  element={
+                    <OperatorRouterShell>
+                      <ResourceLandingPage />
+                    </OperatorRouterShell>
+                  }
+                />
+                <Route
+                  path="/resources/:resourceType"
+                  element={
+                    <OperatorRouterShell>
+                      <ResourceCollectionRoute />
+                    </OperatorRouterShell>
+                  }
+                />
+                <Route
+                  path="/resources/:resourceType/create"
+                  element={
+                    <OperatorRouterShell>
+                      <ResourceCreateRoute />
+                    </OperatorRouterShell>
+                  }
+                />
+                <Route
+                  path="/resources/:resourceType/:id"
+                  element={
+                    <OperatorRouterShell>
+                      <ResourceDetailRoute />
+                    </OperatorRouterShell>
+                  }
+                />
+                <Route
+                  path="/infrastructure/*"
+                  element={
+                    <OperatorRouterShell>
+                      <PlaceholderPage title="Infrastructure" />
+                    </OperatorRouterShell>
+                  }
+                />
+                <Route
+                  path="/operations"
+                  element={
+                    <OperatorRouterShell>
+                      <OperationsListPage />
+                    </OperatorRouterShell>
+                  }
+                />
+                <Route
+                  path="/operations/:id"
+                  element={
+                    <OperatorRouterShell>
+                      <OperationDetailPage />
+                    </OperatorRouterShell>
+                  }
+                />
+                <Route
+                  path="/governance/*"
+                  element={
+                    <OperatorRouterShell>
+                      <PlaceholderPage title="Governance" />
+                    </OperatorRouterShell>
+                  }
+                />
+                <Route
+                  path="*"
+                  element={
+                    <OperatorRouterShell>
+                      <NotFound />
+                    </OperatorRouterShell>
+                  }
+                />
+              </Routes>
+            </BrowserRouter>
+          </OperationsClientProvider>
         </ResourceClientProvider>
       </FixtureIdentityProvider>
     </ArafThemeProvider>
