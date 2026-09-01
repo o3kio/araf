@@ -211,14 +211,40 @@ impl BffConfig {
             }
         };
 
-        if environment != "development" && environment != "test" && environment != "production" {
-            return Err(ApiError::Upstream(UpstreamError::Error(format!(
+        if !matches!(environment.as_str(), "development" | "test" | "production") {
+            return Err(configuration_error(format!(
                 "unsupported ARAF_ENV {environment:?}"
-            ))));
+            )));
+        }
+        if environment == "production" {
+            let required = [
+                "ARAF_OIDC_CLIENT_ID",
+                "ARAF_OIDC_CLIENT_SECRET",
+                "ARAF_OIDC_ISSUER_URL",
+                "ARAF_OIDC_REDIRECT_URI",
+            ];
+            if let Some(name) = required
+                .iter()
+                .find(|name| std::env::var(name).map_or(true, |value| value.trim().is_empty()))
+            {
+                return Err(configuration_error(format!(
+                    "{name} must be set in production"
+                )));
+            }
+            if !std::env::var("ARAF_OIDC_REDIRECT_URI").is_ok_and(|uri| uri.starts_with("https://"))
+            {
+                return Err(configuration_error(
+                    "ARAF_OIDC_REDIRECT_URI must use HTTPS in production".to_owned(),
+                ));
+            }
         }
 
         Ok(Self { surface, adapter })
     }
+}
+
+fn configuration_error(message: String) -> ApiError {
+    ApiError::Upstream(UpstreamError::Error(message))
 }
 
 fn router_for_surface(upstream: Arc<dyn Upstream>, surface: &'static str) -> Router {
