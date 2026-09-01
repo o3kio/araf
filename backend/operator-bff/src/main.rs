@@ -3,7 +3,7 @@
 //! Serves only the Operator Console surface, deployable on a management
 //! network with its own session/trust boundary (ADR 0001).
 
-use console_bff_core::fixture_router;
+use console_bff_core::{api_router_for_config, BffConfig};
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -16,7 +16,9 @@ async fn main() -> std::io::Result<()> {
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or(8081);
 
-    let app = fixture_router("operator-bff");
+    let config = BffConfig::from_env("operator-bff");
+    let app = api_router_for_config(config)
+        .map_err(|e| std::io::Error::other(format!("failed to build router: {e}")))?;
 
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
     tracing::info!(%port, "operator-bff listening");
