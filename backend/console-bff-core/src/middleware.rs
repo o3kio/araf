@@ -219,7 +219,11 @@ async fn inject_validated_session(
             })
         })
     {
-        if let Some(data) = store.validate(token.1).await {
+        if let Some(data) = store
+            .validate(token.1)
+            .await
+            .filter(|data| data.surface == surface)
+        {
             request.extensions_mut().insert(Arc::new(SessionState {
                 surface: data.surface,
                 authenticated: true,
@@ -326,6 +330,44 @@ mod tests {
                 .unwrap()
                 .as_ref(),
             b"true"
+        );
+
+        let store = crate::session::SessionStore::new();
+        let mismatched_token = store
+            .create(
+                "tenant-user".into(),
+                "Tenant User".into(),
+                "tenant-bff",
+                None,
+                None,
+                None,
+            )
+            .await;
+        let operator = apply_production_layers(
+            Router::new().route("/probe", get(session_probe)),
+            store,
+            "operator-bff",
+            HeaderValue::from_static("https://operator.example.invalid"),
+        );
+        let response = operator
+            .oneshot(
+                Request::builder()
+                    .uri("/probe")
+                    .header(
+                        "cookie",
+                        format!("araf_operator_session={mismatched_token}"),
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            axum::body::to_bytes(response.into_body(), 16)
+                .await
+                .unwrap()
+                .as_ref(),
+            b"false"
         );
     }
 }
