@@ -173,3 +173,60 @@ async fn redact_sensitive_logs(request: Request, next: Next) -> Response {
     // not including sensitive data in structured fields.
     next.run(request).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::request::RequestContext;
+    use axum::{routing::get, Json, Router};
+    use tower::ServiceExt;
+
+    async fn session_probe(ctx: RequestContext) -> Json<bool> {
+        Json(ctx.session.authenticated)
+    }
+
+    #[tokio::test]
+    async fn production_middleware_does_not_inject_fixture_identity() {
+        let production = apply_production_layers(Router::new().route("/probe", get(session_probe)));
+        let fixture = apply_default_layers(
+            Router::new().route("/probe", get(session_probe)),
+            "tenant-bff",
+        );
+
+        let production_response = production
+            .oneshot(
+                Request::builder()
+                    .uri("/probe")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let fixture_response = fixture
+            .oneshot(
+                Request::builder()
+                    .uri("/probe")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(production_response.status(), StatusCode::OK);
+        assert_eq!(fixture_response.status(), StatusCode::OK);
+        assert_eq!(
+            axum::body::to_bytes(production_response.into_body(), 16)
+                .await
+                .unwrap()
+                .as_ref(),
+            b"false"
+        );
+        assert_eq!(
+            axum::body::to_bytes(fixture_response.into_body(), 16)
+                .await
+                .unwrap()
+                .as_ref(),
+            b"true"
+        );
+    }
+}
