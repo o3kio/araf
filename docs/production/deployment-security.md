@@ -12,7 +12,8 @@ Each surface has an independent OIDC client configuration. Tenant BFFs must
 provide `ARAF_TENANT_OIDC_CLIENT_ID`, `ARAF_TENANT_OIDC_CLIENT_SECRET`,
 `ARAF_TENANT_OIDC_ISSUER_URL`, `ARAF_TENANT_OIDC_REDIRECT_URI` (HTTPS),
 `ARAF_TENANT_OIDC_AUTHORIZATION_URL`, and `ARAF_TENANT_OIDC_USERINFO_URL`;
-Operator BFFs use the corresponding `ARAF_OPERATOR_OIDC_*` variables. Provider
+they must also provide `ARAF_TENANT_OIDC_CONSOLE_ORIGIN`. Operator BFFs use the
+corresponding `ARAF_OPERATOR_OIDC_*` variables.
 authorization and userinfo endpoints are explicit deployment inputs; the BFF
 does not invent or default them.
 

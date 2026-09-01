@@ -24,6 +24,7 @@ pub mod upstream;
 use std::sync::Arc;
 
 use axum::{
+    http::HeaderValue,
     routing::{delete, get, post},
     Router,
 };
@@ -251,6 +252,7 @@ impl BffConfig {
                 format!("{prefix}_REDIRECT_URI"),
                 format!("{prefix}_AUTHORIZATION_URL"),
                 format!("{prefix}_USERINFO_URL"),
+                format!("{prefix}_CONSOLE_ORIGIN"),
             ];
             if let Some(name) = required
                 .iter()
@@ -293,12 +295,28 @@ pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
         sessions: session::SessionStore::new(),
     };
     let sessions = state.sessions.clone();
+    let console_origin = if config.adapter == UpstreamAdapter::O3k {
+        HeaderValue::from_str(
+            &std::env::var(format!(
+                "ARAF_{}_OIDC_CONSOLE_ORIGIN",
+                if config.surface == "operator-bff" {
+                    "OPERATOR"
+                } else {
+                    "TENANT"
+                }
+            ))
+            .map_err(|_| configuration_error("console origin is not set".to_owned()))?,
+        )
+        .map_err(|_| configuration_error("invalid console origin".to_owned()))?
+    } else {
+        HeaderValue::from_static("http://localhost")
+    };
     let router =
         routes_for_surface(config.surface, config.surface == "operator-bff").with_state(state);
     Ok(match config.adapter {
         UpstreamAdapter::Fixture => middleware::apply_default_layers(router, config.surface),
         UpstreamAdapter::O3k => {
-            middleware::apply_production_layers(router, sessions, config.surface)
+            middleware::apply_production_layers(router, sessions, config.surface, console_origin)
         }
     })
 }

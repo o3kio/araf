@@ -53,8 +53,9 @@ pub fn apply_production_layers(
     router: Router,
     session_store: Arc<crate::session::SessionStore>,
     surface: &'static str,
+    console_origin: HeaderValue,
 ) -> Router {
-    apply_layers_with_session_store(router, session_store, surface)
+    apply_layers_with_session_store(router, session_store, surface, console_origin)
 }
 
 fn apply_layers(router: Router, session: Arc<SessionState>) -> Router {
@@ -135,6 +136,7 @@ fn apply_layers_with_session_store(
     router: Router,
     session_store: Arc<crate::session::SessionStore>,
     surface: &'static str,
+    console_origin: HeaderValue,
 ) -> Router {
     let csp_header = SetResponseHeaderLayer::overriding(
         axum::http::header::CONTENT_SECURITY_POLICY,
@@ -168,7 +170,21 @@ fn apply_layers_with_session_store(
         ))
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE_BYTES))
         .layer(CompressionLayer::new())
-        .layer(CorsLayer::new().allow_origin(AllowOrigin::predicate(|_, _| true)))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(AllowOrigin::exact(console_origin))
+                .allow_credentials(true)
+                .allow_headers([
+                    crate::request::correlation_id_header(),
+                    crate::request::request_id_header(),
+                    crate::csrf::csrf_header_name(),
+                    axum::http::header::CONTENT_TYPE,
+                ])
+                .expose_headers([
+                    crate::request::correlation_id_header(),
+                    crate::request::request_id_header(),
+                ]),
+        )
         .layer(axum::middleware::from_fn(propagate_id_headers))
         .layer(TraceLayer::new_for_http())
 }
@@ -269,6 +285,7 @@ mod tests {
             Router::new().route("/probe", get(session_probe)),
             crate::session::SessionStore::new(),
             "tenant-bff",
+            HeaderValue::from_static("https://tenant.example.invalid"),
         );
         let fixture = apply_default_layers(
             Router::new().route("/probe", get(session_probe)),
