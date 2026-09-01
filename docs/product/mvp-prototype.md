@@ -35,8 +35,8 @@ The prototype is complete when all of the following are demonstrated:
 4. At least three representative resource types render from generic resource descriptors using the same list/details primitives.
 5. At least one create flow is generated from JSON Schema + Araf UI metadata instead of a hand-written service page.
 6. Capability metadata controls visible/enabled actions while the fixture API still enforces the same capability server-side.
-7. A submitted async action transitions through a canonical Operation object and never reports completion from HTTP acceptance alone.
-8. Operation list/detail/timeline is usable from both an affected resource and the global Operations view.
+7. ✅ **M6** A submitted async action transitions through a canonical Operation object and never reports completion from HTTP acceptance alone.
+8. ✅ **M6** Operation list/detail/timeline is usable from both an affected resource and the global Operations view.
 9. Resource relationships are rendered generically for at least one composed example.
 10. Problem Details/correlation identifiers produce actionable error UX.
 11. The same resource total can represent 100,000 records while the browser only handles bounded paginated results.
@@ -46,11 +46,22 @@ The prototype is complete when all of the following are demonstrated:
 
 Tenant:
 
-`select project -> select region -> list servers -> open server -> create server -> inspect running operation -> operation completes -> resource appears`
+1. Select project (`project-1`) and region (`eu-west`) in the tenant shell.
+2. Navigate to `/resources/compute.server` to list servers.
+3. Open a server detail page at `/resources/compute.server/{id}`.
+4. Click **Create** to open `/resources/compute.server/create`.
+5. Submit the schema-driven create form.
+6. The success screen shows "Request accepted" with the canonical Operation id, state, and correlation id, plus a link to `/operations/{operation.id}`.
+7. Open the operation detail page to watch the authoritative event timeline transition `Pending -> Running -> Succeeded/Failed`.
+8. Reload `/operations/{operation.id}` — the Operation and its events survive because the BFF persists the canonical Operation, not just the HTTP 202 response.
+9. Return to the server detail page and open the **Operations** tab to see operations scoped to that resource, with a link to the global Operations list.
 
 Operator:
 
-`open platform -> inspect region/provider health -> inspect project -> open failed operation -> correlate resource and audit fixture`
+1. Open the operator console at `/platform/overview`.
+2. Navigate to `/operations` to view the platform-wide operations list with server-bounded pagination and filters.
+3. Open a failed operation at `/operations/{id}`.
+4. Inspect the structured error section (code, title, detail) and the event timeline to correlate the failure with the affected resource and correlation id.
 
 ## 4. MVP gate
 
