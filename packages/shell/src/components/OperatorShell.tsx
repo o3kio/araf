@@ -18,42 +18,38 @@ export interface OperatorShellProps {
 }
 
 function renderNavigationItems(items: OperatorNavigationItem[], activeHref?: string): ReactNode {
-  return (
-    <ul className="araf-operator-shell__nav-list" role="list">
-      {items.map((item) => {
-        const isActive = item.href === activeHref;
-        if (item.type === "section") {
-          return (
-            <li key={item.id} className="araf-operator-shell__nav-section" role="presentation">
-              <span className="araf-operator-shell__nav-section-title">{item.text}</span>
-              {item.items ? (
-                <ul className="araf-operator-shell__nav-sublist" role="list">
-                  {renderNavigationItems(item.items, activeHref)}
-                </ul>
-              ) : null}
-            </li>
-          );
-        }
+  return items.map((item) => {
+    const isActive = item.href === activeHref;
+    if (item.type === "section") {
+      return (
+        <li key={item.id} className="araf-operator-shell__nav-section">
+          <span className="araf-operator-shell__nav-section-title">{item.text}</span>
+          {item.items && item.items.length > 0 ? (
+            <ul className="araf-operator-shell__nav-sublist" role="list">
+              {renderNavigationItems(item.items, activeHref)}
+            </ul>
+          ) : null}
+        </li>
+      );
+    }
 
-        return (
-          <li key={item.id} className="araf-operator-shell__nav-item">
-            <a
-              href={item.href ?? "#"}
-              aria-current={isActive ? "page" : undefined}
-              className={`araf-operator-shell__nav-link${isActive ? " is-active" : ""}`}
-            >
-              {item.text}
-            </a>
-            {item.items ? (
-              <ul className="araf-operator-shell__nav-sublist" role="list">
-                {renderNavigationItems(item.items, activeHref)}
-              </ul>
-            ) : null}
-          </li>
-        );
-      })}
-    </ul>
-  );
+    return (
+      <li key={item.id} className="araf-operator-shell__nav-item">
+        <a
+          href={item.href ?? "#"}
+          aria-current={isActive ? "page" : undefined}
+          className={`araf-operator-shell__nav-link${isActive ? " is-active" : ""}`}
+        >
+          {item.text}
+        </a>
+        {item.items && item.items.length > 0 ? (
+          <ul className="araf-operator-shell__nav-sublist" role="list">
+            {renderNavigationItems(item.items, activeHref)}
+          </ul>
+        ) : null}
+      </li>
+    );
+  });
 }
 
 /**
@@ -92,7 +88,11 @@ export function OperatorShell({ children, navigationItems, activeHref }: Operato
         </span>
         <strong className="araf-scope-display__value">O3K control plane</strong>
       </div>
-      {navigationItems.length > 0 ? renderNavigationItems(navigationItems, activeHref) : null}
+      {navigationItems.length > 0 ? (
+        <ul className="araf-operator-shell__nav-list" role="list">
+          {renderNavigationItems(navigationItems, activeHref)}
+        </ul>
+      ) : null}
     </nav>
   );
 
