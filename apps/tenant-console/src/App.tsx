@@ -158,11 +158,11 @@ function useTenantNavigation(): TenantNavigationItem[] {
   }, [services]);
 }
 
-function PlaceholderPage({ title }: { title: string }) {
+function UnavailablePage({ title }: { title: string }) {
   return (
     <section>
       <h1>{title}</h1>
-      <p>This page will be implemented in later milestones.</p>
+      <p>This capability is not available in the current deployment.</p>
     </section>
   );
 }
@@ -258,7 +258,7 @@ export function App() {
                         path="/services/*"
                         element={
                           <TenantRouterShell>
-                            <PlaceholderPage title="Services" />
+                            <UnavailablePage title="Services" />
                           </TenantRouterShell>
                         }
                       />
