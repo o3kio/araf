@@ -731,3 +731,308 @@ async fn network_vpc_detail_exposes_cidr_property() {
     assert_eq!(json["resourceType"], "network.vpc");
     assert!(json["properties"]["cidrBlock"].is_string());
 }
+
+#[tokio::test]
+async fn create_compute_server_valid_returns_pending_operation() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-create-ok";
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/resources/compute.server")
+                .header("content-type", "application/json")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::from(
+                    json!({
+                        "name": "test-server",
+                        "regionId": "eu-west",
+                        "projectId": "project-1",
+                        "bootVolumeSizeGb": 50
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_json(response).await;
+    assert_eq!(json["state"], "pending");
+    assert_eq!(json["action"], "create");
+    assert_eq!(json["resourceType"], "compute.server");
+    assert!(json["resourceId"]
+        .as_str()
+        .unwrap()
+        .starts_with("resource-"));
+    assert_eq!(json["correlationId"], correlation);
+}
+
+#[tokio::test]
+async fn create_compute_server_missing_required_returns_400() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-create-missing";
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/resources/compute.server")
+                .header("content-type", "application/json")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::from(
+                    json!({"regionId": "eu-west", "projectId": "project-1"}).to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_problem_details(response, StatusCode::BAD_REQUEST, correlation).await;
+}
+
+#[tokio::test]
+async fn create_compute_server_wrong_type_returns_400() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-create-type";
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/resources/compute.server")
+                .header("content-type", "application/json")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::from(
+                    json!({
+                        "name": 123,
+                        "regionId": "eu-west",
+                        "projectId": "project-1"
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_problem_details(response, StatusCode::BAD_REQUEST, correlation).await;
+}
+
+#[tokio::test]
+async fn create_compute_server_out_of_range_returns_400() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-create-range";
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/resources/compute.server")
+                .header("content-type", "application/json")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::from(
+                    json!({
+                        "name": "test-server",
+                        "regionId": "eu-west",
+                        "projectId": "project-1",
+                        "bootVolumeSizeGb": 5
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_problem_details(response, StatusCode::BAD_REQUEST, correlation).await;
+}
+
+#[tokio::test]
+async fn create_without_capability_returns_403() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-create-forbidden";
+
+    // The fixture does not grant network.vpc/create.
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/resources/network.vpc")
+                .header("content-type", "application/json")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::from(
+                    json!({
+                        "name": "test-vpc",
+                        "regionId": "eu-west",
+                        "projectId": "project-1",
+                        "cidrBlock": "10.0.0.0/24"
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_problem_details(response, StatusCode::FORBIDDEN, correlation).await;
+}
+
+#[tokio::test]
+async fn submit_delete_action_returns_pending_operation() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-delete-ok";
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/resources/compute.server/resource-0000000001/actions")
+                .header("content-type", "application/json")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::from(json!({"actionId": "delete"}).to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_json(response).await;
+    assert_eq!(json["state"], "pending");
+    assert_eq!(json["action"], "delete");
+    assert_eq!(json["resourceId"], "resource-0000000001");
+    assert_eq!(json["correlationId"], correlation);
+}
+
+#[tokio::test]
+async fn submit_invalid_action_id_returns_400() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-action-invalid";
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/resources/compute.server/resource-0000000001/actions")
+                .header("content-type", "application/json")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::from(json!({"actionId": "reboot"}).to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_problem_details(response, StatusCode::BAD_REQUEST, correlation).await;
+}
+
+#[tokio::test]
+async fn submit_attach_action_invalid_input_returns_400() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-attach-invalid";
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/resources/storage.volume/volume-00000001/actions")
+                .header("content-type", "application/json")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::from(
+                    json!({"actionId": "attach", "payload": {"serverId": ""}}).to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_problem_details(response, StatusCode::BAD_REQUEST, correlation).await;
+}
+
+#[tokio::test]
+async fn submit_action_without_capability_returns_403() {
+    let app = fixture_router(TENANT);
+    let correlation = "corr-action-forbidden";
+
+    // The fixture descriptor defines stop but the fixture session is not granted compute.server/stop.
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/resources/compute.server/resource-0000000001/actions")
+                .header("content-type", "application/json")
+                .header(CORRELATION_HEADER, correlation)
+                .body(Body::from(json!({"actionId": "stop"}).to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_problem_details(response, StatusCode::FORBIDDEN, correlation).await;
+}
+
+#[tokio::test]
+async fn services_expose_create_schema_and_action_metadata() {
+    let app = fixture_router(TENANT);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/services")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_json(response).await;
+    let server = json
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "compute")
+        .unwrap()["resourceTypes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|rt| rt["id"] == "compute.server")
+        .cloned()
+        .unwrap();
+
+    assert!(server["createSchema"].is_object());
+    assert_eq!(server["createCapability"]["resourceType"], "compute.server");
+    assert_eq!(server["createCapability"]["action"], "create");
+
+    let delete = server["supportedActions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "delete")
+        .cloned()
+        .unwrap();
+    assert_eq!(delete["riskClass"], "destructive");
+    assert_eq!(delete["requiredCapability"]["action"], "delete");
+
+    let attach = json
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "storage")
+        .unwrap()["resourceTypes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|rt| rt["id"] == "storage.volume")
+        .cloned()
+        .unwrap()["supportedActions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "attach")
+        .cloned()
+        .unwrap();
+    assert!(attach["inputSchema"].is_object());
+    assert_eq!(attach["riskClass"], "normal");
+}

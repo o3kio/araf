@@ -7,6 +7,7 @@ import { useResourceDescriptor } from "../hooks/useResourceDescriptor";
 import { getResourceField, formatResourceField } from "../fields";
 import { mapResourceStatus } from "../status";
 import { RelationshipPanel } from "./RelationshipPanel";
+import { ResourceActionsPanel } from "./ResourceActionsPanel";
 import type { TabItem } from "@araf/ui";
 import type { ResourceDescriptor, DetailsSectionDescriptor } from "../descriptor";
 import { errorMessage, errorCorrelationId } from "../errors";
@@ -110,7 +111,12 @@ export function ResourceDetailPage({ resourceType }: ResourceDetailPageProps) {
       {!error && loading && !resource ? <LoadingState message="Loading resource..." /> : null}
 
       {!error && resource && descriptor ? (
-        <Tabs tabs={tabs} ariaLabel="Resource detail tabs" />
+        <>
+          <div style={{ margin: "1rem 0" }}>
+            <ResourceActionsPanel resource={resource} descriptor={descriptor} />
+          </div>
+          <Tabs tabs={tabs} ariaLabel="Resource detail tabs" />
+        </>
       ) : null}
     </section>
   );

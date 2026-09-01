@@ -214,4 +214,44 @@ test.describe("generic resource runtime", () => {
       "/resources/compute.server/resource-0000000000",
     );
   });
+
+  test("schema-driven create flow returns a Pending Operation", async ({ page }) => {
+    expect(previewUrl).toBeDefined();
+
+    await page.goto(`${previewUrl ?? ""}/resources/compute.server`);
+
+    // Create button is visible and navigates to the create form.
+    const createButton = page.getByRole("link", { name: /Create/i });
+    await expect(createButton).toBeVisible();
+    await createButton.click();
+    await expect(page).toHaveURL(/\/resources\/compute\.server\/create$/);
+    await expect(page.getByRole("heading", { name: "Create Server" })).toBeVisible();
+
+    // Fill the schema-generated form.
+    await page.getByLabel("name").fill("e2e-created-server");
+    await page.getByLabel("regionId").selectOption("eu-west");
+    await page.getByLabel("projectId").selectOption("project-1");
+
+    // Submit and verify the Operation result shows Pending state.
+    await page.getByRole("button", { name: "Create" }).click();
+    await expect(page.getByText(/Operation .+ is pending/)).toBeVisible();
+    await expect(page.getByText(/Correlation ID:/)).toBeVisible();
+  });
+
+  test("schema-driven action with input returns a Pending Operation", async ({ page }) => {
+    expect(previewUrl).toBeDefined();
+
+    await page.goto(`${previewUrl ?? ""}/resources/storage.volume/volume-00000000`);
+    await expect(page.getByRole("heading", { name: "fixture-volume-0" })).toBeVisible();
+
+    // Attach action has an input schema and opens a modal.
+    await page.getByRole("button", { name: "Attach" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByText(/Confirm attach for fixture-volume-0/)).toBeVisible();
+
+    await page.getByLabel("serverId").fill("resource-0000000000");
+    await page.getByRole("button", { name: "Confirm" }).click();
+
+    await expect(page.getByText(/Operation .+ is pending/)).toBeVisible();
+  });
 });

@@ -47,7 +47,7 @@ pub fn api_router(upstream: Arc<dyn Upstream>) -> Router {
         .route("/api/v1/services", get(handlers::list_services))
         .route(
             "/api/v1/resources/{resource_type}",
-            get(handlers::list_resources),
+            get(handlers::list_resources).post(handlers::create_resource),
         )
         .route(
             "/api/v1/resources/{resource_type}/{id}",

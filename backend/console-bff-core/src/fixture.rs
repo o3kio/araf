@@ -5,7 +5,10 @@
 //! impossible to confuse with a production adapter because it implements
 //! `Upstream` but has no O3K client, URLs, or credentials.
 
-use std::collections::HashMap;
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::{Hash, Hasher},
+};
 
 use async_trait::async_trait;
 use time::OffsetDateTime;
@@ -13,10 +16,11 @@ use time::OffsetDateTime;
 use crate::{
     error::ApiError,
     model::{
-        ActionDescriptor, ActionRequest, Capability, ColumnDescriptor, DetailsSectionDescriptor,
-        FilterDescriptor, FilterKind, Operation, OperationError, OperationState,
-        PaginatedCollection, RelationshipDescriptor, RelationshipDirection, Resource,
-        ResourceStatus, ResourceTypeDescriptor, ServiceDescriptor, SessionContext, SortDirection,
+        ActionDescriptor, ActionRequest, ActionRiskClass, Capability, ColumnDescriptor,
+        CreateResourceRequest, DetailsSectionDescriptor, FilterDescriptor, FilterKind, JsonSchema,
+        Operation, OperationError, OperationState, PaginatedCollection, RelationshipDescriptor,
+        RelationshipDirection, Resource, ResourceStatus, ResourceTypeDescriptor, ServiceDescriptor,
+        SessionContext, SortDirection,
     },
     request::RequestContext,
     upstream::{ListResourcesParams, Upstream},
@@ -221,6 +225,31 @@ impl FixtureAdapter {
         }
     }
 
+    fn descriptor_for(resource_type: &str) -> Option<ResourceTypeDescriptor> {
+        match resource_type {
+            "compute.server" => Some(Self::compute_server_descriptor()),
+            "network.vpc" => Some(Self::network_vpc_descriptor()),
+            "storage.volume" => Some(Self::storage_volume_descriptor()),
+            _ => None,
+        }
+    }
+
+    fn validate_payload(schema: &JsonSchema, payload: &serde_json::Value) -> Result<(), ApiError> {
+        let validator = jsonschema::validator_for(schema.as_value())
+            .map_err(|e| ApiError::BadRequest(format!("invalid schema: {e}")))?;
+        let errors: Vec<String> = validator
+            .iter_errors(payload)
+            .map(|e| e.to_string())
+            .collect();
+        if !errors.is_empty() {
+            return Err(ApiError::BadRequest(format!(
+                "validation failed: {}",
+                errors.join("; ")
+            )));
+        }
+        Ok(())
+    }
+
     fn operation_at(id: u64) -> Operation {
         let seed = Self::seed_from_id(id);
         let states = [
@@ -267,21 +296,53 @@ impl FixtureAdapter {
             name: "Server".to_string(),
             plural_name: "Servers".to_string(),
             icon_token: "server".to_string(),
+            create_schema: Some(JsonSchema(serde_json::json!({
+                "type": "object",
+                "required": ["name", "regionId", "projectId"],
+                "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "regionId": { "enum": ["eu-west", "us-east", "ap-south"] },
+                    "projectId": { "enum": ["project-1", "project-2", "project-3", "project-4", "project-5"] },
+                    "bootVolumeSizeGb": { "type": "number", "minimum": 10 }
+                }
+            }))),
+            create_capability: Capability {
+                resource_type: "compute.server".to_string(),
+                action: "create".to_string(),
+            },
             supported_actions: vec![
                 ActionDescriptor {
                     id: "start".to_string(),
                     name: "Start".to_string(),
                     requires_confirmation: false,
+                    risk_class: ActionRiskClass::Normal,
+                    required_capability: Capability {
+                        resource_type: "compute.server".to_string(),
+                        action: "start".to_string(),
+                    },
+                    input_schema: None,
                 },
                 ActionDescriptor {
                     id: "stop".to_string(),
                     name: "Stop".to_string(),
                     requires_confirmation: true,
+                    risk_class: ActionRiskClass::Disruptive,
+                    required_capability: Capability {
+                        resource_type: "compute.server".to_string(),
+                        action: "stop".to_string(),
+                    },
+                    input_schema: None,
                 },
                 ActionDescriptor {
                     id: "delete".to_string(),
                     name: "Delete".to_string(),
                     requires_confirmation: true,
+                    risk_class: ActionRiskClass::Destructive,
+                    required_capability: Capability {
+                        resource_type: "compute.server".to_string(),
+                        action: "delete".to_string(),
+                    },
+                    input_schema: None,
                 },
             ],
             columns: vec![
@@ -353,10 +414,30 @@ impl FixtureAdapter {
             name: "VPC".to_string(),
             plural_name: "VPCs".to_string(),
             icon_token: "network".to_string(),
+            create_schema: Some(JsonSchema(serde_json::json!({
+                "type": "object",
+                "required": ["name", "regionId", "projectId", "cidrBlock"],
+                "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "regionId": { "enum": ["eu-west", "us-east", "ap-south"] },
+                    "projectId": { "enum": ["project-1", "project-2", "project-3", "project-4", "project-5"] },
+                    "cidrBlock": { "type": "string", "minLength": 1 }
+                }
+            }))),
+            create_capability: Capability {
+                resource_type: "network.vpc".to_string(),
+                action: "create".to_string(),
+            },
             supported_actions: vec![ActionDescriptor {
                 id: "delete".to_string(),
                 name: "Delete".to_string(),
                 requires_confirmation: true,
+                risk_class: ActionRiskClass::Destructive,
+                required_capability: Capability {
+                    resource_type: "network.vpc".to_string(),
+                    action: "delete".to_string(),
+                },
+                input_schema: None,
             }],
             columns: vec![
                 ColumnDescriptor {
@@ -427,21 +508,59 @@ impl FixtureAdapter {
             name: "Volume".to_string(),
             plural_name: "Volumes".to_string(),
             icon_token: "storage".to_string(),
+            create_schema: Some(JsonSchema(serde_json::json!({
+                "type": "object",
+                "required": ["name", "regionId", "projectId", "sizeGb"],
+                "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "regionId": { "enum": ["eu-west", "us-east", "ap-south"] },
+                    "projectId": { "enum": ["project-1", "project-2", "project-3", "project-4", "project-5"] },
+                    "sizeGb": { "type": "number", "minimum": 10 }
+                }
+            }))),
+            create_capability: Capability {
+                resource_type: "storage.volume".to_string(),
+                action: "create".to_string(),
+            },
             supported_actions: vec![
                 ActionDescriptor {
                     id: "attach".to_string(),
                     name: "Attach".to_string(),
                     requires_confirmation: false,
+                    risk_class: ActionRiskClass::Normal,
+                    required_capability: Capability {
+                        resource_type: "storage.volume".to_string(),
+                        action: "attach".to_string(),
+                    },
+                    input_schema: Some(JsonSchema(serde_json::json!({
+                        "type": "object",
+                        "required": ["serverId"],
+                        "properties": {
+                            "serverId": { "type": "string", "minLength": 1 }
+                        }
+                    }))),
                 },
                 ActionDescriptor {
                     id: "detach".to_string(),
                     name: "Detach".to_string(),
                     requires_confirmation: true,
+                    risk_class: ActionRiskClass::Disruptive,
+                    required_capability: Capability {
+                        resource_type: "storage.volume".to_string(),
+                        action: "detach".to_string(),
+                    },
+                    input_schema: None,
                 },
                 ActionDescriptor {
                     id: "delete".to_string(),
                     name: "Delete".to_string(),
                     requires_confirmation: true,
+                    risk_class: ActionRiskClass::Destructive,
+                    required_capability: Capability {
+                        resource_type: "storage.volume".to_string(),
+                        action: "delete".to_string(),
+                    },
+                    input_schema: None,
                 },
             ],
             columns: vec![
@@ -642,7 +761,31 @@ impl Upstream for FixtureAdapter {
         request: ActionRequest,
     ) -> Result<Operation, ApiError> {
         // Ensure the resource exists before accepting an action.
-        let _resource = self.get_resource(ctx, resource_type, id).await?;
+        let resource = self.get_resource(ctx, resource_type, id).await?;
+        let session = self.context(ctx).await?;
+
+        let descriptor = Self::descriptor_for(resource_type)
+            .ok_or(ApiError::BadRequest("invalid action id".to_string()))?;
+        let action = descriptor
+            .supported_actions
+            .into_iter()
+            .find(|a| a.id == request.action_id)
+            .ok_or(ApiError::BadRequest("invalid action id".to_string()))?;
+
+        if !session.has_capability(
+            &action.required_capability.resource_type,
+            &action.required_capability.action,
+        ) {
+            return Err(ApiError::Forbidden);
+        }
+
+        if let Some(schema) = &action.input_schema {
+            let payload = request
+                .payload
+                .as_ref()
+                .ok_or(ApiError::BadRequest("action requires payload".to_string()))?;
+            Self::validate_payload(schema, payload)?;
+        }
 
         let seed = Self::seed_from_id(
             Self::parse_id(resource_type, id)
@@ -653,9 +796,68 @@ impl Upstream for FixtureAdapter {
         op.action = request.action_id;
         op.resource_id = Some(id.to_string());
         op.resource_type = Some(resource_type.to_string());
+        op.project_id = Some(resource.project_id);
+        op.region_id = Some(resource.region_id);
         op.state = OperationState::Pending;
         op.correlation_id = ctx.correlation_id().to_string();
         Ok(op)
+    }
+
+    async fn create_resource(
+        &self,
+        ctx: &RequestContext,
+        resource_type: &str,
+        request: CreateResourceRequest,
+    ) -> Result<Operation, ApiError> {
+        let session = self.context(ctx).await?;
+        let descriptor = Self::descriptor_for(resource_type).ok_or(ApiError::NotFound)?;
+
+        let schema = descriptor
+            .create_schema
+            .as_ref()
+            .ok_or(ApiError::BadRequest(
+                "create not supported for resource type".to_string(),
+            ))?;
+
+        if !session.has_capability(
+            &descriptor.create_capability.resource_type,
+            &descriptor.create_capability.action,
+        ) {
+            return Err(ApiError::Forbidden);
+        }
+
+        Self::validate_payload(schema, &request.payload)?;
+
+        let payload_str =
+            serde_json::to_string(&request.payload).map_err(|_| ApiError::Internal)?;
+        let mut hasher = DefaultHasher::new();
+        payload_str.hash(&mut hasher);
+        let numeric_id = hasher.finish();
+        let resource_id = format!("resource-{numeric_id:010}");
+        let now = OffsetDateTime::now_utc();
+
+        Ok(Operation {
+            id: format!("op-{resource_id}"),
+            action: "create".to_string(),
+            state: OperationState::Pending,
+            resource_id: Some(resource_id),
+            resource_type: Some(resource_type.to_string()),
+            project_id: request
+                .payload
+                .get("projectId")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            region_id: request
+                .payload
+                .get("regionId")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            initiated_by: Some(session.user_id),
+            started_at: Some(now),
+            updated_at: Some(now),
+            correlation_id: ctx.correlation_id().to_string(),
+            error: None,
+        })
     }
 
     async fn list_operations(
@@ -714,6 +916,10 @@ impl SessionContext {
             Capability {
                 resource_type: "storage.volume".to_string(),
                 action: "list".to_string(),
+            },
+            Capability {
+                resource_type: "storage.volume".to_string(),
+                action: "attach".to_string(),
             },
             Capability {
                 resource_type: "storage.volume".to_string(),

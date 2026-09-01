@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@araf/api-client": "workspace:*",
+    "@araf/schema-runtime": "workspace:*",
     "@araf/shell": "workspace:*",
     "@araf/ui": "workspace:*"
   },

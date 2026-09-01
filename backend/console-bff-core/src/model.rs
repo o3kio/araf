@@ -31,6 +31,27 @@ pub struct Capability {
     pub action: String,
 }
 
+/// JSON Schema document describing a create or action input shape.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonSchema(pub serde_json::Value);
+
+impl JsonSchema {
+    pub fn as_value(&self) -> &serde_json::Value {
+        &self.0
+    }
+}
+
+/// Risk classification for a resource action.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ActionRiskClass {
+    Normal,
+    Disruptive,
+    Destructive,
+    Privileged,
+}
+
 /// Service/catalog descriptor exposed to the console.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,6 +69,9 @@ pub struct ResourceTypeDescriptor {
     pub name: String,
     pub plural_name: String,
     pub icon_token: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub create_schema: Option<JsonSchema>,
+    pub create_capability: Capability,
     pub supported_actions: Vec<ActionDescriptor>,
     pub columns: Vec<ColumnDescriptor>,
     pub filters: Vec<FilterDescriptor>,
@@ -62,6 +86,10 @@ pub struct ActionDescriptor {
     pub id: String,
     pub name: String,
     pub requires_confirmation: bool,
+    pub risk_class: ActionRiskClass,
+    pub required_capability: Capability,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_schema: Option<JsonSchema>,
 }
 
 /// Presentation column for a resource collection table.
@@ -207,7 +235,25 @@ pub struct ActionRequest {
     pub payload: Option<serde_json::Value>,
 }
 
+/// Request to create a new resource.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateResourceRequest {
+    /// The create payload is the body itself, flattened so the frontend sends
+    /// the resource fields directly while the handler receives them as a single
+    /// `Value` for schema validation.
+    #[serde(flatten)]
+    pub payload: serde_json::Value,
+}
+
 impl SessionContext {
+    /// Check whether the session has been granted a specific capability.
+    pub fn has_capability(&self, resource_type: &str, action: &str) -> bool {
+        self.capabilities
+            .iter()
+            .any(|c| c.resource_type == resource_type && c.action == action)
+    }
+
     pub fn fixture(surface: &'static str) -> Self {
         Self {
             surface,
@@ -224,6 +270,10 @@ impl SessionContext {
                 Capability {
                     resource_type: "compute.server".to_string(),
                     action: "create".to_string(),
+                },
+                Capability {
+                    resource_type: "compute.server".to_string(),
+                    action: "start".to_string(),
                 },
                 Capability {
                     resource_type: "compute.server".to_string(),

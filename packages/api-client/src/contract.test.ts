@@ -148,4 +148,45 @@ describe("tenant-bff fixture contract", () => {
       expect(apiError.problem.status).toBe(404);
     }
   });
+
+  it("returns descriptors with M5 action and create schema fields", async () => {
+    const client = createArafClient(`http://127.0.0.1:${String(port)}`);
+    const services = await client.listServices();
+    const compute = services
+      .find((s) => s.id === "compute")
+      ?.resourceTypes.find((rt) => rt.id === "compute.server");
+
+    expect(compute).toBeDefined();
+    expect(compute?.createCapability).toEqual({
+      resourceType: "compute.server",
+      action: "create",
+    });
+    expect(compute?.createSchema).toBeDefined();
+
+    const startAction = compute?.supportedActions.find((a) => a.id === "start");
+    expect(startAction).toBeDefined();
+    expect(startAction?.riskClass).toBe("normal");
+    expect(startAction?.requiredCapability).toEqual({
+      resourceType: "compute.server",
+      action: "start",
+    });
+
+    const deleteAction = compute?.supportedActions.find((a) => a.id === "delete");
+    expect(deleteAction?.riskClass).toBe("destructive");
+  });
+
+  it("accepts a create resource request and returns a Pending Operation", async () => {
+    const client = createArafClient(`http://127.0.0.1:${String(port)}`);
+    const operation = await client.createResource("compute.server", {
+      name: "created-server",
+      regionId: "eu-west",
+      projectId: "project-1",
+      bootVolumeSizeGb: 25,
+    });
+
+    expect(operation.action).toBe("create");
+    expect(operation.state).toBe("pending");
+    expect(operation.resourceType).toBe("compute.server");
+    expect(operation.correlationId).toBeDefined();
+  });
 });

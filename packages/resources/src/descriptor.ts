@@ -20,6 +20,7 @@ export type {
   FilterDescriptor,
   DetailsSectionDescriptor,
   RelationshipDescriptor,
+  ActionDescriptor,
 };
 
 export interface ResourceDescriptor {
@@ -43,6 +44,13 @@ export interface ResourceDescriptor {
   readonly detailsSections: readonly DetailsSectionDescriptor[];
   /** Relationships to other resource types. */
   readonly relationships: readonly RelationshipDescriptor[];
+  /** JSON Schema describing the create payload, if creation is supported. */
+  readonly createSchema?: unknown;
+  /** Capability required to create this resource type. */
+  readonly createCapability: {
+    readonly resourceType: string;
+    readonly action: string;
+  };
 }
 
 const ALLOWED_DESCRIPTOR_KEYS = new Set([
@@ -56,6 +64,8 @@ const ALLOWED_DESCRIPTOR_KEYS = new Set([
   "sortableFields",
   "detailsSections",
   "relationships",
+  "createSchema",
+  "createCapability",
 ]);
 
 const ALLOWED_COLUMN_KEYS = new Set(["id", "header", "field", "width"]);
@@ -68,7 +78,22 @@ const ALLOWED_RELATIONSHIP_KEYS = new Set([
   "sourcePropertyKey",
   "direction",
 ]);
-const ALLOWED_ACTION_KEYS = new Set(["id", "name", "requiresConfirmation"]);
+const ALLOWED_ACTION_KEYS = new Set([
+  "id",
+  "name",
+  "requiresConfirmation",
+  "riskClass",
+  "requiredCapability",
+  "inputSchema",
+]);
+const ALLOWED_CAPABILITY_KEYS = new Set(["resourceType", "action"]);
+
+const RISK_CLASSES = new Set(["normal", "disruptive", "destructive", "privileged"]);
+
+const EXECUTABLE_STRING_PATTERNS = [/^javascript:/iu, /<script/iu, /^data:text\/html/iu];
+
+const FORBIDDEN_SCHEMA_KEYS = new Set(["$exec", "x-araf-script", "eval"]);
+const FORBIDDEN_SCHEMA_STRINGS = new Set(["eval", "Function("]);
 
 function assertPlainObject(
   value: unknown,
@@ -97,6 +122,99 @@ function validateArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Recursively scan a descriptor value for executable-looking strings and
+ * schema keys that could carry code. Throws as soon as a dangerous value is
+ * found. This is defense-in-depth; the BFF also rejects dangerous descriptors.
+ */
+function rejectExecutableValues(value: unknown, path: string): void {
+  if (typeof value === "string") {
+    for (const pattern of EXECUTABLE_STRING_PATTERNS) {
+      if (pattern.test(value)) {
+        throw new Error(`Dangerous descriptor value at ${path}: executable string rejected`);
+      }
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      rejectExecutableValues(item, `${path}[${String(index)}]`);
+    }
+    return;
+  }
+
+  if (isPlainObject(value)) {
+    for (const [key, child] of Object.entries(value)) {
+      if (FORBIDDEN_SCHEMA_KEYS.has(key)) {
+        throw new Error(`Dangerous schema key at ${path}.${key}: ${key} is not allowed`);
+      }
+      rejectExecutableValues(child, `${path}.${key}`);
+    }
+  }
+}
+
+/**
+ * Scan a JSON Schema value for dangerous keys/strings. Separated from the
+ * general descriptor scan because schemas have their own key allow-list.
+ */
+function rejectDangerousSchema(schema: unknown, path: string): void {
+  if (typeof schema === "string") {
+    if (FORBIDDEN_SCHEMA_STRINGS.has(schema)) {
+      throw new Error(`Dangerous schema value at ${path}: "${schema}" is not allowed`);
+    }
+    return;
+  }
+
+  if (Array.isArray(schema)) {
+    for (const [index, item] of schema.entries()) {
+      rejectDangerousSchema(item, `${path}[${String(index)}]`);
+    }
+    return;
+  }
+
+  if (isPlainObject(schema)) {
+    for (const [key, value] of Object.entries(schema)) {
+      if (FORBIDDEN_SCHEMA_KEYS.has(key)) {
+        throw new Error(`Dangerous schema key at ${path}.${key}: ${key} is not allowed`);
+      }
+      rejectDangerousSchema(value, `${path}.${key}`);
+    }
+  }
+}
+
+function validateCapability(
+  value: unknown,
+  path: string,
+): { readonly resourceType: string; readonly action: string } {
+  assertPlainObject(value, path);
+  checkUnknownKeys(value, ALLOWED_CAPABILITY_KEYS, path);
+  if (typeof value.resourceType !== "string") {
+    throw new Error(`${path}.resourceType must be a string`);
+  }
+  if (typeof value.action !== "string") {
+    throw new Error(`${path}.action must be a string`);
+  }
+  return {
+    resourceType: value.resourceType,
+    action: value.action,
+  };
+}
+
+function validateSchemaValue(value: unknown, path: string): void {
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isPlainObject(value)) {
+    throw new Error(`${path} must be an object, null, or undefined`);
+  }
+  rejectDangerousSchema(value, path);
+}
+
 /**
  * Validate a runtime descriptor in development.
  *
@@ -111,6 +229,7 @@ export function validateDescriptor(descriptor: unknown): asserts descriptor is R
 
   const d = descriptor as Record<string, unknown>;
   checkUnknownKeys(d, ALLOWED_DESCRIPTOR_KEYS, "descriptor");
+  rejectExecutableValues(descriptor, "descriptor");
 
   for (const key of ["id", "name", "pluralName", "iconToken"] as const) {
     if (typeof d[key] !== "string") {
@@ -129,6 +248,16 @@ export function validateDescriptor(descriptor: unknown): asserts descriptor is R
     if (!validateArray(d[key])) {
       throw new Error(`Descriptor.${key} must be an array`);
     }
+  }
+
+  if ("createCapability" in d) {
+    validateCapability(d.createCapability, "descriptor.createCapability");
+  } else {
+    throw new Error("Descriptor.createCapability is required");
+  }
+
+  if ("createSchema" in d) {
+    validateSchemaValue(d.createSchema, "descriptor.createSchema");
   }
 
   for (const [index, column] of (d.columns as unknown[]).entries()) {
@@ -207,6 +336,23 @@ export function validateDescriptor(descriptor: unknown): asserts descriptor is R
     if (typeof action.requiresConfirmation !== "boolean") {
       throw new Error(
         `descriptor.supportedActions[${String(index)}].requiresConfirmation must be a boolean`,
+      );
+    }
+    if (typeof action.riskClass !== "string" || !RISK_CLASSES.has(action.riskClass)) {
+      throw new Error(
+        `descriptor.supportedActions[${String(index)}].riskClass must be one of: ${[
+          ...RISK_CLASSES,
+        ].join(", ")}`,
+      );
+    }
+    validateCapability(
+      action.requiredCapability,
+      `descriptor.supportedActions[${String(index)}].requiredCapability`,
+    );
+    if ("inputSchema" in action) {
+      validateSchemaValue(
+        action.inputSchema,
+        `descriptor.supportedActions[${String(index)}].inputSchema`,
       );
     }
   }
