@@ -46,8 +46,10 @@ jobs:
         working-directory: backend
         run: cargo build -p tenant-bff
 
-      - name: Format check
-        run: pnpm format:check
+      - name: Canonical HomePage formatting (temporary diagnostic)
+        run: |
+          pnpm exec prettier apps/tenant-console/src/HomePage.tsx
+          exit 1
 
       - name: Lint
         run: pnpm lint
