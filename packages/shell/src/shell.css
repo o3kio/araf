@@ -1,0 +1,217 @@
+/*
+ * Araf console shell presentation.
+ *
+ * This stylesheet intentionally consumes only Araf design tokens. It does not
+ * reach into Cloudscape implementation selectors, which keeps ADR 0004's UI
+ * abstraction boundary intact.
+ */
+
+.araf-tenant-shell,
+.araf-operator-shell {
+  min-height: 100vh;
+  background: var(--araf-color-bg-app);
+}
+
+.araf-tenant-shell__search {
+  width: min(420px, 32vw);
+  height: var(--araf-shell-control-height);
+  box-sizing: border-box;
+  border: 1px solid var(--araf-color-border-strong);
+  border-radius: var(--araf-shell-radius);
+  background: var(--araf-color-bg-surface);
+  color: var(--araf-color-text);
+  font: inherit;
+  padding: 0 12px;
+  transition:
+    border-color var(--araf-motion-fast) var(--araf-motion-easing),
+    box-shadow var(--araf-motion-fast) var(--araf-motion-easing);
+}
+
+.araf-tenant-shell__search::placeholder {
+  color: var(--araf-color-text-muted);
+}
+
+.araf-tenant-shell__search:hover {
+  border-color: var(--araf-color-accent);
+}
+
+.araf-tenant-shell__search:focus {
+  border-color: var(--araf-color-accent);
+  box-shadow: var(--araf-shadow-focus);
+}
+
+.araf-tenant-shell__scope,
+.araf-operator-shell__context {
+  margin: 0 0 18px;
+  padding: 14px;
+  border: 1px solid var(--araf-color-border);
+  border-radius: var(--araf-shell-radius);
+  background: var(--araf-color-bg-subtle);
+}
+
+.araf-scope-display {
+  margin-bottom: 12px;
+}
+
+.araf-scope-display__label,
+.araf-operator-shell__context-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--araf-color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.araf-scope-display__value {
+  color: var(--araf-color-text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.araf-project-selector,
+.araf-region-selector {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.araf-project-selector__label,
+.araf-region-selector__label {
+  color: var(--araf-color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.araf-project-selector select,
+.araf-region-selector select {
+  width: 100%;
+  min-width: 0;
+  height: var(--araf-shell-control-height);
+  box-sizing: border-box;
+  border: 1px solid var(--araf-color-border-strong);
+  border-radius: 6px;
+  background: var(--araf-color-bg-surface);
+  color: var(--araf-color-text);
+  font: inherit;
+  font-size: 14px;
+  padding: 0 34px 0 10px;
+  transition:
+    border-color var(--araf-motion-fast) var(--araf-motion-easing),
+    box-shadow var(--araf-motion-fast) var(--araf-motion-easing);
+}
+
+.araf-project-selector select:hover,
+.araf-region-selector select:hover {
+  border-color: var(--araf-color-accent);
+}
+
+.araf-project-selector select:focus,
+.araf-region-selector select:focus {
+  border-color: var(--araf-color-accent);
+  box-shadow: var(--araf-shadow-focus);
+}
+
+.araf-project-selector select:disabled,
+.araf-region-selector select:disabled {
+  cursor: not-allowed;
+  background: var(--araf-color-bg-subtle);
+  color: var(--araf-color-text-muted);
+}
+
+.araf-tenant-shell__nav-list,
+.araf-tenant-shell__nav-sublist,
+.araf-operator-shell__nav-list,
+.araf-operator-shell__nav-sublist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.araf-tenant-shell__nav-list,
+.araf-operator-shell__nav-list {
+  display: grid;
+  gap: var(--araf-shell-nav-gap);
+}
+
+.araf-tenant-shell__nav-section,
+.araf-operator-shell__nav-section {
+  margin-top: 16px;
+}
+
+.araf-tenant-shell__nav-section:first-child,
+.araf-operator-shell__nav-section:first-child {
+  margin-top: 0;
+}
+
+.araf-tenant-shell__nav-section-title,
+.araf-operator-shell__nav-section-title {
+  display: block;
+  padding: 0 10px 6px;
+  color: var(--araf-color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.araf-tenant-shell__nav-sublist,
+.araf-operator-shell__nav-sublist {
+  display: grid;
+  gap: var(--araf-shell-nav-gap);
+}
+
+.araf-tenant-shell__nav-link,
+.araf-operator-shell__nav-link {
+  display: flex;
+  min-height: 36px;
+  box-sizing: border-box;
+  align-items: center;
+  border-radius: 6px;
+  color: var(--araf-color-text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  padding: 8px 10px;
+  text-decoration: none;
+  transition:
+    color var(--araf-motion-fast) var(--araf-motion-easing),
+    background-color var(--araf-motion-fast) var(--araf-motion-easing);
+}
+
+.araf-tenant-shell__nav-link:hover,
+.araf-operator-shell__nav-link:hover {
+  background: var(--araf-color-bg-subtle);
+  color: var(--araf-color-link-hover);
+  text-decoration: none;
+}
+
+.araf-tenant-shell__nav-link.is-active,
+.araf-operator-shell__nav-link.is-active,
+.araf-tenant-shell__nav-link[aria-current="page"],
+.araf-operator-shell__nav-link[aria-current="page"] {
+  background: var(--araf-color-bg-selected);
+  color: var(--araf-color-accent-strong);
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 var(--araf-color-accent);
+}
+
+.araf-tenant-shell__operations-entry {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--araf-color-border);
+}
+
+@media (max-width: 900px) {
+  .araf-tenant-shell__search {
+    width: min(300px, 42vw);
+  }
+}
+
+@media (max-width: 640px) {
+  .araf-tenant-shell__search {
+    width: 180px;
+  }
+}

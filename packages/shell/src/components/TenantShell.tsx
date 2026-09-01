@@ -6,6 +6,7 @@ import { ProjectSelector } from "./ProjectSelector";
 import { RegionSelector } from "./RegionSelector";
 import { ScopeDisplay } from "./ScopeDisplay";
 import type { ProjectOption, RegionOption } from "../types";
+import "../shell.css";
 
 export interface TenantNavigationItem {
   id: string;
@@ -38,42 +39,38 @@ function flattenNavItems(items: TenantNavigationItem[]): { href: string; text: s
 }
 
 function renderNavigationItems(items: TenantNavigationItem[], activeHref?: string): ReactNode {
-  return (
-    <ul className="araf-tenant-shell__nav-list" role="list">
-      {items.map((item) => {
-        const isActive = item.href === activeHref;
-        if (item.type === "section") {
-          return (
-            <li key={item.id} className="araf-tenant-shell__nav-section" role="presentation">
-              <span className="araf-tenant-shell__nav-section-title">{item.text}</span>
-              {item.items ? (
-                <ul className="araf-tenant-shell__nav-sublist" role="list">
-                  {renderNavigationItems(item.items, activeHref)}
-                </ul>
-              ) : null}
-            </li>
-          );
-        }
+  return items.map((item) => {
+    const isActive = item.href === activeHref;
+    if (item.type === "section") {
+      return (
+        <li key={item.id} className="araf-tenant-shell__nav-section">
+          <span className="araf-tenant-shell__nav-section-title">{item.text}</span>
+          {item.items && item.items.length > 0 ? (
+            <ul className="araf-tenant-shell__nav-sublist" role="list">
+              {renderNavigationItems(item.items, activeHref)}
+            </ul>
+          ) : null}
+        </li>
+      );
+    }
 
-        return (
-          <li key={item.id} className="araf-tenant-shell__nav-item">
-            <a
-              href={item.href ?? "#"}
-              aria-current={isActive ? "page" : undefined}
-              className={`araf-tenant-shell__nav-link${isActive ? " is-active" : ""}`}
-            >
-              {item.text}
-            </a>
-            {item.items ? (
-              <ul className="araf-tenant-shell__nav-sublist" role="list">
-                {renderNavigationItems(item.items, activeHref)}
-              </ul>
-            ) : null}
-          </li>
-        );
-      })}
-    </ul>
-  );
+    return (
+      <li key={item.id} className="araf-tenant-shell__nav-item">
+        <a
+          href={item.href ?? "#"}
+          aria-current={isActive ? "page" : undefined}
+          className={`araf-tenant-shell__nav-link${isActive ? " is-active" : ""}`}
+        >
+          {item.text}
+        </a>
+        {item.items && item.items.length > 0 ? (
+          <ul className="araf-tenant-shell__nav-sublist" role="list">
+            {renderNavigationItems(item.items, activeHref)}
+          </ul>
+        ) : null}
+      </li>
+    );
+  });
 }
 
 /**
@@ -165,7 +162,11 @@ export function TenantShell({
           }}
         />
       </div>
-      {navigationItems.length > 0 ? renderNavigationItems(navigationItems, activeHref) : null}
+      {navigationItems.length > 0 ? (
+        <ul className="araf-tenant-shell__nav-list" role="list">
+          {renderNavigationItems(navigationItems, activeHref)}
+        </ul>
+      ) : null}
       {!hasOperations ? (
         <div className="araf-tenant-shell__operations-entry">
           <a href={operationsHref} className="araf-tenant-shell__nav-link">
@@ -182,7 +183,12 @@ export function TenantShell({
         identity={{ title: "Araf Tenant", href: "/" }}
         utilities={utilities}
         search={
-          <input type="search" placeholder="Search resources" aria-label="Search resources" />
+          <input
+            className="araf-tenant-shell__search"
+            type="search"
+            placeholder="Search resources"
+            aria-label="Search resources"
+          />
         }
         searchAriaLabel="Search resources"
       />
