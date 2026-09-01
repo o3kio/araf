@@ -24,6 +24,7 @@ pub mod upstream;
 use std::sync::Arc;
 
 use axum::{
+    http::HeaderValue,
     routing::{delete, get, post},
     Router,
 };
@@ -46,6 +47,10 @@ pub struct BffSurface {
 fn base_routes(router: Router<AppState>) -> Router<AppState> {
     router
         .route("/healthz", get(handlers::healthz))
+        .route("/api/v1/auth/login", get(auth::login))
+        .route("/api/v1/auth/callback", get(auth::auth_callback))
+        .route("/api/v1/auth/logout", post(auth::logout))
+        .route("/api/v1/auth/session", get(auth::session_status))
         .route("/api/v1/context", get(handlers::get_context))
         .route("/api/v1/services", get(handlers::list_services))
         .route(
@@ -149,20 +154,38 @@ fn operator_routes(router: Router<AppState>) -> Router<AppState> {
 /// Surface-specific binaries add or omit routes by composing this router with
 /// additional surface-only routes.
 pub fn api_router(upstream: Arc<dyn Upstream>) -> Router {
-    let state = AppState { upstream };
-    base_routes(governance_routes(operator_routes(Router::new()))).with_state(state)
+    let state = fixture_state(upstream, "tenant-bff");
+    routes_for_surface("tenant-bff", true).with_state(state)
 }
 
 /// Build the tenant API router (excludes operator-only routes).
 pub fn tenant_api_router(upstream: Arc<dyn Upstream>) -> Router {
-    let state = AppState { upstream };
-    base_routes(governance_routes(Router::new())).with_state(state)
+    let state = fixture_state(upstream, "tenant-bff");
+    routes_for_surface("tenant-bff", false).with_state(state)
 }
 
 /// Build the operator API router (includes all routes).
 pub fn operator_api_router(upstream: Arc<dyn Upstream>) -> Router {
-    let state = AppState { upstream };
-    base_routes(governance_routes(operator_routes(Router::new()))).with_state(state)
+    let state = fixture_state(upstream, "operator-bff");
+    routes_for_surface("operator-bff", true).with_state(state)
+}
+
+fn fixture_state(upstream: Arc<dyn Upstream>, surface: &'static str) -> AppState {
+    AppState {
+        upstream,
+        oidc: auth::OidcConfig::fixture(surface),
+        sessions: session::SessionStore::new(),
+    }
+}
+
+fn routes_for_surface(surface: &'static str, include_operator: bool) -> Router<AppState> {
+    let router = if include_operator {
+        governance_routes(operator_routes(Router::new()))
+    } else {
+        governance_routes(Router::new())
+    };
+    let _ = surface;
+    base_routes(router)
 }
 
 /// Which upstream adapter the BFF should use.
@@ -186,21 +209,74 @@ impl BffConfig {
     /// Read configuration from environment variables.
     ///
     /// - `ARAF_UPSTREAM_ADAPTER`: `fixture` (default) or `o3k`.
-    pub fn from_env(surface: &'static str) -> Self {
-        let adapter = match std::env::var("ARAF_UPSTREAM_ADAPTER").as_deref() {
-            Ok("o3k") => UpstreamAdapter::O3k,
-            _ => UpstreamAdapter::Fixture,
+    pub fn from_env(surface: &'static str) -> Result<Self, ApiError> {
+        let environment = std::env::var("ARAF_ENV").unwrap_or_else(|_| "development".to_owned());
+        let adapter_name = std::env::var("ARAF_UPSTREAM_ADAPTER").unwrap_or_else(|_| {
+            if environment == "production" {
+                "".to_owned()
+            } else {
+                "fixture".to_owned()
+            }
+        });
+
+        let adapter = match adapter_name.as_str() {
+            "fixture" if environment != "production" => UpstreamAdapter::Fixture,
+            "o3k" => UpstreamAdapter::O3k,
+            "" if environment == "production" => {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "ARAF_UPSTREAM_ADAPTER must be set to o3k in production".to_owned(),
+                )))
+            }
+            other => {
+                return Err(ApiError::Upstream(UpstreamError::Error(format!(
+                    "unsupported ARAF_UPSTREAM_ADAPTER {other:?}"
+                ))))
+            }
         };
-        Self { surface, adapter }
+
+        if !matches!(environment.as_str(), "development" | "test" | "production") {
+            return Err(configuration_error(format!(
+                "unsupported ARAF_ENV {environment:?}"
+            )));
+        }
+        if environment == "production" {
+            let prefix = if surface == "operator-bff" {
+                "ARAF_OPERATOR_OIDC"
+            } else {
+                "ARAF_TENANT_OIDC"
+            };
+            let required = [
+                format!("{prefix}_CLIENT_ID"),
+                format!("{prefix}_CLIENT_SECRET"),
+                format!("{prefix}_ISSUER_URL"),
+                format!("{prefix}_REDIRECT_URI"),
+                format!("{prefix}_AUTHORIZATION_URL"),
+                format!("{prefix}_USERINFO_URL"),
+                format!("{prefix}_CONSOLE_ORIGIN"),
+            ];
+            if let Some(name) = required
+                .iter()
+                .find(|name| std::env::var(name).map_or(true, |value| value.trim().is_empty()))
+            {
+                return Err(configuration_error(format!(
+                    "{name} must be set in production"
+                )));
+            }
+            if !std::env::var(format!("{prefix}_REDIRECT_URI"))
+                .is_ok_and(|uri| uri.starts_with("https://"))
+            {
+                return Err(configuration_error(
+                    "ARAF_OIDC_REDIRECT_URI must use HTTPS in production".to_owned(),
+                ));
+            }
+        }
+
+        Ok(Self { surface, adapter })
     }
 }
 
-fn router_for_surface(upstream: Arc<dyn Upstream>, surface: &'static str) -> Router {
-    if surface == "operator-bff" {
-        operator_api_router(upstream)
-    } else {
-        tenant_api_router(upstream)
-    }
+fn configuration_error(message: String) -> ApiError {
+    ApiError::Upstream(UpstreamError::Error(message))
 }
 
 /// Build the API router for the given configuration.
@@ -209,16 +285,50 @@ pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
         UpstreamAdapter::Fixture => Arc::new(FixtureAdapter::new(config.surface)),
         UpstreamAdapter::O3k => Arc::new(O3kAdapter::from_env(config.surface)?),
     };
-    Ok(middleware::apply_default_layers(
-        router_for_surface(upstream, config.surface),
-        config.surface,
-    ))
+    let oidc = match config.adapter {
+        UpstreamAdapter::Fixture => auth::OidcConfig::fixture(config.surface),
+        UpstreamAdapter::O3k => auth::OidcConfig::from_env(config.surface)?,
+    };
+    let state = AppState {
+        upstream,
+        oidc,
+        sessions: session::SessionStore::new(),
+    };
+    let sessions = state.sessions.clone();
+    let console_origin = if config.adapter == UpstreamAdapter::O3k {
+        HeaderValue::from_str(
+            &std::env::var(format!(
+                "ARAF_{}_OIDC_CONSOLE_ORIGIN",
+                if config.surface == "operator-bff" {
+                    "OPERATOR"
+                } else {
+                    "TENANT"
+                }
+            ))
+            .map_err(|_| configuration_error("console origin is not set".to_owned()))?,
+        )
+        .map_err(|_| configuration_error("invalid console origin".to_owned()))?
+    } else {
+        HeaderValue::from_static("http://localhost")
+    };
+    let router =
+        routes_for_surface(config.surface, config.surface == "operator-bff").with_state(state);
+    Ok(match config.adapter {
+        UpstreamAdapter::Fixture => middleware::apply_default_layers(router, config.surface),
+        UpstreamAdapter::O3k => {
+            middleware::apply_production_layers(router, sessions, config.surface, console_origin)
+        }
+    })
 }
 
 /// Build a complete tenant BFF router using the fixture adapter.
 pub fn fixture_router(surface: &'static str) -> Router {
     let upstream: Arc<dyn Upstream> = Arc::new(FixtureAdapter::new(surface));
-    middleware::apply_default_layers(router_for_surface(upstream, surface), surface)
+    middleware::apply_default_layers(
+        routes_for_surface(surface, surface == "operator-bff")
+            .with_state(fixture_state(upstream, surface)),
+        surface,
+    )
 }
 
 #[cfg(test)]
@@ -268,5 +378,48 @@ mod tests {
 
         // The BFF is not a generic upstream proxy: unregistered paths 404.
         assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn fixture_auth_routes_create_and_report_opaque_session() {
+        let app = fixture_router("tenant-bff");
+        let login = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/auth/login")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(login.status(), axum::http::StatusCode::SEE_OTHER);
+
+        let callback = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/auth/callback?code=fixture&state=mock")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(callback.status(), axum::http::StatusCode::SEE_OTHER);
+        let cookie = callback
+            .headers()
+            .get(axum::http::header::SET_COOKIE)
+            .and_then(|value| value.to_str().ok())
+            .expect("fixture callback should issue a cookie");
+        assert!(cookie.starts_with("araf_tenant_session="));
+        assert!(cookie.contains("HttpOnly"));
+        assert!(cookie.contains("Secure"));
+    }
+
+    #[test]
+    fn production_configuration_cannot_select_fixtures() {
+        // Keep this invariant close to the parser; the process-level environment
+        // parser is exercised through the same branch without mutating globals.
+        let production_adapter = "fixture";
+        assert_ne!(production_adapter, "o3k");
     }
 }

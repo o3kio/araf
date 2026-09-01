@@ -89,3 +89,47 @@ jobs:
 
       - name: Tests
         run: cargo test --workspace --all-features
+
+  e2e:
+    name: browser E2E (Chromium)
+    runs-on: ubuntu-24.04
+    needs: [frontend, rust]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable corepack pnpm
+        run: corepack enable && corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install ${{ env.RUST_TOOLCHAIN }} --profile minimal
+          rustup override set ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Build fixture BFF binaries
+        working-directory: backend
+        run: cargo build -p tenant-bff -p operator-bff
+
+      - name: Install pinned Chromium and system dependencies
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run browser E2E suite
+        run: pnpm e2e
+
+      - name: Upload browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-diagnostics
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14

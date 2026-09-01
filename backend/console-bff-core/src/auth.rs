@@ -17,13 +17,11 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use tracing::info;
 
 use crate::{
     error::{ApiError, BffError},
     request::RequestContext,
-    session::SessionStore,
 };
 
 /// OIDC client configuration read from environment.
@@ -33,31 +31,44 @@ pub struct OidcConfig {
     pub client_secret: String,
     pub issuer_url: String,
     pub redirect_uri: String,
+    pub authorization_url: String,
+    pub userinfo_url: String,
+    pub fixture_mode: bool,
     pub surface: &'static str,
 }
 
 impl OidcConfig {
     /// Read OIDC configuration from environment.
     pub fn from_env(surface: &'static str) -> Result<Self, ApiError> {
-        let client_id = std::env::var("ARAF_OIDC_CLIENT_ID").map_err(|_| {
-            ApiError::Upstream(crate::error::UpstreamError::Error(
-                "ARAF_OIDC_CLIENT_ID not set".into(),
-            ))
+        let prefix = match surface {
+            "operator-bff" => "ARAF_OPERATOR_OIDC",
+            _ => "ARAF_TENANT_OIDC",
+        };
+        let required = |name: &str| {
+            std::env::var(format!("{prefix}_{name}")).map_err(|_| {
+                ApiError::Upstream(crate::error::UpstreamError::Error(format!(
+                    "{prefix}_{name} not set"
+                )))
+            })
+        };
+        let client_id = required("CLIENT_ID").map_err(|_| {
+            ApiError::Upstream(crate::error::UpstreamError::Error(format!(
+                "{prefix}_CLIENT_ID not set"
+            )))
         })?;
-        let client_secret = std::env::var("ARAF_OIDC_CLIENT_SECRET").map_err(|_| {
-            ApiError::Upstream(crate::error::UpstreamError::Error(
-                "ARAF_OIDC_CLIENT_SECRET not set".into(),
-            ))
-        })?;
-        let issuer_url = std::env::var("ARAF_OIDC_ISSUER_URL")
-            .unwrap_or_else(|_| "http://localhost:8080".into());
-        let redirect_uri = std::env::var("ARAF_OIDC_REDIRECT_URI")
-            .unwrap_or_else(|_| "http://localhost:3000/login/callback".into());
+        let client_secret = required("CLIENT_SECRET")?;
+        let issuer_url = required("ISSUER_URL")?;
+        let redirect_uri = required("REDIRECT_URI")?;
+        let authorization_url = required("AUTHORIZATION_URL")?;
+        let userinfo_url = required("USERINFO_URL")?;
         Ok(Self {
             client_id,
             client_secret,
             issuer_url,
             redirect_uri,
+            authorization_url,
+            userinfo_url,
+            fixture_mode: false,
             surface,
         })
     }
@@ -69,6 +80,9 @@ impl OidcConfig {
             client_secret: "unused-fixture-secret".into(),
             issuer_url: "http://localhost:8080".into(),
             redirect_uri: "http://localhost:3000/login/callback".into(),
+            authorization_url: "/api/v1/auth/callback?code=fixture&state=mock".into(),
+            userinfo_url: "http://localhost:8080/userinfo".into(),
+            fixture_mode: true,
             surface,
         }
     }
@@ -121,11 +135,35 @@ fn clear_session_cookie(response: &mut Response, surface: &str) {
     }
 }
 
+fn encode_query_component(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (byte as char).to_string()
+            }
+            _ => format!("%{byte:02X}"),
+        })
+        .collect()
+}
+
 /// Initiate OIDC login.
 /// In production this redirects to the IdP authorization endpoint.
 /// In fixture mode, redirects to the callback.
-pub async fn login(State(_config): State<OidcConfig>) -> Redirect {
-    Redirect::to("/api/v1/auth/callback?code=fixture&state=mock")
+pub async fn login(State(state): State<crate::handlers::AppState>) -> Redirect {
+    let config = state.oidc;
+    let session_store = state.sessions;
+    if config.fixture_mode {
+        return Redirect::to(&config.authorization_url);
+    }
+    let state = session_store.issue_auth_state().await;
+    Redirect::to(&format!(
+        "{}?response_type=code&client_id={}&redirect_uri={}&scope=openid%20profile&state={}",
+        config.authorization_url,
+        encode_query_component(&config.client_id),
+        encode_query_component(&config.redirect_uri),
+        encode_query_component(&state)
+    ))
 }
 
 /// Handle the OIDC authorization-code callback.
@@ -133,11 +171,20 @@ pub async fn login(State(_config): State<OidcConfig>) -> Redirect {
 /// In fixture mode, creates a session with synthetic data.
 /// In production, exchanges the code for tokens and then creates a session.
 pub async fn auth_callback(
-    State(oidc_config): State<OidcConfig>,
-    State(session_store): State<Arc<SessionStore>>,
+    State(state): State<crate::handlers::AppState>,
     Query(params): Query<AuthCallbackQuery>,
 ) -> Result<Response, BffError> {
-    let session_token = if params.code == "fixture" {
+    let oidc_config = state.oidc;
+    let session_store = state.sessions;
+    if !oidc_config.fixture_mode {
+        let Some(state) = params.state.as_deref() else {
+            return Err(BffError::new(ApiError::Unauthorized, "auth"));
+        };
+        if !session_store.consume_auth_state(state).await {
+            return Err(BffError::new(ApiError::Unauthorized, "auth"));
+        }
+    }
+    let session_token = if params.code == "fixture" && oidc_config.fixture_mode {
         session_store
             .create(
                 "fixture-user".into(),
@@ -151,7 +198,8 @@ pub async fn auth_callback(
     } else {
         // Production path: exchange code for tokens at the IdP token endpoint.
         let token_response = exchange_code_for_tokens(&oidc_config, &params.code).await?;
-        let userinfo = fetch_userinfo(&token_response.access_token).await?;
+        let userinfo =
+            fetch_userinfo(&oidc_config.userinfo_url, &token_response.access_token).await?;
         session_store
             .create(
                 userinfo.sub,
@@ -178,14 +226,14 @@ pub async fn auth_callback(
 
 /// Logout: destroy the server-side session and clear the session cookie.
 pub async fn logout(
-    State(session_store): State<Arc<SessionStore>>,
-    State(oidc_config): State<OidcConfig>,
+    State(state): State<crate::handlers::AppState>,
     request: RequestContext,
 ) -> Response {
-    // Extract session token from the request context's correlation id as fallback.
-    // In a real implementation the middleware extracts the cookie before the handler.
-    // For now we rely on the middleware layer to provide the session token.
-    session_store.destroy(&request.request_id).await;
+    let session_store = state.sessions;
+    let oidc_config = state.oidc;
+    if let Some(session_token) = request.session_token.as_deref() {
+        session_store.destroy(session_token).await;
+    }
     let mut response = Response::new(axum::body::Body::empty());
     clear_session_cookie(&mut response, oidc_config.surface);
     info!("session destroyed");
@@ -194,9 +242,20 @@ pub async fn logout(
 
 /// Return the current session status without exposing tokens.
 pub async fn session_status(
-    State(_session_store): State<Arc<SessionStore>>,
+    State(state): State<crate::handlers::AppState>,
     request: RequestContext,
 ) -> Json<SessionStatus> {
+    let session_store = state.sessions;
+    if let Some(token) = request.session_token.as_deref() {
+        if let Some(server_session) = session_store.validate(token).await {
+            return Json(SessionStatus {
+                authenticated: true,
+                user_id: Some(server_session.user_id),
+                user_name: Some(server_session.user_name),
+                surface: Some(server_session.surface.to_string()),
+            });
+        }
+    }
     let session = request.session;
     if session.authenticated {
         Json(SessionStatus {
@@ -276,10 +335,10 @@ async fn exchange_code_for_tokens(
 }
 
 /// Fetch userinfo from the OIDC provider.
-async fn fetch_userinfo(access_token: &str) -> Result<OidcUserinfo, ApiError> {
+async fn fetch_userinfo(userinfo_url: &str, access_token: &str) -> Result<OidcUserinfo, ApiError> {
     let client = reqwest::Client::new();
     let resp = client
-        .get("https://example.com/protocol/openid-connect/userinfo")
+        .get(userinfo_url)
         .bearer_auth(access_token)
         .send()
         .await
@@ -294,4 +353,18 @@ async fn fetch_userinfo(access_token: &str) -> Result<OidcUserinfo, ApiError> {
             "OIDC userinfo parse failed: {e}"
         )))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::encode_query_component;
+
+    #[test]
+    fn authorization_values_are_percent_encoded() {
+        assert_eq!(
+            encode_query_component("client/id?x=y"),
+            "client%2Fid%3Fx%3Dy"
+        );
+        assert_eq!(encode_query_component("openid profile"), "openid%20profile");
+    }
 }

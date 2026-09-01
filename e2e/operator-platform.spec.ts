@@ -200,4 +200,18 @@ test.describe("operator platform", () => {
     await expect(page.getByRole("heading", { name: "Platform overview" })).toBeVisible();
     await expect(page.getByText("Operator routes are not available")).not.toBeVisible();
   });
+
+  test("unsupported operator capabilities are explicit and not advertised", async ({ page }) => {
+    expect(previewUrl).toBeDefined();
+
+    await page.goto(`${previewUrl ?? ""}/platform/overview`);
+    const navigation = page.getByRole("navigation", { name: "Operator navigation" });
+    await expect(navigation.getByRole("link", { name: "Infrastructure" })).toHaveCount(0);
+    await expect(navigation.getByRole("link", { name: "IAM" })).toHaveCount(0);
+    await expect(navigation.getByRole("link", { name: "Metering" })).toHaveCount(0);
+
+    await page.goto(`${previewUrl ?? ""}/infrastructure/compute`);
+    await expect(page.getByRole("heading", { name: "Infrastructure" })).toBeVisible();
+    await expect(page.getByText("not available in the current deployment")).toBeVisible();
+  });
 });

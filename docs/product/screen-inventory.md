@@ -45,11 +45,16 @@ This inventory prevents hidden scope growth. It lists product surfaces, not ever
 - Regions/AZs supported subset
 - Provider/service health and capacity
 - Accounts/Organizations supported subset
-- Projects
+- Project lookup/details from an account (supported); global Projects management is unavailable
 - Installed Services / Service Catalog
 - Global Operations
-- IAM/governance supported subset
-- Quota/metering/audit supported subset
+- Audit supported subset
+
+The operator navigation intentionally omits global Projects management,
+Infrastructure/provider management, IAM, Quotas, and Metering until their
+authoritative O3K contracts are available. Direct requests to those routes
+render an explicit unavailable-capability state and are not presented as
+implemented product surfaces.
 
 ## Explicitly post-MVP screens
 

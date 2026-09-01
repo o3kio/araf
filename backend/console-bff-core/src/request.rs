@@ -16,6 +16,8 @@ pub struct RequestContext {
     pub request_id: String,
     pub correlation_id: String,
     pub session: Arc<SessionState>,
+    /// Opaque session cookie value, never logged or serialized.
+    pub session_token: Option<String>,
 }
 
 impl RequestContext {
@@ -24,6 +26,7 @@ impl RequestContext {
             request_id,
             correlation_id,
             session,
+            session_token: None,
         }
     }
 
@@ -78,8 +81,23 @@ where
             .cloned()
             .unwrap_or_default();
 
-        Ok(Self::new(request_id, correlation_id, session))
+        let session_token = parts
+            .headers
+            .get(axum::http::header::COOKIE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(extract_session_cookie);
+
+        let mut context = Self::new(request_id, correlation_id, session);
+        context.session_token = session_token;
+        Ok(context)
     }
+}
+
+fn extract_session_cookie(cookie_header: &str) -> Option<String> {
+    cookie_header.split(';').find_map(|cookie| {
+        let (name, value) = cookie.trim().split_once('=')?;
+        (name == "araf_tenant_session" || name == "araf_operator_session").then(|| value.to_owned())
+    })
 }
 
 pub fn correlation_id_header() -> HeaderName {

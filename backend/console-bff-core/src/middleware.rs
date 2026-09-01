@@ -41,6 +41,24 @@ const CSP_POLICY: &str = "\
 
 /// Apply the default middleware stack to a router.
 pub fn apply_default_layers(router: Router, surface: &'static str) -> Router {
+    apply_layers(router, Arc::new(SessionState::fixture(surface)))
+}
+
+/// Apply middleware for a production/O3K router.
+///
+/// Authentication is intentionally fail-closed until the provider-backed
+/// session middleware is mounted. No request receives an authenticated
+/// identity merely because it reached the BFF.
+pub fn apply_production_layers(
+    router: Router,
+    session_store: Arc<crate::session::SessionStore>,
+    surface: &'static str,
+    console_origin: HeaderValue,
+) -> Router {
+    apply_layers_with_session_store(router, session_store, surface, console_origin)
+}
+
+fn apply_layers(router: Router, session: Arc<SessionState>) -> Router {
     let trace = TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
         let request_id = request_id_from_request(request);
         let correlation_id = correlation_id_from_request(request);
@@ -103,7 +121,7 @@ pub fn apply_default_layers(router: Router, surface: &'static str) -> Router {
         .layer(referrer)
         .layer(permissions)
         .layer(axum::middleware::from_fn_with_state(
-            Arc::new(SessionState::fixture(surface)),
+            session,
             inject_session,
         ))
         .layer(body_limit)
@@ -114,12 +132,105 @@ pub fn apply_default_layers(router: Router, surface: &'static str) -> Router {
         .layer(axum::middleware::from_fn(redact_sensitive_logs))
 }
 
+fn apply_layers_with_session_store(
+    router: Router,
+    session_store: Arc<crate::session::SessionStore>,
+    surface: &'static str,
+    console_origin: HeaderValue,
+) -> Router {
+    let csp_header = SetResponseHeaderLayer::overriding(
+        axum::http::header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(CSP_POLICY),
+    );
+    let xframe = SetResponseHeaderLayer::overriding(
+        axum::http::header::HeaderName::from_static("x-frame-options"),
+        HeaderValue::from_static("DENY"),
+    );
+    let xcontent = SetResponseHeaderLayer::overriding(
+        axum::http::header::HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    let referrer = SetResponseHeaderLayer::overriding(
+        axum::http::header::HeaderName::from_static("referrer-policy"),
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+    let permissions = SetResponseHeaderLayer::overriding(
+        axum::http::header::HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+    );
+    router
+        .layer(csp_header)
+        .layer(xframe)
+        .layer(xcontent)
+        .layer(referrer)
+        .layer(permissions)
+        .layer(axum::middleware::from_fn_with_state(
+            (session_store, surface),
+            inject_validated_session,
+        ))
+        .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE_BYTES))
+        .layer(CompressionLayer::new())
+        .layer(
+            CorsLayer::new()
+                .allow_origin(AllowOrigin::exact(console_origin))
+                .allow_credentials(true)
+                .allow_headers([
+                    crate::request::correlation_id_header(),
+                    crate::request::request_id_header(),
+                    crate::csrf::csrf_header_name(),
+                    axum::http::header::CONTENT_TYPE,
+                ])
+                .expose_headers([
+                    crate::request::correlation_id_header(),
+                    crate::request::request_id_header(),
+                ]),
+        )
+        .layer(axum::middleware::from_fn(propagate_id_headers))
+        .layer(TraceLayer::new_for_http())
+}
+
 async fn inject_session(
     State(session): State<Arc<SessionState>>,
     mut request: Request,
     next: Next,
 ) -> Response {
     request.extensions_mut().insert(session);
+    next.run(request).await
+}
+
+async fn inject_validated_session(
+    State((store, surface)): State<(Arc<crate::session::SessionStore>, &'static str)>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    if let Some(token) = request
+        .headers()
+        .get(axum::http::header::COOKIE)
+        .and_then(|header| header.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|cookie| {
+                let (name, value) = cookie.trim().split_once('=')?;
+                (name
+                    == match surface {
+                        "operator-bff" => "araf_operator_session",
+                        _ => "araf_tenant_session",
+                    })
+                .then_some((name, value))
+            })
+        })
+    {
+        if let Some(data) = store
+            .validate(token.1)
+            .await
+            .filter(|data| data.surface == surface)
+        {
+            request.extensions_mut().insert(Arc::new(SessionState {
+                surface: data.surface,
+                authenticated: true,
+                user_id: Some(data.user_id),
+            }));
+        }
+    }
     next.run(request).await
 }
 
@@ -159,4 +270,104 @@ async fn redact_sensitive_logs(request: Request, next: Next) -> Response {
     // we never add headers to the span. The actual log redaction is enforced by
     // not including sensitive data in structured fields.
     next.run(request).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::request::RequestContext;
+    use axum::{routing::get, Json, Router};
+    use tower::ServiceExt;
+
+    async fn session_probe(ctx: RequestContext) -> Json<bool> {
+        Json(ctx.session.authenticated)
+    }
+
+    #[tokio::test]
+    async fn production_middleware_does_not_inject_fixture_identity() {
+        let production = apply_production_layers(
+            Router::new().route("/probe", get(session_probe)),
+            crate::session::SessionStore::new(),
+            "tenant-bff",
+            HeaderValue::from_static("https://tenant.example.invalid"),
+        );
+        let fixture = apply_default_layers(
+            Router::new().route("/probe", get(session_probe)),
+            "tenant-bff",
+        );
+
+        let production_response = production
+            .oneshot(
+                Request::builder()
+                    .uri("/probe")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let fixture_response = fixture
+            .oneshot(
+                Request::builder()
+                    .uri("/probe")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(production_response.status(), StatusCode::OK);
+        assert_eq!(fixture_response.status(), StatusCode::OK);
+        assert_eq!(
+            axum::body::to_bytes(production_response.into_body(), 16)
+                .await
+                .unwrap()
+                .as_ref(),
+            b"false"
+        );
+        assert_eq!(
+            axum::body::to_bytes(fixture_response.into_body(), 16)
+                .await
+                .unwrap()
+                .as_ref(),
+            b"true"
+        );
+
+        let store = crate::session::SessionStore::new();
+        let mismatched_token = store
+            .create(
+                "tenant-user".into(),
+                "Tenant User".into(),
+                "tenant-bff",
+                None,
+                None,
+                None,
+            )
+            .await;
+        let operator = apply_production_layers(
+            Router::new().route("/probe", get(session_probe)),
+            store,
+            "operator-bff",
+            HeaderValue::from_static("https://operator.example.invalid"),
+        );
+        let response = operator
+            .oneshot(
+                Request::builder()
+                    .uri("/probe")
+                    .header(
+                        "cookie",
+                        format!("araf_operator_session={mismatched_token}"),
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            axum::body::to_bytes(response.into_body(), 16)
+                .await
+                .unwrap()
+                .as_ref(),
+            b"false"
+        );
+    }
 }
