@@ -123,4 +123,12 @@ export default tseslint.config(
       globals: globals.node,
     },
   },
+  {
+    // Playwright tests and config are Node-only and do not need type-aware linting.
+    files: ["e2e/**/*.ts", "playwright.config.ts"],
+    languageOptions: {
+      globals: globals.node,
+    },
+    ...tseslint.configs.disableTypeChecked,
+  },
 );
