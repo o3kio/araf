@@ -16,7 +16,9 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     Json,
 };
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::time::Duration;
 use tracing::info;
 
@@ -177,6 +179,10 @@ fn encode_query_component(value: &str) -> String {
         .collect()
 }
 
+fn pkce_challenge(verifier: &str) -> String {
+    URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+}
+
 /// Initiate OIDC login.
 /// In production this redirects to the IdP authorization endpoint.
 /// In fixture mode, redirects to the callback.
@@ -186,12 +192,12 @@ pub async fn login(State(state): State<crate::handlers::AppState>) -> Redirect {
     }
     let (auth_state, code_verifier) = state.sessions.issue_auth_state().await;
     Redirect::to(&format!(
-        "{}?response_type=code&client_id={}&redirect_uri={}&scope=openid%20profile&state={}&code_challenge={}&code_challenge_method=plain",
+        "{}?response_type=code&client_id={}&redirect_uri={}&scope=openid%20profile&state={}&code_challenge={}&code_challenge_method=S256",
         state.oidc.authorization_url,
         encode_query_component(&state.oidc.client_id),
         encode_query_component(&state.oidc.redirect_uri),
         encode_query_component(&auth_state),
-        encode_query_component(&code_verifier),
+        encode_query_component(&pkce_challenge(&code_verifier)),
     ))
 }
 
@@ -504,6 +510,17 @@ mod tests {
         matchers::{method, path},
         Mock, MockServer, ResponseTemplate,
     };
+
+    #[tokio::test]
+    async fn production_login_uses_rfc7636_s256_with_valid_verifier_length() {
+        let sessions = SessionStore::new();
+        let (_, verifier) = sessions.issue_auth_state().await;
+        assert!((43..=128).contains(&verifier.len()));
+
+        let challenge = pkce_challenge(&verifier);
+        assert_eq!(challenge.len(), 43);
+        assert_ne!(challenge, verifier);
+    }
 
     #[tokio::test]
     async fn production_callback_keeps_oidc_tokens_server_side_and_sets_opaque_cookies() {
