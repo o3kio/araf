@@ -4,8 +4,8 @@ This file documents the security features implemented in Araf and the evidence t
 
 ## Authentication
 
-- **Browser token absence**: Access tokens, refresh tokens, and O3K credentials are never stored in `localStorage`, `sessionStorage`, IndexedDB, or browser-readable cookies. The browser receives only an opaque HttpOnly Secure session cookie (prefixed `araf_tenant_session` or `araf_operator_session`).
-- **OIDC authorization-code flow**: The confidential Rust BFF exchanges authorization codes at the OIDC provider token endpoint. Tokens remain server-side in the `SessionStore`.
+- **Browser token absence**: Access tokens, refresh tokens, and O3K credentials are never stored in `localStorage`, `sessionStorage`, IndexedDB, or browser-readable cookies. The browser receives only an opaque HttpOnly Secure session cookie (prefixed `araf_tenant_session` or `araf_operator_session`) plus a non-secret CSRF cookie.
+- **OIDC authorization-code flow**: The confidential Rust BFF uses single-use state and PKCE (`code_challenge_method=plain` with a per-flow random verifier), exchanges authorization codes at the configured provider token endpoint, and keeps tokens server-side in the `SessionStore`.
 - **Fixture mode**: When OIDC is not configured, the fixture adapter creates sessions with synthetic identity. No real tokens are issued or exchanged.
 
 ## Tenant/Operator isolation
@@ -60,7 +60,8 @@ This file documents the security features implemented in Araf and the evidence t
 
 See `docs/engineering/upstream-gaps.md` entries:
 - M3-O3K-001 through M3-O3K-011: Session, tokens, capabilities, errors.
-- M12-O3K-001: Session storage HA strategy (production deployments should replace in-memory store with Redis).
+- M12-O3K-001: Session storage HA strategy (accepted bounded deviation for single-instance evidence; production HA deployments must replace the in-memory store with a shared durable store).
+- M12-O3K-002: External-IdP federation and Araf confidential-client integration are resolved for the supported profile; O3K-hosted IdP is not advertised.
 
 ## Security scan evidence
 

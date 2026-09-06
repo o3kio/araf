@@ -19,7 +19,10 @@ use tower_http::{
 };
 use tracing::info_span;
 
-use crate::request::{correlation_id_from_request, request_id_from_request, SessionState};
+use crate::{
+    request::{correlation_id_from_request, request_id_from_request, SessionState},
+    session::SessionStore,
+};
 
 const MAX_BODY_SIZE_BYTES: usize = 256 * 1024; // 256 KiB
 
@@ -114,12 +117,96 @@ pub fn apply_default_layers(router: Router, surface: &'static str) -> Router {
         .layer(axum::middleware::from_fn(redact_sensitive_logs))
 }
 
+pub fn apply_production_layers(
+    router: Router,
+    surface: &'static str,
+    sessions: Arc<SessionStore>,
+) -> Router {
+    let trace = TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
+        info_span!("http_request", method = %request.method(), uri = %request.uri(), request_id = %request_id_from_request(request), correlation_id = %correlation_id_from_request(request))
+    });
+    let csp_header = SetResponseHeaderLayer::overriding(
+        axum::http::header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(CSP_POLICY),
+    );
+    let csrf_sessions = sessions.clone();
+    router
+        .layer(csp_header)
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::HeaderName::from_static("x-frame-options"),
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::HeaderName::from_static("x-content-type-options"),
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::HeaderName::from_static("referrer-policy"),
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            (sessions, surface),
+            inject_production_session,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            csrf_sessions,
+            crate::csrf::csrf_middleware,
+        ))
+        .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE_BYTES))
+        .layer(CompressionLayer::new())
+        .layer(axum::middleware::from_fn(propagate_id_headers))
+        .layer(trace)
+        .layer(axum::middleware::from_fn(redact_sensitive_logs))
+}
+
 async fn inject_session(
     State(session): State<Arc<SessionState>>,
     mut request: Request,
     next: Next,
 ) -> Response {
     request.extensions_mut().insert(session);
+    next.run(request).await
+}
+
+async fn inject_production_session(
+    State((sessions, surface)): State<(Arc<SessionStore>, &'static str)>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    let cookie_name = crate::auth::session_cookie_name(surface);
+    let cookie = request
+        .headers()
+        .get(axum::http::header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|cookie| {
+                let (name, value) = cookie.trim().split_once('=')?;
+                (name == cookie_name).then_some(value.to_owned())
+            })
+        });
+    let session = match cookie.as_deref() {
+        Some(token) => sessions
+            .validate(token)
+            .await
+            .map(|data| SessionState {
+                surface: data.surface,
+                authenticated: true,
+                user_id: Some(data.user_id),
+                user_name: Some(data.user_name),
+                o3k_token: data.o3k_token,
+                oidc_access_token: data.oidc_access_token,
+                session_token: cookie,
+            })
+            .unwrap_or(SessionState {
+                surface,
+                ..SessionState::default()
+            }),
+        None => SessionState {
+            surface,
+            ..SessionState::default()
+        },
+    };
+    request.extensions_mut().insert(Arc::new(session));
     next.run(request).await
 }
 

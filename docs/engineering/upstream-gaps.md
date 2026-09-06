@@ -322,8 +322,8 @@ Implementation phases must add new gaps here instead of inventing production O3K
 ## M12-O3K-002: Production OIDC/OAuth provider endpoint
 
 - **Gap id:** `M12-O3K-002`
-- **Required O3K contract:** An O3K-owned OIDC/OAuth provider endpoint with authorization-code flow, token refresh, logout, and userinfo, available as a confidential IdP for both Tenant and Operator surfaces.
-- **Why Araf M12 needs it:** The auth module has the OIDC handler structure, but cannot be tested end-to-end without a real IdP. The fixture fallback creates synthetic sessions without real token exchange.
-- **Current status:** Not available — O3K identity is limited to bootstrap API token endpoints.
-- **Blocked Araf feature:** End-to-end OIDC authentication with real token exchange, refresh, and logout.
-- **Acceptable fallback:** Continue using fixture sessions. The auth module is structured to accept real OIDC config when available.
+- **Required O3K contract:** A trusted external OIDC provider may authenticate the browser through Araf's confidential authorization-code client; O3K must validate that provider's access token and expose an authoritative federated scope-discovery and native-token exchange contract.
+- **Why Araf M12 needs it:** Araf must not become a second identity provider. The browser flow, external token custody, and logout/session lifecycle belong to Araf and the configured IdP; principal, project assignment, operator authorization, and native token truth belong to O3K IAM.
+- **Current status:** Resolved for the supported external-IdP profile. P12-IAM.7 proves real Keycloak federation, and P12-IAM.8 consumes `POST /o3k/v1/identity/scopes` plus the existing federated native-token exchange. An O3K-hosted IdP remains outside this profile.
+- **Blocked Araf feature:** None for the supported external-IdP profile. O3K-hosted identity would remain a release blocker if advertised as a product capability.
+- **Acceptable fallback:** Fixture sessions remain available only when the fixture adapter is explicitly selected; production adapter configuration fails closed when OIDC settings are absent.

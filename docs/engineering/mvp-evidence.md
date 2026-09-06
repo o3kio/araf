@@ -6,7 +6,7 @@ This document records the Araf MVP acceptance evaluation against every relevant 
 
 | Criterion | Status | Evidence |
 |---|---|---|
-| Tenant can authenticate | PASS | Fixture identity provider creates session; `GET /api/v1/auth/login` + callback creates HttpOnly session cookie (M12). OIDC production path deferred (M12-O3K-002). |
+| Tenant can authenticate | PASS | Explicit fixture mode creates a test session; production mode uses the confidential BFF authorization-code + PKCE path, server-side token custody, and configured external OIDC provider (P12-IAM.8). |
 | Tenant can select project/region | PASS | TenantShell scope selectors with project and region dropdown; URL persists selection. |
 | Tenant can browse core resources | PASS | ResourceCollectionPage renders servers, VPCs, volumes, buckets with server-bounded pagination (100k server fixture total, M4). |
 | Tenant can create a supported resource | PASS | Schema-driven create flow (M5); fixture create returns canonical Operation (M6). |
@@ -41,7 +41,7 @@ This document records the Araf MVP acceptance evaluation against every relevant 
 | Criterion | Status | Evidence |
 |---|---|---|
 | Tenant/operator separation is defensible | PASS | Separate BFF processes (ADR 0001), separate OIDC clients, separate cookie namespaces, separate route sets. Negative tests confirm isolation. |
-| Browser does not hold reusable cloud tokens | PASS | `SessionStore` holds OIDC/O3K tokens server-side. Browser receives only opaque HttpOnly Secure session cookie (ADR 0002, M12). |
+| Browser does not hold reusable cloud tokens | PASS | `SessionStore` holds OIDC/O3K tokens server-side. Browser receives only an opaque HttpOnly Secure session cookie plus a non-secret CSRF cookie (ADR 0002, P12-IAM.8). |
 | CSRF attacks are rejected | PASS | `csrf_middleware` validates `X-CSRF-Token` header on POST/PUT/DELETE against server-stored token. Missing/wrong token → 403 (M12). |
 | Strict CSP is enforced | PASS | `Content-Security-Policy: default-src 'self'; script-src 'self' 'strict-dynamic' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; block-all-mixed-content;`. No `unsafe-eval`. |
 | Session expiry and logout are tested | PASS | Session TTL 24h; expired sessions rejected; explicit logout destroys server session and clears cookie (M12 unit tests). |
@@ -104,7 +104,7 @@ This document records the Araf MVP acceptance evaluation against every relevant 
 | M3-O3K-003..011, M7-O3K-003..008, M8-O3K-001 | NON-BLOCKING — Fallback implemented |
 | M9-O3K-001..007, M10-O3K-001..004, M11-O3K-001..003 | NON-BLOCKING — Fallback implemented |
 | M12-O3K-001: Session HA | NON-BLOCKING — In-memory store sufficient for single-instance |
-| M12-O3K-002: OIDC provider | NON-BLOCKING — Fixture sessions work for development |
+| M12-O3K-002: External OIDC federation | RESOLVED for the supported external-IdP profile; O3K-hosted identity is not advertised |
 
 ## O3K Authority
 

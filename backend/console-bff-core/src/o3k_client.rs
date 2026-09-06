@@ -25,7 +25,8 @@ impl O3kClientConfig {
     /// Build configuration from environment variables.
     ///
     /// - `O3K_URL` sets the gateway base URL (default `http://127.0.0.1:8080`).
-    /// - `O3K_TOKEN` sets the bearer token.
+    /// - `O3K_TOKEN` is an optional development fallback. Production calls use
+    ///   the native token held by the current server-side BFF session.
     ///
     /// Per M3-O3K-002 there is no production OIDC exchange in the BFF yet,
     /// so the token is supplied directly. Do not put end-user tokens in
@@ -33,9 +34,7 @@ impl O3kClientConfig {
     pub fn from_env() -> Result<Self, O3kClientError> {
         let base_url =
             std::env::var("O3K_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_owned());
-        let token = std::env::var("O3K_TOKEN").map_err(|_| {
-            O3kClientError::Configuration("O3K_TOKEN environment variable is required".to_owned())
-        })?;
+        let token = std::env::var("O3K_TOKEN").unwrap_or_default();
         Ok(Self { base_url, token })
     }
 }
@@ -205,6 +204,16 @@ impl O3kClient {
             http: reqwest::Client::new(),
             base_url: config.base_url.trim_end_matches('/').to_owned(),
             token: config.token,
+        }
+    }
+
+    /// Clone this client with the native token held by one server-side BFF
+    /// session. Tokens never come from browser input or process-global state.
+    pub fn with_token(&self, token: impl Into<String>) -> Self {
+        Self {
+            http: self.http.clone(),
+            base_url: self.base_url.clone(),
+            token: token.into(),
         }
     }
 
@@ -394,6 +403,57 @@ impl O3kClient {
         self.get_json(&self.url("/o3k/v1/identity/me")).await
     }
 
+    /// POST /o3k/v1/identity/scopes
+    pub async fn discover_federated_scopes(
+        &self,
+        external_access_token: &str,
+    ) -> Result<FederatedScopesResponse, O3kClientError> {
+        self.post_json(
+            &self.url("/o3k/v1/identity/scopes"),
+            serde_json::json!({"federated": {"access_token": external_access_token}}),
+        )
+        .await
+    }
+
+    /// POST /o3k/v1/identity/tokens for one selected project.
+    pub async fn exchange_federated_token(
+        &self,
+        external_access_token: &str,
+        project_id: &str,
+    ) -> Result<IssuedNativeTokenResponse, O3kClientError> {
+        self.post_json(
+            &self.url("/o3k/v1/identity/tokens"),
+            serde_json::json!({
+                "auth": {
+                    "method": "federated",
+                    "project_id": project_id,
+                    "federated": {"access_token": external_access_token}
+                }
+            }),
+        )
+        .await
+    }
+
+    /// POST /o3k/v1/identity/tokens for an explicitly authorized operator.
+    pub async fn exchange_federated_system_token(
+        &self,
+        external_access_token: &str,
+    ) -> Result<IssuedNativeTokenResponse, O3kClientError> {
+        self.post_json(
+            &self.url("/o3k/v1/identity/tokens"),
+            serde_json::json!({
+                "auth": {
+                    "method": "federated",
+                    "federated": {
+                        "access_token": external_access_token,
+                        "scope": {"kind": "system"}
+                    }
+                }
+            }),
+        )
+        .await
+    }
+
     /// GET /o3k/v1/{namespace}/{collection}
     pub async fn list_generic_resources(
         &self,
@@ -435,9 +495,37 @@ impl O3kClient {
     }
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct FederatedScopeDescriptor {
+    pub id: String,
+    pub kind: String,
+    pub name: Option<String>,
+    pub domain_id: Option<String>,
+    pub can_request_token: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct FederatedScopesResponse {
+    pub scopes: Vec<FederatedScopeDescriptor>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct IssuedNativeTokenResponse {
+    pub token: IssuedNativeToken,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct IssuedNativeToken {
+    pub id: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::{
+        matchers::{body_json, method, path},
+        Mock, MockServer, ResponseTemplate,
+    };
 
     #[test]
     fn config_from_env_uses_defaults() {
@@ -448,5 +536,45 @@ mod tests {
             token: "test-token".to_owned(),
         };
         assert_eq!(cfg.base_url, "http://127.0.0.1:8080");
+    }
+
+    #[tokio::test]
+    async fn federated_exchange_and_scope_discovery_use_native_contract() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/o3k/v1/identity/scopes"))
+            .and(body_json(serde_json::json!({
+                "federated": {"access_token": "external-secret"}
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "scopes": [{"id":"project-a","kind":"project","name":"Project A","domain_id":"default","can_request_token":true}]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/o3k/v1/identity/tokens"))
+            .and(body_json(serde_json::json!({
+                "auth": {"method":"federated","project_id":"project-a","federated":{"access_token":"external-secret"}}
+            })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "token": {"id":"native-project-a"}
+            })))
+            .mount(&server)
+            .await;
+
+        let client = O3kClient::new(O3kClientConfig {
+            base_url: server.uri(),
+            token: "unused".into(),
+        });
+        let scopes = client
+            .discover_federated_scopes("external-secret")
+            .await
+            .expect("scopes");
+        assert_eq!(scopes.scopes[0].id, "project-a");
+        let token = client
+            .exchange_federated_token("external-secret", "project-a")
+            .await
+            .expect("exchange");
+        assert_eq!(token.token.id, "native-project-a");
     }
 }
