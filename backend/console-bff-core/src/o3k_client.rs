@@ -24,7 +24,7 @@ pub struct O3kClientConfig {
 impl O3kClientConfig {
     /// Build configuration from environment variables.
     ///
-    /// - `O3K_URL` sets the gateway base URL (default `http://127.0.0.1:8080`).
+    /// - `O3K_URL` sets the gateway base URL and is always required.
     /// - `O3K_TOKEN` is an optional development fallback. Production calls use
     ///   the native token held by the current server-side BFF session.
     ///
@@ -32,10 +32,21 @@ impl O3kClientConfig {
     /// so the token is supplied directly. Do not put end-user tokens in
     /// browser storage.
     pub fn from_env() -> Result<Self, O3kClientError> {
-        let base_url =
-            std::env::var("O3K_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_owned());
+        let base_url = std::env::var("O3K_URL")
+            .map_err(|_| O3kClientError::Configuration("O3K_URL is required".into()))?;
+        let url = reqwest::Url::parse(base_url.trim()).map_err(|_| {
+            O3kClientError::Configuration("O3K_URL must be a valid absolute URL".into())
+        })?;
+        if url.host_str().is_none() || url.username() != "" || url.password().is_some() {
+            return Err(O3kClientError::Configuration(
+                "O3K_URL must include a host and no credentials".into(),
+            ));
+        }
         let token = std::env::var("O3K_TOKEN").unwrap_or_default();
-        Ok(Self { base_url, token })
+        Ok(Self {
+            base_url: base_url.trim().trim_end_matches('/').into(),
+            token,
+        })
     }
 }
 

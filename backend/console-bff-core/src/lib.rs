@@ -193,24 +193,116 @@ pub enum UpstreamAdapter {
     O3k,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RuntimeProfile {
+    Development,
+    Test,
+    Production,
+}
+
+impl RuntimeProfile {
+    fn from_env() -> Result<Self, ApiError> {
+        match std::env::var("ARAF_RUNTIME_PROFILE")
+            .unwrap_or_else(|_| "production".into())
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "development" | "dev" => Ok(Self::Development),
+            "test" => Ok(Self::Test),
+            "production" | "prod" => Ok(Self::Production),
+            value => Err(config_error(format!(
+                "ARAF_RUNTIME_PROFILE must be development, test, or production (got {value:?})"
+            ))),
+        }
+    }
+}
+
+fn config_error(message: impl Into<String>) -> ApiError {
+    ApiError::Upstream(crate::error::UpstreamError::Error(message.into()))
+}
+
 /// Configuration for building a BFF router.
 #[derive(Clone, Debug)]
 pub struct BffConfig {
     pub surface: &'static str,
     pub adapter: UpstreamAdapter,
+    pub profile: RuntimeProfile,
+    pub public_url: Option<String>,
+    pub trusted_origins: Vec<String>,
 }
 
 impl BffConfig {
     /// Read configuration from environment variables.
     ///
-    /// - `ARAF_UPSTREAM_ADAPTER`: `fixture` (default) or `o3k`.
-    pub fn from_env(surface: &'static str) -> Self {
-        let adapter = match std::env::var("ARAF_UPSTREAM_ADAPTER").as_deref() {
-            Ok("o3k") => UpstreamAdapter::O3k,
-            _ => UpstreamAdapter::Fixture,
+    /// Production is the safe default. Fixture mode requires an explicit
+    /// development/test profile and an explicit `fixture` adapter.
+    pub fn from_env(surface: &'static str) -> Result<Self, ApiError> {
+        let profile = RuntimeProfile::from_env()?;
+        let raw_adapter = std::env::var("ARAF_UPSTREAM_ADAPTER").map_err(|_| {
+            config_error("ARAF_UPSTREAM_ADAPTER is required; select o3k or explicitly select fixture in development/test")
+        })?;
+        let adapter = match raw_adapter.trim().to_ascii_lowercase().as_str() {
+            "o3k" => UpstreamAdapter::O3k,
+            "fixture" if profile != RuntimeProfile::Production => UpstreamAdapter::Fixture,
+            "fixture" => return Err(config_error("fixture adapter is forbidden in production")),
+            value => {
+                return Err(config_error(format!(
+                    "unsupported ARAF_UPSTREAM_ADAPTER value {value:?}"
+                )))
+            }
         };
-        Self { surface, adapter }
+        if profile == RuntimeProfile::Production && adapter != UpstreamAdapter::O3k {
+            return Err(config_error("production requires the o3k upstream adapter"));
+        }
+        let public_url = std::env::var("ARAF_PUBLIC_URL").ok();
+        let trusted_origins: Vec<String> = std::env::var("ARAF_TRUSTED_ORIGINS")
+            .ok()
+            .map(|value| {
+                value
+                    .split(',')
+                    .map(|origin| origin.trim().to_owned())
+                    .filter(|origin| !origin.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if profile == RuntimeProfile::Production {
+            let public_url = public_url
+                .as_deref()
+                .ok_or_else(|| config_error("ARAF_PUBLIC_URL is required in production"))?;
+            validate_public_url(public_url)?;
+            if trusted_origins.is_empty() {
+                return Err(config_error(
+                    "ARAF_TRUSTED_ORIGINS is required in production",
+                ));
+            }
+            for origin in &trusted_origins {
+                validate_public_url(origin)?;
+            }
+        }
+        Ok(Self {
+            surface,
+            adapter,
+            profile,
+            public_url,
+            trusted_origins,
+        })
     }
+}
+
+fn validate_public_url(value: &str) -> Result<(), ApiError> {
+    let url = reqwest::Url::parse(value)
+        .map_err(|_| config_error("public URL must be a valid absolute URL"))?;
+    if url.scheme() != "https"
+        || url.host_str().is_none()
+        || url.username() != ""
+        || url.password().is_some()
+    {
+        return Err(config_error(
+            "production public URL/origin must be HTTPS and contain no credentials",
+        ));
+    }
+    Ok(())
 }
 
 fn router_for_surface(upstream: Arc<dyn Upstream>, surface: &'static str) -> Router {
@@ -231,7 +323,7 @@ pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
     let oidc = if config.adapter == UpstreamAdapter::Fixture {
         auth::OidcConfig::fixture(config.surface)
     } else {
-        auth::OidcConfig::from_env(config.surface)?
+        auth::OidcConfig::from_env(config.surface, config.profile)?
     };
     let state = handlers::AppState {
         upstream,
@@ -246,7 +338,12 @@ pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
     Ok(if config.adapter == UpstreamAdapter::Fixture {
         middleware::apply_default_layers(router, config.surface)
     } else {
-        middleware::apply_production_layers(router, config.surface, sessions)
+        middleware::apply_production_layers(
+            router,
+            config.surface,
+            sessions,
+            config.trusted_origins,
+        )
     })
 }
 

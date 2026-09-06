@@ -50,7 +50,10 @@ pub struct OidcConfig {
 
 impl OidcConfig {
     /// Read OIDC configuration from environment.
-    pub fn from_env(surface: &'static str) -> Result<Self, ApiError> {
+    pub fn from_env(
+        surface: &'static str,
+        profile: crate::RuntimeProfile,
+    ) -> Result<Self, ApiError> {
         let prefix = if surface == "operator-bff" {
             "ARAF_OPERATOR_OIDC"
         } else {
@@ -66,10 +69,13 @@ impl OidcConfig {
                 "{prefix}_CLIENT_SECRET not set"
             )))
         })?;
-        let issuer_url = std::env::var(format!("{prefix}_ISSUER_URL"))
-            .unwrap_or_else(|_| "http://localhost:8080".into());
-        let redirect_uri = std::env::var(format!("{prefix}_REDIRECT_URI"))
-            .unwrap_or_else(|_| "http://localhost:3000/login/callback".into());
+        if client_id.trim().is_empty() || client_secret.trim().is_empty() {
+            return Err(ApiError::Upstream(crate::error::UpstreamError::Error(
+                format!("{prefix}_CLIENT_ID and {prefix}_CLIENT_SECRET must not be empty"),
+            )));
+        }
+        let issuer_url = required_url(&format!("{prefix}_ISSUER_URL"), profile, true)?;
+        let redirect_uri = required_url(&format!("{prefix}_REDIRECT_URI"), profile, true)?;
         let authorization_url = std::env::var(format!("{prefix}_AUTHORIZATION_URL"))
             .unwrap_or_else(|_| {
                 format!(
@@ -83,7 +89,7 @@ impl OidcConfig {
                 issuer_url.trim_end_matches('/')
             )
         });
-        let o3k_url = std::env::var("O3K_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".into());
+        let o3k_url = required_url("O3K_URL", profile, false)?;
         Ok(Self {
             client_id,
             client_secret,
@@ -111,6 +117,34 @@ impl OidcConfig {
             surface,
         }
     }
+}
+
+fn required_url(
+    name: &str,
+    profile: crate::RuntimeProfile,
+    https_only: bool,
+) -> Result<String, ApiError> {
+    let value = std::env::var(name).map_err(|_| {
+        ApiError::Upstream(crate::error::UpstreamError::Error(format!(
+            "{name} is required"
+        )))
+    })?;
+    let url = reqwest::Url::parse(value.trim()).map_err(|_| {
+        ApiError::Upstream(crate::error::UpstreamError::Error(format!(
+            "{name} must be a valid absolute URL"
+        )))
+    })?;
+    if url.host_str().is_none() || url.username() != "" || url.password().is_some() {
+        return Err(ApiError::Upstream(crate::error::UpstreamError::Error(
+            format!("{name} must not contain credentials and must include a host"),
+        )));
+    }
+    if https_only && profile == crate::RuntimeProfile::Production && url.scheme() != "https" {
+        return Err(ApiError::Upstream(crate::error::UpstreamError::Error(
+            format!("{name} must use HTTPS in production"),
+        )));
+    }
+    Ok(value.trim().trim_end_matches('/').to_owned())
 }
 
 /// Authorization-code callback query parameters.
