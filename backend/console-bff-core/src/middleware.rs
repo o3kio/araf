@@ -32,7 +32,7 @@ const MAX_BODY_SIZE_BYTES: usize = 256 * 1024; // 256 KiB
 /// nonce-less approach compatible with modern CSP), no external CDN scripts.
 const CSP_POLICY: &str = "\
     default-src 'self'; \
-    script-src 'self' 'strict-dynamic' 'unsafe-inline'; \
+    script-src 'self' 'strict-dynamic'; \
     style-src 'self' 'unsafe-inline'; \
     img-src 'self' data:; \
     font-src 'self'; \
@@ -121,6 +121,7 @@ pub fn apply_production_layers(
     router: Router,
     surface: &'static str,
     sessions: Arc<SessionStore>,
+    trusted_origins: Vec<String>,
 ) -> Router {
     let trace = TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
         info_span!("http_request", method = %request.method(), uri = %request.uri(), request_id = %request_id_from_request(request), correlation_id = %correlation_id_from_request(request))
@@ -130,6 +131,22 @@ pub fn apply_production_layers(
         HeaderValue::from_static(CSP_POLICY),
     );
     let csrf_sessions = sessions.clone();
+    let allowed_origins = trusted_origins.clone();
+    let cors = CorsLayer::new()
+        .allow_origin(AllowOrigin::predicate(move |origin, _parts| {
+            origin
+                .to_str()
+                .ok()
+                .is_some_and(|value| allowed_origins.iter().any(|allowed| allowed == value))
+        }))
+        .allow_credentials(true)
+        .allow_headers([
+            crate::request::correlation_id_header(),
+            crate::request::request_id_header(),
+            crate::csrf::csrf_header_name(),
+            axum::http::header::CONTENT_TYPE,
+        ]);
+    let origin_guard = trusted_origins;
     router
         .layer(csp_header)
         .layer(SetResponseHeaderLayer::overriding(
@@ -152,6 +169,33 @@ pub fn apply_production_layers(
             csrf_sessions,
             crate::csrf::csrf_middleware,
         ))
+        .layer(axum::middleware::from_fn(
+            move |request: Request, next: Next| {
+                let origin_guard = origin_guard.clone();
+                async move {
+                    let mutating = matches!(
+                        request.method(),
+                        &axum::http::Method::POST
+                            | &axum::http::Method::PUT
+                            | &axum::http::Method::PATCH
+                            | &axum::http::Method::DELETE
+                    );
+                    if mutating {
+                        if let Some(origin) = request.headers().get(axum::http::header::ORIGIN) {
+                            let allowed = origin
+                                .to_str()
+                                .ok()
+                                .is_some_and(|value| origin_guard.iter().any(|item| item == value));
+                            if !allowed {
+                                return StatusCode::FORBIDDEN.into_response();
+                            }
+                        }
+                    }
+                    next.run(request).await
+                }
+            },
+        ))
+        .layer(cors)
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE_BYTES))
         .layer(CompressionLayer::new())
         .layer(axum::middleware::from_fn(propagate_id_headers))
