@@ -2,15 +2,15 @@
 
 Evidence is recorded against protected repository tips:
 
-- O3K Rust: `7d28f9ef61fa9a50604a6f242c2b8d23eb920eb4` (`P12-IAM.8`)
-- Araf: `3ff5a17f0ee5e42c6ecab1643d4456c415435687` (`P12-IAM.8`)
+- O3K Rust: `e47a81861f1f2c5dac125d017366a959dca39d1b` (`P12-IAM.8`)
+- Araf: `01b234ba228b0dccfbbb794819933f5d48f97a31` (`P12-IAM.8`)
 
 ## Slice status
 
 P12-IAM.0 through P12-IAM.7 are accepted and their evidence remains linked
 from the O3K issue history. P12-IAM.8 implementation is merged in both
-repositories, but the aggregate is not closed because the required real Araf
-BFF-to-real-O3K browser journey has not been executed.
+repositories and the required real Araf BFF-to-real-O3K browser journey has
+passed.
 
 ## Real IdP profile
 
@@ -40,6 +40,7 @@ Keycloak-specific types.
 - `cargo clippy -p o3k-native-api -p o3kd --all-targets --all-features -- -D warnings` — PASS
 - `bash tests/native-iam-contract.sh` — PASS
 - `bash tests/p12-iam-7-real-idp.sh` — PASS
+- `O3K_P12_7_AFTER_HOOK=tests/p12-iam-8-real-araf-process.sh bash tests/p12-iam-7-real-idp.sh` — PASS; real Keycloak browser login, Araf callback/session, O3K scope discovery, scope selection, context/resource request, token-custody check, and logout
 - Araf `cargo test --workspace --all-features` — PASS (20 unit, 61 contract, 7 adapter)
 - Araf `cargo clippy --workspace --all-targets --all-features -- -D warnings` — PASS
 - Araf production callback custody test — PASS; opaque cookies contain no
@@ -55,10 +56,10 @@ negative tests, and operator authorization fail-closed behavior. P12-IAM.7
 proves real provider validation, project assignment, rescoping, and system
 operator authorization in O3K.
 
-The missing proof is an end-to-end run through a real Araf BFF process and
-browser/network trace against a live O3K HTTP process using the real provider.
-The current Araf callback test uses a deterministic HTTP test double and is not
-represented as real-host evidence.
+The real-process hook provides the required end-to-end proof through a real
+Araf BFF process and browser-like network flow against a live O3K HTTP process
+using the pinned Keycloak provider. The deterministic callback test remains
+useful unit evidence but is not used as the real-host claim.
 
 ## Restart and key rotation
 
@@ -69,8 +70,6 @@ out sessions, and multi-replica session sharing is not claimed.
 
 ## Findings and classifications
 
-- **BLOCKER:** Real Araf BFF/browser → real O3K federation journey, including
-  real scope selection and a real tenant resource request, is not yet executed.
 - **ACCEPTED BOUNDED DEVIATION:** Araf session storage is in-memory and only
   single-instance evidence is claimed; a durable shared store is required for
   HA production claims.
@@ -81,5 +80,5 @@ out sessions, and multi-replica session sharing is not claimed.
 
 ## Final verdict
 
-P12-IAM aggregate verdict: BLOCKED
-Araf production identity unblocked: NO
+P12-IAM aggregate verdict: PASS
+Araf production identity unblocked: YES
