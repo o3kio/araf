@@ -155,8 +155,8 @@ test.describe("console shell integration", () => {
     await page.goto(`${tenantPreview?.url}/resources/compute.server`);
     const navigation = page.getByRole("navigation", { name: "Tenant navigation" });
     await expect(navigation).toBeVisible();
-    await expect(page.getByLabel("Project")).toBeVisible();
-    await expect(page.getByLabel("Region")).toBeVisible();
+    await expect(navigation.getByLabel("Project")).toBeVisible();
+    await expect(navigation.getByLabel("Region")).toBeVisible();
     await expect(navigation.getByRole("link", { name: "Servers" })).toHaveAttribute(
       "aria-current",
       "page",
