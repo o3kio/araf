@@ -104,6 +104,8 @@ async function buildPreview(
 test.setTimeout(180_000);
 
 test.describe("console shell integration", () => {
+  test.describe.configure({ timeout: 180_000 });
+
   let tenantBff: ChildProcess | undefined;
   let operatorBff: ChildProcess | undefined;
   let tenantPreview: { process: ChildProcess; url: string } | undefined;
@@ -111,19 +113,19 @@ test.describe("console shell integration", () => {
 
   test.beforeAll(async () => {
     const root = process.cwd();
-    const [tenantPort, operatorPort] = await Promise.all([freePort(), freePort()]);
+    const tenantPort = await freePort();
     tenantBff = spawn(join(root, "backend", "target", "debug", "tenant-bff"), {
       env: { ...process.env, ARAF_TENANT_BFF_PORT: String(tenantPort) },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    await waitForLog(tenantBff, /tenant-bff listening/);
+
+    const operatorPort = await freePort();
     operatorBff = spawn(join(root, "backend", "target", "debug", "operator-bff"), {
       env: { ...process.env, ARAF_OPERATOR_BFF_PORT: String(operatorPort) },
       stdio: ["ignore", "pipe", "pipe"],
     });
-    await Promise.all([
-      waitForLog(tenantBff, /tenant-bff listening/),
-      waitForLog(operatorBff, /operator-bff listening/),
-    ]);
+    await waitForLog(operatorBff, /operator-bff listening/);
     [tenantPreview, operatorPreview] = await Promise.all([
       buildPreview(root, "@araf/tenant-console", "tenant-console", tenantPort),
       buildPreview(root, "@araf/operator-console", "operator-console", operatorPort),
