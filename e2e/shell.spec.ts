@@ -115,14 +115,22 @@ test.describe("console shell integration", () => {
     const root = process.cwd();
     const tenantPort = await freePort();
     tenantBff = spawn(join(root, "backend", "target", "debug", "tenant-bff"), {
-      env: { ...process.env, ARAF_TENANT_BFF_PORT: String(tenantPort) },
+      env: {
+        ...process.env,
+        ARAF_TENANT_BFF_PORT: String(tenantPort),
+        RUST_LOG: process.env.RUST_LOG ?? "info",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
     await waitForLog(tenantBff, /tenant-bff listening/);
 
     const operatorPort = await freePort();
     operatorBff = spawn(join(root, "backend", "target", "debug", "operator-bff"), {
-      env: { ...process.env, ARAF_OPERATOR_BFF_PORT: String(operatorPort) },
+      env: {
+        ...process.env,
+        ARAF_OPERATOR_BFF_PORT: String(operatorPort),
+        RUST_LOG: process.env.RUST_LOG ?? "info",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
     await waitForLog(operatorBff, /operator-bff listening/);
@@ -130,7 +138,7 @@ test.describe("console shell integration", () => {
       buildPreview(root, "@araf/tenant-console", "tenant-console", tenantPort),
       buildPreview(root, "@araf/operator-console", "operator-console", operatorPort),
     ]);
-  });
+  }, 180_000);
 
   test.afterAll(async () => {
     await Promise.all([
