@@ -277,7 +277,7 @@ impl BffConfig {
                 ));
             }
             for origin in &trusted_origins {
-                validate_public_url(origin)?;
+                validate_trusted_origin(origin)?;
             }
         }
         Ok(Self {
@@ -300,6 +300,17 @@ fn validate_public_url(value: &str) -> Result<(), ApiError> {
     {
         return Err(config_error(
             "production public URL/origin must be HTTPS and contain no credentials",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_trusted_origin(value: &str) -> Result<(), ApiError> {
+    validate_public_url(value)?;
+    let url = reqwest::Url::parse(value).expect("validated URL");
+    if url.path() != "/" || url.query().is_some() || url.fragment().is_some() {
+        return Err(config_error(
+            "trusted origins must be HTTPS origins without a path, query, or fragment",
         ));
     }
     Ok(())

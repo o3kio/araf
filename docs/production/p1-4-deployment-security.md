@@ -1,6 +1,10 @@
 # P1.4 production deployment security
 
-The supported production topology is:
+The supported production topology is illustrated by
+[`nginx-production.conf.example`](../../deploy/nginx-production.conf.example)
+and is not tied to nginx; an equivalent ingress/load balancer is valid.
+
+The topology is:
 
 ```text
 Browser --HTTPS--> TLS ingress/load balancer --HTTP or HTTPS--> console static files
