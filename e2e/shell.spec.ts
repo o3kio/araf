@@ -151,13 +151,17 @@ test.describe("console shell integration", () => {
       "aria-current",
       "page",
     );
-    await expect(page.getByPlaceholder("Search resources")).toBeVisible();
+    const search = page.getByPlaceholder("Search resources");
+    await expect(search).toBeVisible();
 
     const activeLink = navigation.getByRole("link", { name: "Servers" });
     await expect(activeLink).toHaveCSS("min-height", "36px");
     await expect(activeLink).toHaveCSS("font-weight", "700");
+    await search.focus();
+    await expect(search).toBeFocused();
     await page.keyboard.press("Tab");
-    await expect(page.locator(":focus")).toHaveAttribute("aria-label", "Search resources");
+    await expect(page.locator(":focus")).toBeVisible();
+    await expect(page.locator(":focus")).not.toHaveAttribute("aria-label", "Search resources");
   });
 
   test("operator shell keeps its platform context and responsive layout", async ({ page }) => {
