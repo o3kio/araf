@@ -158,15 +158,6 @@ function useTenantNavigation(): TenantNavigationItem[] {
   }, [services]);
 }
 
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <section>
-      <h1>{title}</h1>
-      <p>This page will be implemented in later milestones.</p>
-    </section>
-  );
-}
-
 function NotFound() {
   return (
     <section>
@@ -251,14 +242,6 @@ export function App() {
                         element={
                           <TenantRouterShell>
                             <ServiceCatalogPage />
-                          </TenantRouterShell>
-                        }
-                      />
-                      <Route
-                        path="/services/*"
-                        element={
-                          <TenantRouterShell>
-                            <PlaceholderPage title="Services" />
                           </TenantRouterShell>
                         }
                       />

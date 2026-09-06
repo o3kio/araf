@@ -27,4 +27,14 @@ describe("Operator console shell", () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: /Platform overview/i })).toBeInTheDocument();
   });
+
+  it("does not expose unsupported placeholder surfaces", () => {
+    for (const path of ["/customers/projects", "/infrastructure/compute", "/governance/iam"]) {
+      window.history.replaceState(null, "", path);
+      const { unmount } = render(<App />);
+      expect(screen.getByRole("heading", { name: /Not found/i })).toBeInTheDocument();
+      expect(screen.queryByText(/implemented in later milestones/i)).not.toBeInTheDocument();
+      unmount();
+    }
+  });
 });

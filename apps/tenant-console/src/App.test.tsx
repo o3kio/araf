@@ -50,4 +50,11 @@ describe("Tenant console shell", () => {
       screen.queryByRole("navigation", { name: /Tenant navigation/i }),
     ).not.toBeInTheDocument();
   });
+
+  it("does not expose an unsupported services placeholder route", () => {
+    window.history.replaceState(null, "", "/services/unsupported");
+    render(<App />);
+    expect(screen.getByRole("heading", { name: /Not found/i })).toBeInTheDocument();
+    expect(screen.queryByText(/implemented in later milestones/i)).not.toBeInTheDocument();
+  });
 });

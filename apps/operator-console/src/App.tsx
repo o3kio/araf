@@ -48,10 +48,7 @@ const navigationItems: OperatorNavigationItem[] = [
     id: "customers",
     type: "section",
     text: "Customers",
-    items: [
-      { id: "accounts", type: "link", text: "Accounts", href: "/customers/accounts" },
-      { id: "projects", type: "link", text: "Projects", href: "/customers/projects" },
-    ],
+    items: [{ id: "accounts", type: "link", text: "Accounts", href: "/customers/accounts" }],
   },
   {
     id: "services",
@@ -60,31 +57,6 @@ const navigationItems: OperatorNavigationItem[] = [
     items: [
       { id: "installed", type: "link", text: "Installed Services", href: "/services/installed" },
       { id: "resources", type: "link", text: "Resources", href: "/resources" },
-    ],
-  },
-  {
-    id: "infrastructure",
-    type: "section",
-    text: "Infrastructure",
-    items: [
-      {
-        id: "compute-providers",
-        type: "link",
-        text: "Compute Providers",
-        href: "/infrastructure/compute",
-      },
-      {
-        id: "network-providers",
-        type: "link",
-        text: "Network Providers",
-        href: "/infrastructure/network",
-      },
-      {
-        id: "storage-providers",
-        type: "link",
-        text: "Storage Providers",
-        href: "/infrastructure/storage",
-      },
     ],
   },
   {
@@ -97,23 +69,9 @@ const navigationItems: OperatorNavigationItem[] = [
     id: "governance",
     type: "section",
     text: "Governance",
-    items: [
-      { id: "iam", type: "link", text: "IAM", href: "/governance/iam" },
-      { id: "quotas", type: "link", text: "Quotas", href: "/governance/quotas" },
-      { id: "metering", type: "link", text: "Metering", href: "/governance/metering" },
-      { id: "audit", type: "link", text: "Audit", href: "/governance/audit" },
-    ],
+    items: [{ id: "audit", type: "link", text: "Audit", href: "/governance/audit" }],
   },
 ];
-
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <section>
-      <h1>{title}</h1>
-      <p>This page will be implemented in later milestones.</p>
-    </section>
-  );
-}
 
 function NotFound() {
   return (
@@ -228,14 +186,6 @@ export function App() {
                     }
                   />
                   <Route
-                    path="/customers/projects"
-                    element={
-                      <OperatorRouterShell>
-                        <PlaceholderPage title="Projects" />
-                      </OperatorRouterShell>
-                    }
-                  />
-                  <Route
                     path="/services/installed"
                     element={
                       <OperatorRouterShell>
@@ -276,14 +226,6 @@ export function App() {
                     }
                   />
                   <Route
-                    path="/infrastructure/*"
-                    element={
-                      <OperatorRouterShell>
-                        <PlaceholderPage title="Infrastructure" />
-                      </OperatorRouterShell>
-                    }
-                  />
-                  <Route
                     path="/operations"
                     element={
                       <OperatorRouterShell>
@@ -304,14 +246,6 @@ export function App() {
                     element={
                       <OperatorRouterShell>
                         <OperatorAuditPage />
-                      </OperatorRouterShell>
-                    }
-                  />
-                  <Route
-                    path="/governance/*"
-                    element={
-                      <OperatorRouterShell>
-                        <PlaceholderPage title="Governance" />
                       </OperatorRouterShell>
                     }
                   />
