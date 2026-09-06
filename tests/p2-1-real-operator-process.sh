@@ -102,7 +102,9 @@ echo 'P2.1 operator step: O3K system AuthContext obtained' >&2
 echo "${profile}" | grep -q 'operator-console' || fail 'operator profile not authorized'
 echo 'P2.1 operator step: operator profile authorized' >&2
 if grep -Eiq 'access_token|refresh_token|id_token' "${jar}" "${workdir}/p2-1-callback.headers"; then exit 1; fi
-curl -fsS -X POST -b "${jar}" "http://127.0.0.1:${operator_port}/api/v1/auth/logout" >/dev/null
+csrf_token="$(awk '$6 == "araf_csrf" {print $7}' "${jar}")"
+test -n "${csrf_token}" || fail 'operator CSRF cookie missing'
+curl -fsS -X POST -b "${jar}" -H "x-csrf-token: ${csrf_token}" "http://127.0.0.1:${operator_port}/api/v1/auth/logout" >/dev/null
 
 alice_system="$(curl -sS -w '\n%{http_code}' -H 'content-type: application/json' -X POST "http://127.0.0.1:${o3k_port}/o3k/v1/identity/tokens" -d "{\"auth\":{\"method\":\"federated\",\"federated\":{\"access_token\":\"${O3K_P12_7_ALICE_TOKEN}\",\"scope\":{\"kind\":\"system\"}}}}")"
 echo "${alice_system}" | tail -1 | grep -Eq '^4(01|03)$'

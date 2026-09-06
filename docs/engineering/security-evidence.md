@@ -69,11 +69,10 @@ See `docs/engineering/upstream-gaps.md` entries:
 
 ## P2.1 real Operator process gate
 
-The Araf process harness verifies the seeded O3K database, the separate
-Operator OIDC client, and the `o3k` audience. It reaches an authenticated
-Operator BFF session and obtains a native system token. The final profile
-request is currently blocked by an upstream composition gap: the authoritative
-`o3k-native-api` crate defines `GET /operator/profile`, but
-`o3k-api::router_with_state` does not mount `/o3k/v1/operator/profile` in the
-running `o3kd` composition, which returns HTTP 404 even for a valid system
-token. No Araf-local authorization fallback is used.
+The real process harness verifies the seeded O3K database, the separate
+Operator OIDC client, and the `o3k` audience. It completes the authorization
+code flow, reaches an authenticated Operator BFF session, obtains a native
+system token, and receives the O3K-authorized `/api/v1/operator/profile`
+response. The same process rejects the normal tenant subject's system-scope
+exchange with HTTP 401/403. Logout succeeds with the required CSRF header.
+No Araf-local authorization fallback is used.
