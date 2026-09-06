@@ -78,6 +78,7 @@ impl OidcConfig {
             )));
         }
         let issuer_url = required_url(&format!("{prefix}_ISSUER_URL"), profile, true)?;
+        validate_issuer(&issuer_url, profile)?;
         let redirect_uri = required_url(&format!("{prefix}_REDIRECT_URI"), profile, true)?;
         let o3k_url = required_url("O3K_URL", profile, false)?;
         Ok(Self {
@@ -175,6 +176,7 @@ struct OidcDiscovery {
     authorization_endpoint: String,
     token_endpoint: String,
     userinfo_endpoint: Option<String>,
+    token_endpoint_auth_methods_supported: Option<Vec<String>>,
 }
 
 fn oidc_client() -> Result<reqwest::Client, ApiError> {
@@ -207,6 +209,53 @@ fn validate_oidc_endpoint(name: &str, value: &str, production: bool) -> Result<(
     Ok(())
 }
 
+fn validate_issuer(value: &str, profile: crate::RuntimeProfile) -> Result<(), ApiError> {
+    let url = reqwest::Url::parse(value)
+        .map_err(|_| config_error("OIDC issuer must be a valid absolute URL"))?;
+    if url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || (profile == crate::RuntimeProfile::Production && url.scheme() != "https")
+    {
+        return Err(config_error(
+            "OIDC issuer must be a host-qualified HTTPS URL without credentials, query, or fragment",
+        ));
+    }
+    Ok(())
+}
+
+async fn read_bounded_body(mut response: reqwest::Response) -> Result<Vec<u8>, ApiError> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > DISCOVERY_MAX_BYTES as u64)
+    {
+        return Err(config_error(
+            "OIDC discovery response exceeds the maximum size",
+        ));
+    }
+    let mut body = Vec::with_capacity(
+        response
+            .content_length()
+            .unwrap_or(DISCOVERY_MAX_BYTES as u64)
+            .min(DISCOVERY_MAX_BYTES as u64) as usize,
+    );
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| config_error("OIDC discovery response is unreadable"))?
+    {
+        if body.len() + chunk.len() > DISCOVERY_MAX_BYTES {
+            return Err(config_error(
+                "OIDC discovery response exceeds the maximum size",
+            ));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 async fn discover_oidc(config: &OidcConfig) -> Result<OidcDiscovery, ApiError> {
     let issuer = reqwest::Url::parse(&config.issuer_url)
         .map_err(|_| config_error("OIDC issuer is invalid"))?;
@@ -230,15 +279,7 @@ async fn discover_oidc(config: &OidcConfig) -> Result<OidcDiscovery, ApiError> {
             response.status()
         )));
     }
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|_| config_error("OIDC discovery response is unreadable"))?;
-    if bytes.len() > DISCOVERY_MAX_BYTES {
-        return Err(config_error(
-            "OIDC discovery response exceeds the maximum size",
-        ));
-    }
+    let bytes = read_bounded_body(response).await?;
     let metadata: OidcDiscovery = serde_json::from_slice(&bytes)
         .map_err(|_| config_error("OIDC discovery metadata is malformed"))?;
     let configured = issuer.to_string().trim_end_matches('/').to_owned();
@@ -291,20 +332,31 @@ fn clear_session_cookie(response: &mut Response, surface: &str) {
     }
 }
 
-fn encode_query_component(value: &str) -> String {
-    value
-        .bytes()
-        .map(|byte| match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                (byte as char).to_string()
-            }
-            _ => format!("%{byte:02X}"),
-        })
-        .collect()
-}
-
 fn pkce_challenge(verifier: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+}
+
+fn authorization_url(
+    endpoint: &str,
+    client_id: &str,
+    redirect_uri: &str,
+    state: &str,
+    challenge: &str,
+) -> Result<String, ApiError> {
+    let mut url = reqwest::Url::parse(endpoint)
+        .map_err(|_| config_error("OIDC authorization endpoint is invalid"))?;
+    {
+        let mut query = url.query_pairs_mut();
+        query
+            .append_pair("response_type", "code")
+            .append_pair("client_id", client_id)
+            .append_pair("redirect_uri", redirect_uri)
+            .append_pair("scope", "openid profile")
+            .append_pair("state", state)
+            .append_pair("code_challenge", challenge)
+            .append_pair("code_challenge_method", "S256");
+    }
+    Ok(url.into())
 }
 
 /// Initiate OIDC login.
@@ -320,14 +372,15 @@ pub async fn login(State(state): State<crate::handlers::AppState>) -> Result<Red
         .await
         .map_err(|_| BffError::new(ApiError::Unauthorized, "auth"))?;
     let (auth_state, code_verifier) = state.sessions.issue_auth_state().await;
-    Ok(Redirect::to(&format!(
-        "{}?response_type=code&client_id={}&redirect_uri={}&scope=openid%20profile&state={}&code_challenge={}&code_challenge_method=S256",
-        metadata.authorization_endpoint,
-        encode_query_component(&state.oidc.client_id),
-        encode_query_component(&state.oidc.redirect_uri),
-        encode_query_component(&auth_state),
-        encode_query_component(&pkce_challenge(&code_verifier)),
-    )))
+    let url = authorization_url(
+        &metadata.authorization_endpoint,
+        &state.oidc.client_id,
+        &state.oidc.redirect_uri,
+        &auth_state,
+        &pkce_challenge(&code_verifier),
+    )
+    .map_err(|_| BffError::new(ApiError::Unauthorized, "auth"))?;
+    Ok(Redirect::to(&url))
 }
 
 /// Handle the OIDC authorization-code callback.
@@ -578,20 +631,47 @@ async fn exchange_code_for_tokens(
         ("code", code),
         ("redirect_uri", &config.redirect_uri),
         ("client_id", &config.client_id),
-        ("client_secret", &config.client_secret),
         ("code_verifier", code_verifier),
     ];
 
-    let resp = client
-        .post(&metadata.token_endpoint)
-        .form(&params)
-        .send()
-        .await
-        .map_err(|e| {
-            ApiError::Upstream(crate::error::UpstreamError::Error(format!(
-                "OIDC token exchange failed: {e}"
-            )))
+    let default_methods = ["client_secret_basic".to_owned()];
+    let methods = metadata
+        .token_endpoint_auth_methods_supported
+        .as_deref()
+        .unwrap_or(&default_methods);
+    let method = methods
+        .iter()
+        .find(|method| {
+            method.as_str() == "client_secret_basic" || method.as_str() == "client_secret_post"
+        })
+        .ok_or_else(|| {
+            config_error("OIDC provider advertises no supported token authentication method")
         })?;
+    let request = client.post(&metadata.token_endpoint);
+    let response = if method == "client_secret_basic" {
+        request
+            .basic_auth(&config.client_id, Some(&config.client_secret))
+            .form(&params)
+            .send()
+            .await
+    } else {
+        request
+            .form(&[
+                ("grant_type", "authorization_code"),
+                ("code", code),
+                ("redirect_uri", config.redirect_uri.as_str()),
+                ("client_id", config.client_id.as_str()),
+                ("client_secret", config.client_secret.as_str()),
+                ("code_verifier", code_verifier),
+            ])
+            .send()
+            .await
+    };
+    let resp = response.map_err(|e| {
+        ApiError::Upstream(crate::error::UpstreamError::Error(format!(
+            "OIDC token exchange failed: {e}"
+        )))
+    })?;
 
     if !resp.status().is_success() {
         let status = resp.status();
@@ -641,7 +721,7 @@ mod tests {
     use axum::extract::{Query, State};
     use std::sync::Arc;
     use wiremock::{
-        matchers::{method, path},
+        matchers::{body_string_contains, header, method, path},
         Mock, MockServer, ResponseTemplate,
     };
 
@@ -665,12 +745,17 @@ mod tests {
                 "issuer": idp.uri(),
                 "authorization_endpoint": format!("{}/authorize", idp.uri()),
                 "token_endpoint": format!("{}/protocol/openid-connect/token", idp.uri()),
-                "userinfo_endpoint": format!("{}/userinfo", idp.uri())
+                "userinfo_endpoint": format!("{}/userinfo", idp.uri()),
+                "token_endpoint_auth_methods_supported": ["client_secret_basic"]
             })))
             .mount(&idp)
             .await;
         Mock::given(method("POST"))
             .and(path("/protocol/openid-connect/token"))
+            .and(header(
+                "authorization",
+                "Basic dGVuYW50LWNsaWVudDpjbGllbnQtc2VjcmV0",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "access_token": "external-secret",
                 "refresh_token": "refresh-secret",
@@ -794,5 +879,124 @@ mod tests {
         assert!(discover_oidc(&discovery_config(idp.uri(), true))
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn bounded_discovery_body_accepts_limit_and_rejects_over_limit() {
+        let idp = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/exact"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_bytes(vec![b'x'; DISCOVERY_MAX_BYTES]),
+            )
+            .mount(&idp)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/over"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_bytes(vec![b'x'; DISCOVERY_MAX_BYTES + 1]),
+            )
+            .mount(&idp)
+            .await;
+        let client = oidc_client().expect("bounded client");
+        let exact = client
+            .get(format!("{}/exact", idp.uri()))
+            .send()
+            .await
+            .expect("exact response");
+        assert_eq!(
+            read_bounded_body(exact).await.expect("exact body").len(),
+            DISCOVERY_MAX_BYTES
+        );
+        let over = client
+            .get(format!("{}/over", idp.uri()))
+            .send()
+            .await
+            .expect("oversized response");
+        assert!(read_bounded_body(over).await.is_err());
+    }
+
+    #[test]
+    fn authorization_url_preserves_provider_query_parameters() {
+        let url = authorization_url(
+            "https://idp.example/authorize?tenant=foo",
+            "client",
+            "https://console.example/callback",
+            "state",
+            "challenge",
+        )
+        .expect("authorization URL");
+        let parsed = reqwest::Url::parse(&url).expect("parsed authorization URL");
+        let pairs: std::collections::HashMap<_, _> = parsed.query_pairs().into_owned().collect();
+        assert_eq!(pairs.get("tenant"), Some(&"foo".to_owned()));
+        assert_eq!(pairs.get("code_challenge_method"), Some(&"S256".to_owned()));
+    }
+
+    #[test]
+    fn production_issuer_rejects_query_fragment_credentials_and_http() {
+        for issuer in [
+            "http://idp.example/issuer",
+            "https://user:pass@idp.example/issuer",
+            "https://idp.example/issuer?tenant=foo",
+            "https://idp.example/issuer#fragment",
+        ] {
+            assert!(validate_issuer(issuer, crate::RuntimeProfile::Production).is_err());
+        }
+        assert!(validate_issuer(
+            "https://idp.example/realms/cloud",
+            crate::RuntimeProfile::Production
+        )
+        .is_ok());
+    }
+
+    #[tokio::test]
+    async fn discovery_rejects_unsupported_token_auth_methods() {
+        let idp = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/.well-known/openid-configuration"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": idp.uri(),
+                "authorization_endpoint": format!("{}/authorize", idp.uri()),
+                "token_endpoint": format!("{}/token", idp.uri()),
+                "token_endpoint_auth_methods_supported": ["private_key_jwt"]
+            })))
+            .mount(&idp)
+            .await;
+        let config = discovery_config(idp.uri(), false);
+        let metadata = discover_oidc(&config).await.expect("metadata");
+        assert!(
+            exchange_code_for_tokens(&config, &metadata, "code", "verifier")
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn client_secret_post_is_sent_in_form_when_advertised() {
+        let idp = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/.well-known/openid-configuration"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": idp.uri(),
+                "authorization_endpoint": format!("{}/authorize", idp.uri()),
+                "token_endpoint": format!("{}/token", idp.uri()),
+                "token_endpoint_auth_methods_supported": ["client_secret_post"]
+            })))
+            .mount(&idp)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .and(body_string_contains("client_secret=secret"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "token",
+                "expires_in": 60
+            })))
+            .mount(&idp)
+            .await;
+        let config = discovery_config(idp.uri(), false);
+        let metadata = discover_oidc(&config).await.expect("metadata");
+        exchange_code_for_tokens(&config, &metadata, "code", "verifier")
+            .await
+            .expect("client_secret_post exchange");
     }
 }
