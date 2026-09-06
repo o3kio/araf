@@ -17,10 +17,11 @@ use crate::{
     model::{
         ActionRequest, ApiCredential, AuditEvent, CapacitySummary, CreateApiCredentialRequest,
         CreateResourceRequest, CustomerAccount, DiscoveredResourceType, InstalledService,
-        ListAuditEventsParams, Operation, OperationState, OperatorAuditEvent, OperatorProject,
-        PaginatedCollection, PlatformOverview, Project, ProjectMember, ProjectQuota,
-        ProviderHealth, Region, Resource, Role, ServiceCatalogEntry, ServiceDescriptor,
-        ServiceHealth, SessionContext, SortDirection, UsageQuery, UsageSummary, User,
+        ListAuditEventsParams, Operation, OperationState, OperatorAuditEvent, OperatorProfile,
+        OperatorProject, PaginatedCollection, PlatformOverview, Project, ProjectMember,
+        ProjectQuota, ProviderHealth, Region, Resource, Role, ServiceCatalogEntry,
+        ServiceDescriptor, ServiceHealth, SessionContext, SortDirection, UsageQuery, UsageSummary,
+        User,
     },
     request::RequestContext,
     upstream::{
@@ -625,6 +626,18 @@ pub async fn get_platform_overview(
         .await
         .map_err(|e| with_ctx(e, &ctx))?;
     Ok(Json(overview))
+}
+
+pub async fn get_operator_profile(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+) -> Result<Json<OperatorProfile>, BffError> {
+    let profile = state
+        .upstream
+        .get_operator_profile(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(profile))
 }
 
 pub async fn list_regions(

@@ -107,6 +107,10 @@ fn operator_routes(router: Router<AppState>) -> Router<AppState> {
             "/api/v1/operator/platform/overview",
             get(handlers::get_platform_overview),
         )
+        .route(
+            "/api/v1/operator/profile",
+            get(handlers::get_operator_profile),
+        )
         .route("/api/v1/operator/regions", get(handlers::list_regions))
         .route(
             "/api/v1/operator/regions/{id}/zones",

@@ -29,10 +29,10 @@ use crate::{
         ActionDescriptor, ActionRequest, ActionRiskClass, Capability, CapacitySummary,
         ColumnDescriptor, CreateResourceRequest, CustomerAccount, DetailsSectionDescriptor,
         DiscoveredResourceType, FilterDescriptor, FilterKind, JsonSchema, Operation,
-        OperationError, OperationEvent, OperationState, OperatorAuditEvent, OperatorProject,
-        PaginatedCollection, PlatformOverview, ProviderHealth, Region, Resource, ResourceStatus,
-        ResourceTypeDescriptor, ServiceCatalogEntry, ServiceDescriptor, ServiceHealth,
-        SessionContext,
+        OperationError, OperationEvent, OperationState, OperatorAuditEvent, OperatorProfile,
+        OperatorProject, PaginatedCollection, PlatformOverview, ProviderHealth, Region, Resource,
+        ResourceStatus, ResourceTypeDescriptor, ServiceCatalogEntry, ServiceDescriptor,
+        ServiceHealth, SessionContext,
     },
     o3k_client::{
         MutationResult, NativeOperation, NativeResourceEnvelope, O3kClient, O3kClientConfig,
@@ -1108,6 +1108,23 @@ impl Upstream for O3kAdapter {
         Err(ApiError::NotImplemented(
             "O3K does not expose a platform overview endpoint".to_owned(),
         ))
+    }
+
+    async fn get_operator_profile(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<OperatorProfile, ApiError> {
+        let profile = self
+            .client_for(ctx)
+            .get_operator_profile()
+            .await
+            .map_err(Self::map_client_error)?;
+        Ok(OperatorProfile {
+            profile: profile.profile,
+            scope: profile.scope,
+            principal_id: profile.principal_id,
+            audit_id: profile.audit_id,
+        })
     }
 }
 

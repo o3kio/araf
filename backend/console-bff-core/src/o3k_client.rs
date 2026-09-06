@@ -200,6 +200,14 @@ pub struct CurrentContext {
     pub effective_scope_kind: String,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct OperatorProfile {
+    pub profile: String,
+    pub scope: String,
+    pub principal_id: String,
+    pub audit_id: String,
+}
+
 /// Async HTTP client for the O3K native API.
 #[derive(Clone, Debug)]
 pub struct O3kClient {
@@ -412,6 +420,11 @@ impl O3kClient {
     /// GET /o3k/v1/identity/me
     pub async fn get_identity_me(&self) -> Result<CurrentContext, O3kClientError> {
         self.get_json(&self.url("/o3k/v1/identity/me")).await
+    }
+
+    /// GET /o3k/v1/operator/profile. O3K performs the system/operator check.
+    pub async fn get_operator_profile(&self) -> Result<OperatorProfile, O3kClientError> {
+        self.get_json(&self.url("/o3k/v1/operator/profile")).await
     }
 
     /// POST /o3k/v1/identity/scopes

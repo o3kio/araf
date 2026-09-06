@@ -25,6 +25,16 @@ pub struct SessionContext {
     pub capabilities: Vec<Capability>,
 }
 
+/// Authoritative O3K operator authorization probe exposed by the Operator BFF.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperatorProfile {
+    pub profile: String,
+    pub scope: String,
+    pub principal_id: String,
+    pub audit_id: String,
+}
+
 /// A capability granted to the current session.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
