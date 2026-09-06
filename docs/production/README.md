@@ -21,4 +21,6 @@ The program has four release gates:
 - A `202` or accepted OpenStack request is not success.
 - `v1.0` is earned by evidence, not by issue count.
 
-See `roadmap.md`, `definition-of-done.md`, `release-gates.md`, `openstack-support.md`, and `../architecture/backend-abstraction.md`.
+See `roadmap.md`, `definition-of-done.md`, `release-gates.md`,
+`main-protection.md`, `openstack-support.md`, and
+`../architecture/backend-abstraction.md`.

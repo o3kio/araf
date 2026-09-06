@@ -19,3 +19,8 @@ Exit only when observability, performance/scale, HA/resilience, release security
 ## Merge discipline
 
 Each phase is one focused issue/PR unless the issue explicitly allows sub-PRs. A phase must publish exact validation evidence. Architecture/security changes require explicit review and ADR updates where applicable.
+
+The live `main` protection policy and its verification limits are recorded in
+[`main-protection.md`](main-protection.md). Routine development must use a
+reviewed, green, up-to-date pull request; administrator bypass is reserved for
+explicit, auditable emergencies.
