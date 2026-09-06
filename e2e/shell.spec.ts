@@ -161,7 +161,7 @@ test.describe("console shell integration", () => {
       "aria-current",
       "page",
     );
-    const search = page.getByPlaceholder("Search resources");
+    const search = page.locator("input.araf-tenant-shell__search").first();
     await expect(search).toBeVisible();
 
     const activeLink = navigation.getByRole("link", { name: "Servers" });
@@ -185,6 +185,9 @@ test.describe("console shell integration", () => {
     await expect(page.getByRole("link", { name: "Overview" })).toHaveCSS("min-height", "36px");
 
     await page.setViewportSize({ width: 520, height: 800 });
+    const navigationToggle = page.getByRole("button", { name: "Open navigation drawer" });
+    await expect(navigationToggle).toBeVisible();
+    await navigationToggle.click();
     await expect(page.getByRole("navigation", { name: "Operator navigation" })).toBeVisible();
     await expect(page.getByTestId("operator-context")).toBeVisible();
   });
