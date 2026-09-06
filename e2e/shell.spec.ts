@@ -161,7 +161,7 @@ test.describe("console shell integration", () => {
       "aria-current",
       "page",
     );
-    const search = page.locator("input.araf-tenant-shell__search").first();
+    const search = page.locator("input.araf-tenant-shell__search:visible").first();
     await expect(search).toBeVisible();
 
     const activeLink = navigation.getByRole("link", { name: "Servers" });
