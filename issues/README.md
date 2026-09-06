@@ -27,6 +27,8 @@ The completed architecture/MVP roadmap is tracked by GitHub epic **#2**.
 
 The active production program is tracked by GitHub epic **#42**. P1.1 was completed by #34 / PR #35.
 
+O3K P12-IAM and the corresponding Araf federation convergence evidence are complete; the old upstream identity blocker is resolved. P2.1 remains open only for Araf-side production closure work described in #44 and its refreshed prompt.
+
 | Phase | Issue | Purpose |
 |---|---:|---|
 | EPIC | #42 | Araf Production Maturity — P1 to P4 |
@@ -34,7 +36,7 @@ The active production program is tracked by GitHub epic **#42**. P1.1 was comple
 | P1.3 | #39 | Protect `main` with required CI/review policy |
 | P1.4 | #40 | Production deployment security and fail-closed mode |
 | P1.5 | #43 | Production UX completeness / remove placeholders |
-| P2.1 | #44 | Production OIDC/BFF session/AuthContext |
+| P2.1 | #44 | Production OIDC/BFF session/AuthContext closure |
 | P2.2 | #45 | Real O3K scope/service/resource/schema discovery |
 | P2.3 | #46 | Native O3K tenant core API closure |
 | P2.4 | #47 | Canonical O3K Operations Center |
@@ -58,6 +60,16 @@ The active production program is tracked by GitHub epic **#42**. P1.1 was comple
 | P4.5 | #65 | Packaging/deployment/config/upgrade/rollback |
 | P4.6 | #66 | Supportability, docs and incident runbooks |
 | P4.7 | #67 | RC, pilot/soak and v1.0 production decision |
+
+### Current execution order
+
+1. #38
+2. #39
+3. #40 and #43
+4. #44
+5. #45-#50
+6. #51 hard P2 gate
+7. P3 and P4 according to #42
 
 Production design is under `docs/production/`; one implementation prompt per phase is under `prompts/production/`.
 
