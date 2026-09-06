@@ -187,7 +187,7 @@ test.describe("tenant governance", () => {
     expect(previewUrl).toBeDefined();
 
     await page.goto(`${previewUrl ?? ""}/developer/api`);
-    await expect(page.getByRole("heading", { name: "API Credentials" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "API Credentials", exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Create credential" }).click();
     await expect(page.getByText("Create API credential")).toBeVisible();
