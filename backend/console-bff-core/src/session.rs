@@ -117,7 +117,7 @@ impl SessionStore {
 
     pub async fn issue_auth_state(&self) -> (String, String) {
         let state = Uuid::new_v4().to_string();
-        let code_verifier = Uuid::new_v4().to_string();
+        let code_verifier = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
         self.auth_states.write().await.insert(
             state.clone(),
             (Instant::now() + AUTH_STATE_TTL, code_verifier.clone()),

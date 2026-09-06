@@ -9,11 +9,13 @@ description = "Shared BFF core for Araf console surfaces (routing, errors, sessi
 [dependencies]
 async-trait.workspace = true
 axum.workspace = true
+base64.workspace = true
 http.workspace = true
 jsonschema.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 time.workspace = true
 tokio.workspace = true
