@@ -51,11 +51,11 @@ pub async fn csrf_middleware(
         .get("cookie")
         .and_then(|c| c.to_str().ok())
         .and_then(|c| {
-            c.split(';')
-                .map(|s| s.trim())
-                .find_map(|s| s.strip_prefix("araf_"))
-                .and_then(|s| s.split('=').nth(1))
-                .map(|s| s.to_owned())
+            c.split(';').map(|s| s.trim()).find_map(|s| {
+                let (name, value) = s.split_once('=')?;
+                matches!(name, "araf_tenant_session" | "araf_operator_session")
+                    .then(|| value.to_owned())
+            })
         })
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
@@ -127,7 +127,7 @@ mod tests {
         let response = app
             .oneshot(
                 Request::post("/test")
-                    .header("cookie", format!("araf_session={}", token))
+                    .header("cookie", format!("araf_tenant_session={}", token))
                     .header(CSRF_HEADER, csrf)
                     .body(Body::empty())
                     .expect("request"),
@@ -159,7 +159,7 @@ mod tests {
         let response = app
             .oneshot(
                 Request::post("/test")
-                    .header("cookie", format!("araf_session={}", token))
+                    .header("cookie", format!("araf_tenant_session={}", token))
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -190,7 +190,7 @@ mod tests {
         let response = app
             .oneshot(
                 Request::post("/test")
-                    .header("cookie", format!("araf_session={}", token))
+                    .header("cookie", format!("araf_tenant_session={}", token))
                     .header(CSRF_HEADER, "wrong-token")
                     .body(Body::empty())
                     .expect("request"),
