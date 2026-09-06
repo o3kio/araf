@@ -41,6 +41,10 @@ pub struct SessionState {
     pub surface: &'static str,
     pub authenticated: bool,
     pub user_id: Option<String>,
+    pub user_name: Option<String>,
+    pub o3k_token: Option<String>,
+    pub oidc_access_token: Option<String>,
+    pub session_token: Option<String>,
 }
 
 impl SessionState {
@@ -49,6 +53,10 @@ impl SessionState {
             surface,
             authenticated: true,
             user_id: Some("fixture-user".to_string()),
+            user_name: Some("Fixture User".to_owned()),
+            o3k_token: None,
+            oidc_access_token: None,
+            session_token: None,
         }
     }
 }

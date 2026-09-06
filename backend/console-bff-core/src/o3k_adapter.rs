@@ -291,9 +291,9 @@ impl O3kAdapter {
         }
     }
 
-    async fn context_from_o3k(&self) -> Result<SessionContext, ApiError> {
+    async fn context_from_o3k(&self, ctx: &RequestContext) -> Result<SessionContext, ApiError> {
         let me = self
-            .client
+            .client_for(ctx)
             .get_identity_me()
             .await
             .map_err(Self::map_client_error)?;
@@ -355,6 +355,14 @@ impl O3kAdapter {
             region_id: Some("global".to_owned()),
             capabilities,
         })
+    }
+
+    fn client_for(&self, ctx: &RequestContext) -> O3kClient {
+        ctx.session
+            .o3k_token
+            .as_deref()
+            .map(|token| self.client.with_token(token))
+            .unwrap_or_else(|| self.client.clone())
     }
 
     fn compute_server_descriptor() -> ResourceTypeDescriptor {
@@ -695,18 +703,18 @@ impl Upstream for O3kAdapter {
         self.surface
     }
 
-    async fn context(&self, _ctx: &RequestContext) -> Result<SessionContext, ApiError> {
-        self.context_from_o3k().await
+    async fn context(&self, ctx: &RequestContext) -> Result<SessionContext, ApiError> {
+        self.context_from_o3k(ctx).await
     }
 
-    async fn services(&self, _ctx: &RequestContext) -> Result<Vec<ServiceDescriptor>, ApiError> {
+    async fn services(&self, ctx: &RequestContext) -> Result<Vec<ServiceDescriptor>, ApiError> {
         let discovered = self
-            .client
+            .client_for(ctx)
             .list_services()
             .await
             .map_err(Self::map_client_error)?;
         let resource_types = self
-            .client
+            .client_for(ctx)
             .list_resource_types()
             .await
             .map_err(Self::map_client_error)?;
@@ -808,7 +816,7 @@ impl Upstream for O3kAdapter {
         }
 
         let discovered = self
-            .client
+            .client_for(ctx)
             .list_services()
             .await
             .map_err(Self::map_client_error)?;
@@ -828,7 +836,7 @@ impl Upstream for O3kAdapter {
         }
 
         let resource_types = self
-            .client
+            .client_for(ctx)
             .list_resource_types()
             .await
             .map_err(Self::map_client_error)?;
@@ -840,7 +848,7 @@ impl Upstream for O3kAdapter {
 
     async fn list_resources(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         resource_type: &str,
         params: ListResourcesParams,
     ) -> Result<PaginatedCollection<Resource>, ApiError> {
@@ -849,7 +857,7 @@ impl Upstream for O3kAdapter {
         match resource_type {
             "compute.server" => {
                 let response = self
-                    .client
+                    .client_for(ctx)
                     .list_compute_servers(Some(page_size), None)
                     .await
                     .map_err(Self::map_client_error)?;
@@ -884,7 +892,7 @@ impl Upstream for O3kAdapter {
                     _ => unreachable!(),
                 };
                 let response = self
-                    .client
+                    .client_for(ctx)
                     .list_generic_resources(namespace, collection, Some(page_size), None)
                     .await
                     .map_err(Self::map_client_error)?;
@@ -916,23 +924,23 @@ impl Upstream for O3kAdapter {
 
     async fn get_resource(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         resource_type: &str,
         id: &str,
     ) -> Result<Resource, ApiError> {
         let envelope = match resource_type {
             "compute.server" => self
-                .client
+                .client_for(ctx)
                 .get_compute_server(id)
                 .await
                 .map_err(Self::map_client_error)?,
             "storage.volume" => self
-                .client
+                .client_for(ctx)
                 .get_generic_resource("volume", "volumes", id)
                 .await
                 .map_err(Self::map_client_error)?,
             "network.vpc" => self
-                .client
+                .client_for(ctx)
                 .get_generic_resource("network", "address-realms", id)
                 .await
                 .map_err(Self::map_client_error)?,
@@ -955,9 +963,9 @@ impl Upstream for O3kAdapter {
         }
 
         let result = match request.action_id.as_str() {
-            "start" => self.client.start_compute_server(id).await,
-            "stop" => self.client.stop_compute_server(id).await,
-            "delete" => self.client.delete_compute_server(id).await,
+            "start" => self.client_for(ctx).start_compute_server(id).await,
+            "stop" => self.client_for(ctx).stop_compute_server(id).await,
+            "delete" => self.client_for(ctx).delete_compute_server(id).await,
             _ => {
                 return Err(ApiError::BadRequest(format!(
                     "unsupported action id: {}",
@@ -983,7 +991,7 @@ impl Upstream for O3kAdapter {
         }
 
         let result = self
-            .client
+            .client_for(ctx)
             .create_compute_server(request.payload)
             .await
             .map_err(Self::map_client_error)?;
@@ -1002,9 +1010,9 @@ impl Upstream for O3kAdapter {
         ))
     }
 
-    async fn get_operation(&self, _ctx: &RequestContext, id: &str) -> Result<Operation, ApiError> {
+    async fn get_operation(&self, ctx: &RequestContext, id: &str) -> Result<Operation, ApiError> {
         let op = self
-            .client
+            .client_for(ctx)
             .get_operation(id)
             .await
             .map_err(Self::map_client_error)?;
@@ -1110,7 +1118,11 @@ impl O3kAdapter {
         ctx: &RequestContext,
     ) -> Result<Operation, ApiError> {
         // Prefer the canonical operation from O3K when available.
-        if let Ok(op) = self.client.get_operation(&result.operation_id).await {
+        if let Ok(op) = self
+            .client_for(ctx)
+            .get_operation(&result.operation_id)
+            .await
+        {
             let mut mapped = Self::map_native_operation(op);
             mapped.correlation_id = ctx.correlation_id().to_owned();
             return Ok(mapped);

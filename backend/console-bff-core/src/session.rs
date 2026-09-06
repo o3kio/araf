@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 /// Default session lifetime (24 hours).
 pub const DEFAULT_SESSION_TTL: Duration = Duration::from_secs(86400);
+const AUTH_STATE_TTL: Duration = Duration::from_secs(600);
 
 /// Server-side session data.
 ///
@@ -48,6 +49,7 @@ impl SessionData {
 #[derive(Debug, Default)]
 pub struct SessionStore {
     sessions: RwLock<HashMap<String, SessionData>>,
+    auth_states: RwLock<HashMap<String, (Instant, String)>>,
 }
 
 impl SessionStore {
@@ -65,6 +67,31 @@ impl SessionStore {
         oidc_refresh_token: Option<String>,
         o3k_token: Option<String>,
     ) -> String {
+        self.create_with_ttl(
+            user_id,
+            user_name,
+            surface,
+            oidc_access_token,
+            oidc_refresh_token,
+            o3k_token,
+            DEFAULT_SESSION_TTL,
+        )
+        .await
+    }
+
+    // The explicit fields keep confidential session material visibly separated
+    // at call sites; the argument count is intentional for this security boundary.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_with_ttl(
+        &self,
+        user_id: String,
+        user_name: String,
+        surface: &'static str,
+        oidc_access_token: Option<String>,
+        oidc_refresh_token: Option<String>,
+        o3k_token: Option<String>,
+        ttl: Duration,
+    ) -> String {
         let session_token = Uuid::new_v4().to_string();
         let now = Instant::now();
         let csrf_token = Uuid::new_v4().to_string();
@@ -77,7 +104,7 @@ impl SessionStore {
             oidc_refresh_token,
             o3k_token,
             created_at: now,
-            expires_at: now + DEFAULT_SESSION_TTL,
+            expires_at: now + ttl,
             csrf_token,
         };
 
@@ -86,6 +113,24 @@ impl SessionStore {
             .await
             .insert(session_token.clone(), session);
         session_token
+    }
+
+    pub async fn issue_auth_state(&self) -> (String, String) {
+        let state = Uuid::new_v4().to_string();
+        let code_verifier = Uuid::new_v4().to_string();
+        self.auth_states.write().await.insert(
+            state.clone(),
+            (Instant::now() + AUTH_STATE_TTL, code_verifier.clone()),
+        );
+        (state, code_verifier)
+    }
+
+    pub async fn consume_auth_state(&self, state: &str) -> Option<String> {
+        let mut states = self.auth_states.write().await;
+        match states.remove(state) {
+            Some((expires_at, verifier)) if Instant::now() < expires_at => Some(verifier),
+            _ => None,
+        }
     }
 
     /// Look up a session by its opaque token.
@@ -107,6 +152,15 @@ impl SessionStore {
     /// Destroy a session (logout).
     pub async fn destroy(&self, session_token: &str) {
         self.sessions.write().await.remove(session_token);
+    }
+
+    pub async fn set_o3k_token(&self, session_token: &str, token: String) -> bool {
+        let mut sessions = self.sessions.write().await;
+        let Some(session) = sessions.get_mut(session_token) else {
+            return false;
+        };
+        session.o3k_token = Some(token);
+        true
     }
 
     /// Rotate the session token (call after privilege change).

@@ -46,6 +46,12 @@ pub struct BffSurface {
 fn base_routes(router: Router<AppState>) -> Router<AppState> {
     router
         .route("/healthz", get(handlers::healthz))
+        .route("/api/v1/auth/login", get(auth::login))
+        .route("/api/v1/auth/callback", get(auth::auth_callback))
+        .route("/api/v1/auth/logout", post(auth::logout))
+        .route("/api/v1/auth/session", get(auth::session_status))
+        .route("/api/v1/auth/scopes", get(auth::discover_scopes))
+        .route("/api/v1/auth/scope", post(auth::select_scope))
         .route("/api/v1/context", get(handlers::get_context))
         .route("/api/v1/services", get(handlers::list_services))
         .route(
@@ -149,19 +155,31 @@ fn operator_routes(router: Router<AppState>) -> Router<AppState> {
 /// Surface-specific binaries add or omit routes by composing this router with
 /// additional surface-only routes.
 pub fn api_router(upstream: Arc<dyn Upstream>) -> Router {
-    let state = AppState { upstream };
+    let state = AppState {
+        upstream,
+        oidc: auth::OidcConfig::fixture("tenant-bff"),
+        sessions: session::SessionStore::new(),
+    };
     base_routes(governance_routes(operator_routes(Router::new()))).with_state(state)
 }
 
 /// Build the tenant API router (excludes operator-only routes).
 pub fn tenant_api_router(upstream: Arc<dyn Upstream>) -> Router {
-    let state = AppState { upstream };
+    let state = AppState {
+        upstream,
+        oidc: auth::OidcConfig::fixture("tenant-bff"),
+        sessions: session::SessionStore::new(),
+    };
     base_routes(governance_routes(Router::new())).with_state(state)
 }
 
 /// Build the operator API router (includes all routes).
 pub fn operator_api_router(upstream: Arc<dyn Upstream>) -> Router {
-    let state = AppState { upstream };
+    let state = AppState {
+        upstream,
+        oidc: auth::OidcConfig::fixture("operator-bff"),
+        sessions: session::SessionStore::new(),
+    };
     base_routes(governance_routes(operator_routes(Router::new()))).with_state(state)
 }
 
@@ -209,10 +227,35 @@ pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
         UpstreamAdapter::Fixture => Arc::new(FixtureAdapter::new(config.surface)),
         UpstreamAdapter::O3k => Arc::new(O3kAdapter::from_env(config.surface)?),
     };
-    Ok(middleware::apply_default_layers(
-        router_for_surface(upstream, config.surface),
-        config.surface,
-    ))
+    let sessions = session::SessionStore::new();
+    let oidc = if config.adapter == UpstreamAdapter::Fixture {
+        auth::OidcConfig::fixture(config.surface)
+    } else {
+        auth::OidcConfig::from_env(config.surface)?
+    };
+    let state = handlers::AppState {
+        upstream,
+        oidc,
+        sessions: sessions.clone(),
+    };
+    let router = if config.surface == "operator-bff" {
+        operator_api_router_with_state(state)
+    } else {
+        tenant_api_router_with_state(state)
+    };
+    Ok(if config.adapter == UpstreamAdapter::Fixture {
+        middleware::apply_default_layers(router, config.surface)
+    } else {
+        middleware::apply_production_layers(router, config.surface, sessions)
+    })
+}
+
+fn tenant_api_router_with_state(state: handlers::AppState) -> Router {
+    base_routes(governance_routes(Router::new())).with_state(state)
+}
+
+fn operator_api_router_with_state(state: handlers::AppState) -> Router {
+    base_routes(governance_routes(operator_routes(Router::new()))).with_state(state)
 }
 
 /// Build a complete tenant BFF router using the fixture adapter.

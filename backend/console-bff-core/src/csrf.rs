@@ -84,10 +84,10 @@ pub fn set_csrf_cookie(
     csrf_token: &str,
 ) -> Result<(), axum::http::header::InvalidHeaderValue> {
     let cookie = format!(
-        "araf_csrf={}; Path=/; SameSite=Lax; HttpOnly; Max-Age=86400",
+        "araf_csrf={}; Path=/; SameSite=Lax; Max-Age=86400; Secure",
         csrf_token
     );
-    response.headers_mut().insert(
+    response.headers_mut().append(
         axum::http::header::SET_COOKIE,
         HeaderValue::from_str(&cookie)?,
     );
