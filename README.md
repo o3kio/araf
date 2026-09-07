@@ -1,8 +1,10 @@
 # Araf
 
-Araf is the O3K cloud console: the human interface to the O3K Cloud Operating System.
+**The O3K cloud console — the human interface to a cloud kernel literally born in the cloud.**
 
-This repository is intentionally **not** a Horizon-style UI fork and is not an infrastructure-specific administration panel. Araf presents stable O3K resources, operations, relationships, capabilities, scopes, usage and policy while keeping provider implementation details out of the normal tenant experience.
+Araf is the tenant and operator experience for [O3K](https://github.com/o3kio/o3k), a Rust-native cloud kernel designed from first principles for cloud infrastructure. It presents stable O3K-native resources, durable operations, relationships, capabilities, scopes, usage and policy while keeping provider implementation details out of the normal tenant experience.
+
+This repository is intentionally **not** a Horizon-style UI fork and is not an infrastructure-specific administration panel. OpenStack remains a compatibility and migration surface; Araf presents the O3K-native cloud model.
 
 ## Strategic position
 
