@@ -1,0 +1,36 @@
+name: Cloud kernel positioning
+
+on:
+  push:
+    branches:
+      - docs/cloud-kernel-positioning
+
+permissions:
+  contents: write
+
+jobs:
+  update-readme:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: docs/cloud-kernel-positioning
+      - name: Update Araf public positioning
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('README.md')
+          text = p.read_text()
+          old = '''# Araf\n\nAraf is the O3K cloud console: the human interface to the O3K Cloud Operating System.\n\nThis repository is intentionally **not** a Horizon-style UI fork and is not an infrastructure-specific administration panel. Araf presents stable O3K resources, operations, relationships, capabilities, scopes, usage and policy while keeping provider implementation details out of the normal tenant experience.\n'''
+          new = '''# Araf\n\n**The O3K cloud console — the human interface to a cloud kernel literally born in the cloud.**\n\nAraf is the tenant and operator experience for [O3K](https://github.com/o3kio/o3k), a Rust-native cloud kernel designed from first principles for cloud infrastructure. It presents stable O3K-native resources, durable operations, relationships, capabilities, scopes, usage and policy while keeping provider implementation details out of the normal tenant experience.\n\nThis repository is intentionally **not** a Horizon-style UI fork and is not an infrastructure-specific administration panel. OpenStack remains a compatibility and migration surface; Araf presents the O3K-native cloud model.\n'''
+          if old not in text:
+              raise SystemExit('expected Araf positioning block not found')
+          p.write_text(text.replace(old, new, 1))
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md
+          git diff --cached --check
+          git commit -m 'docs: align Araf with O3K cloud-kernel identity'
+          git push origin HEAD:docs/cloud-kernel-positioning
