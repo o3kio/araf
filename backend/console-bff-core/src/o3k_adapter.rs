@@ -651,7 +651,12 @@ impl O3kAdapter {
         let supported_actions = rt
             .lifecycle_actions
             .keys()
-            .filter(|action| !action.is_empty())
+            // Discovery is authoritative for what exists upstream, but the
+            // current Araf mutation boundary only has native routes for the
+            // compute-server lifecycle actions below. Do not advertise an
+            // action that the BFF cannot execute; capability hiding is safer
+            // than rendering a descriptor that fails at runtime.
+            .filter(|action| Self::is_supported_action(&id, action))
             .map(|action| ActionDescriptor {
                 id: action.clone(),
                 name: action[..1].to_uppercase().to_string() + &action[1..],
@@ -721,6 +726,10 @@ impl O3kAdapter {
             }],
             relationships: vec![],
         }
+    }
+
+    fn is_supported_action(resource_type: &str, action: &str) -> bool {
+        resource_type == "compute.server" && matches!(action, "start" | "stop" | "delete")
     }
 
     fn service_name_from_id(id: &str) -> String {
