@@ -15,10 +15,10 @@ use crate::{
     model::{
         ActionRequest, ApiCredential, AuditEvent, CapacitySummary, CreateApiCredentialRequest,
         CreateResourceRequest, CustomerAccount, DiscoveredResourceType, ListAuditEventsParams,
-        Operation, OperationState, OperatorAuditEvent, OperatorProject, PaginatedCollection,
-        PlatformOverview, Project, ProjectMember, ProjectQuota, ProviderHealth, Region, Resource,
-        Role, ServiceCatalogEntry, ServiceDescriptor, ServiceHealth, SessionContext, SortDirection,
-        UsageQuery, UsageSummary, User,
+        Operation, OperationState, OperatorAuditEvent, OperatorProfile, OperatorProject,
+        PaginatedCollection, PlatformOverview, Project, ProjectMember, ProjectQuota,
+        ProviderHealth, Region, Resource, Role, ServiceCatalogEntry, ServiceDescriptor,
+        ServiceHealth, SessionContext, SortDirection, UsageQuery, UsageSummary, User,
     },
     request::RequestContext,
 };
@@ -384,6 +384,16 @@ pub trait Upstream: Send + Sync + 'static {
     ) -> Result<PlatformOverview, ApiError> {
         Err(ApiError::NotImplemented(
             "operator platform overview is not implemented by upstream O3K".to_owned(),
+        ))
+    }
+
+    /// Read the bounded O3K operator authorization probe.
+    async fn get_operator_profile(
+        &self,
+        _ctx: &RequestContext,
+    ) -> Result<OperatorProfile, ApiError> {
+        Err(ApiError::NotImplemented(
+            "operator profile is not implemented by this upstream".to_owned(),
         ))
     }
 }
