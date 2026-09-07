@@ -682,9 +682,12 @@ impl SessionContext {
             surface,
             user_id: Uuid::new_v4().to_string(),
             user_name: "Fixture User".to_string(),
-            organization_id: Some("org-fixture".to_string()),
-            project_id: Some("project-fixture".to_string()),
-            region_id: Some("global".to_string()),
+            // Keep the explicit test profile aligned with the deterministic
+            // resource seed. Production contexts are supplied by O3K and do
+            // not use this fixture constructor.
+            organization_id: Some("org-acme".to_string()),
+            project_id: Some("project-1".to_string()),
+            region_id: Some("eu-west".to_string()),
             capabilities: vec![
                 Capability {
                     resource_type: "compute.server".to_string(),
