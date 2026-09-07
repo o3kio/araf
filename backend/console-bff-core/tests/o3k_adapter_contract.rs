@@ -321,7 +321,9 @@ async fn adapter_does_not_leak_resources_across_project_scopes() {
                         "id": "server-a",
                         "owner_scope": "project-a",
                         "generation": 1,
-                        "created_at": "2024-01-01T00:00:00Z"
+                        "region": "eu-west",
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "updated_at": "2024-01-01T00:00:00Z"
                     },
                     "spec": { "name": "server-a" },
                     "status": { "state": "active" }
@@ -333,7 +335,9 @@ async fn adapter_does_not_leak_resources_across_project_scopes() {
                         "id": "server-b",
                         "owner_scope": "project-b",
                         "generation": 1,
-                        "created_at": "2024-01-01T00:00:00Z"
+                        "region": "eu-west",
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "updated_at": "2024-01-01T00:00:00Z"
                     },
                     "spec": { "name": "server-b" },
                     "status": { "state": "active" }

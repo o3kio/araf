@@ -168,20 +168,46 @@ impl O3kAdapter {
             }
         }
 
+        let project_id = envelope.metadata.owner_scope.ok_or_else(|| {
+            ApiError::Upstream(UpstreamError::Error(
+                "O3K resource omitted its authoritative owner scope".to_owned(),
+            ))
+        })?;
+        let region_id = envelope.metadata.region.ok_or_else(|| {
+            ApiError::Upstream(UpstreamError::Error(
+                "O3K resource omitted its authoritative region".to_owned(),
+            ))
+        })?;
+        let created_at = envelope
+            .metadata
+            .created_at
+            .as_deref()
+            .and_then(|value| Self::parse_timestamp(Some(value)))
+            .ok_or_else(|| {
+                ApiError::Upstream(UpstreamError::Error(
+                    "O3K resource omitted a valid created timestamp".to_owned(),
+                ))
+            })?;
+        let updated_at = envelope
+            .metadata
+            .updated_at
+            .as_deref()
+            .and_then(|value| Self::parse_timestamp(Some(value)))
+            .ok_or_else(|| {
+                ApiError::Upstream(UpstreamError::Error(
+                    "O3K resource omitted a valid updated timestamp".to_owned(),
+                ))
+            })?;
+
         Ok(Resource {
             id: envelope.metadata.id,
             name,
             resource_type,
-            project_id: envelope.metadata.owner_scope.unwrap_or_default(),
-            region_id: envelope
-                .metadata
-                .region
-                .unwrap_or_else(|| "global".to_owned()),
+            project_id,
+            region_id,
             status,
-            created_at: Self::parse_timestamp(envelope.metadata.created_at.as_deref())
-                .unwrap_or_else(OffsetDateTime::now_utc),
-            updated_at: Self::parse_timestamp(envelope.metadata.updated_at.as_deref())
-                .unwrap_or_else(OffsetDateTime::now_utc),
+            created_at,
+            updated_at,
             properties: if properties.is_empty() {
                 None
             } else {
@@ -1248,5 +1274,50 @@ impl O3kAdapter {
         let mut mapped = Self::map_native_operation(op);
         mapped.correlation_id = ctx.correlation_id().to_owned();
         Ok(mapped)
+    }
+}
+
+#[cfg(test)]
+mod resource_mapping_tests {
+    use super::*;
+
+    fn envelope(metadata: serde_json::Value) -> NativeResourceEnvelope {
+        serde_json::from_value(serde_json::json!({
+            "api_version": "o3k.io/v1",
+            "kind": "compute:server",
+            "metadata": metadata,
+            "spec": {"name": "server-1"},
+            "status": {"state": "active"}
+        }))
+        .expect("test envelope is valid")
+    }
+
+    #[test]
+    fn resource_mapping_rejects_missing_authoritative_metadata() {
+        let metadata = serde_json::json!({
+            "id": "server-1",
+            "owner_scope": "project-1",
+            "generation": 1,
+            "created_at": "2026-09-07T00:00:00Z",
+            "updated_at": "2026-09-07T00:00:00Z"
+        });
+
+        let error = O3kAdapter::map_native_resource(envelope(metadata))
+            .expect_err("missing region must not become a fabricated global resource");
+        assert!(matches!(error, ApiError::Upstream(_)));
+    }
+
+    #[test]
+    fn resource_mapping_rejects_missing_timestamps() {
+        let metadata = serde_json::json!({
+            "id": "server-1",
+            "owner_scope": "project-1",
+            "generation": 1,
+            "region": "eu-west"
+        });
+
+        let error = O3kAdapter::map_native_resource(envelope(metadata))
+            .expect_err("missing timestamps must not become current-time metadata");
+        assert!(matches!(error, ApiError::Upstream(_)));
     }
 }
