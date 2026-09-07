@@ -364,6 +364,7 @@ impl O3kAdapter {
             .unwrap_or_else(|| self.client.clone())
     }
 
+    #[allow(dead_code)]
     fn compute_server_descriptor() -> ResourceTypeDescriptor {
         ResourceTypeDescriptor {
             id: "compute.server".to_owned(),
@@ -481,6 +482,7 @@ impl O3kAdapter {
         }
     }
 
+    #[allow(dead_code)]
     fn network_vpc_descriptor() -> ResourceTypeDescriptor {
         ResourceTypeDescriptor {
             id: "network.vpc".to_owned(),
@@ -556,6 +558,7 @@ impl O3kAdapter {
         }
     }
 
+    #[allow(dead_code)]
     fn storage_volume_descriptor() -> ResourceTypeDescriptor {
         ResourceTypeDescriptor {
             id: "storage.volume".to_owned(),
@@ -631,12 +634,92 @@ impl O3kAdapter {
         }
     }
 
-    fn descriptor_for(resource_type: &str) -> Option<ResourceTypeDescriptor> {
-        match resource_type {
-            "compute.server" => Some(Self::compute_server_descriptor()),
-            "network.vpc" => Some(Self::network_vpc_descriptor()),
-            "storage.volume" => Some(Self::storage_volume_descriptor()),
-            _ => None,
+    fn descriptor_for(rt: &crate::o3k_client::DiscoveredResourceType) -> ResourceTypeDescriptor {
+        let id = format!("{}.{}", rt.namespace, rt.name);
+        let display_name = rt
+            .name
+            .split(['_', '-'])
+            .map(|part| {
+                let mut chars = part.chars();
+                chars
+                    .next()
+                    .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let supported_actions = rt
+            .lifecycle_actions
+            .keys()
+            .filter(|action| !action.is_empty())
+            .map(|action| ActionDescriptor {
+                id: action.clone(),
+                name: action[..1].to_uppercase().to_string() + &action[1..],
+                requires_confirmation: matches!(action.as_str(), "delete" | "destroy"),
+                risk_class: if matches!(action.as_str(), "delete" | "destroy") {
+                    ActionRiskClass::Destructive
+                } else {
+                    ActionRiskClass::Normal
+                },
+                required_capability: Capability {
+                    resource_type: id.clone(),
+                    action: action.clone(),
+                },
+                input_schema: None,
+            })
+            .collect();
+
+        ResourceTypeDescriptor {
+            id: id.clone(),
+            name: if display_name.is_empty() {
+                rt.name.clone()
+            } else {
+                display_name
+            },
+            plural_name: format!("{}s", rt.name),
+            icon_token: "resource".to_owned(),
+            // O3K's current discovery projection does not publish a create
+            // schema. Never invent one in the BFF; mutations remain hidden
+            // until an authoritative schema is available.
+            create_schema: None,
+            create_capability: Capability {
+                resource_type: id,
+                action: "list".to_owned(),
+            },
+            supported_actions,
+            columns: vec![
+                ColumnDescriptor {
+                    id: "id".to_owned(),
+                    header: "ID".to_owned(),
+                    field: "id".to_owned(),
+                    width: None,
+                },
+                ColumnDescriptor {
+                    id: "name".to_owned(),
+                    header: "Name".to_owned(),
+                    field: "name".to_owned(),
+                    width: None,
+                },
+                ColumnDescriptor {
+                    id: "status".to_owned(),
+                    header: "Status".to_owned(),
+                    field: "status".to_owned(),
+                    width: None,
+                },
+            ],
+            filters: vec![FilterDescriptor {
+                id: "name".to_owned(),
+                label: "Name".to_owned(),
+                field: "name".to_owned(),
+                kind: FilterKind::Text,
+            }],
+            sortable_fields: vec!["name".to_owned(), "status".to_owned()],
+            details_sections: vec![DetailsSectionDescriptor {
+                id: "summary".to_owned(),
+                label: "Summary".to_owned(),
+                fields: vec!["id".to_owned(), "name".to_owned(), "status".to_owned()],
+            }],
+            relationships: vec![],
         }
     }
 
@@ -716,13 +799,10 @@ impl Upstream for O3kAdapter {
         // to render a descriptor, but that knowledge is not evidence that the
         // capability exists in the connected cloud.
         for rt in resource_types {
-            if let Some(descriptor) = Self::descriptor_for(&format!("{}.{}", rt.namespace, rt.name))
-            {
-                descriptors_by_service
-                    .entry(rt.service.clone())
-                    .or_default()
-                    .push(descriptor);
-            }
+            descriptors_by_service
+                .entry(rt.service.clone())
+                .or_default()
+                .push(Self::descriptor_for(&rt));
         }
 
         let services: Vec<ServiceDescriptor> = discovered

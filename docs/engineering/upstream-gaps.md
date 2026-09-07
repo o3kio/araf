@@ -327,3 +327,25 @@ Implementation phases must add new gaps here instead of inventing production O3K
 - **Current status:** Resolved for the supported external-IdP profile. P12-IAM.7 proves real Keycloak federation, and P12-IAM.8 consumes `POST /o3k/v1/identity/scopes` plus the existing federated native-token exchange. An O3K-hosted IdP remains outside this profile.
 - **Blocked Araf feature:** None for the supported external-IdP profile. O3K-hosted identity would remain a release blocker if advertised as a product capability.
 - **Acceptable fallback:** Fixture sessions remain available only when the fixture adapter is explicitly selected; production adapter configuration fails closed when OIDC settings are absent.
+
+## M13-O3K-001: Resource descriptor schemas and geography discovery
+
+- **Gap id:** `M13-O3K-001`
+- **Required O3K contract:** The native discovery projection must publish
+  versioned resource schemas/actions plus authoritative regions and
+  availability domains for each advertised service.
+- **Why Araf P2.2 needs it:** `GET /o3k/v1/services` and
+  `GET /o3k/v1/resource-types` currently provide service/resource identity,
+  lifecycle state, scope and schema version, but not schema documents,
+  action input schemas, regions or availability domains.
+- **Current status:** Partially resolved. Araf now derives production
+  resource registration and lifecycle actions only from resource types
+  advertised by O3K. It does not invent create schemas or geographic values;
+  mutation/schema and region UI remains unavailable until O3K publishes the
+  authoritative fields.
+- **Blocked Araf feature:** Generic production create/edit forms and
+  region/AZ selection for resource types whose upstream manifest omits those
+  contracts.
+- **Acceptable fallback:** Fixture descriptors remain confined to the fixture
+  adapter. Production exposes the bounded O3K identity projection and hides
+  unsupported schema/geography-dependent actions.
