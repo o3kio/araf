@@ -22,9 +22,9 @@ The remaining work is Araf product/production convergence.
 
 1. **#38 / P1.2** — make browser E2E an actual CI-produced merge signal and close the current mismatch where branch protection names `browser E2E (Chromium)` but `.github/workflows/ci.yml` does not emit that job.
 2. **#39 / P1.3** — verify repository protection end-to-end after #38: normal PRs must require the actual frontend, Rust and browser checks; force-push/deletion and normal direct development must remain blocked.
-3. **#40 / P1.4** — make production configuration explicit and fail closed. Production must never fall back to fixtures because `ARAF_UPSTREAM_ADAPTER` is missing or misspelled. Prove HTTPS/proxy/cookie/CSP/CSRF behavior.
-4. **#43 / P1.5** — remove or capability-hide every placeholder, fixture-only or dead production route and standardize loading/empty/degraded/forbidden/not-found/error UX.
-5. **#44 / P2.1** — close Araf-side production identity convergence using the now-authoritative P12-IAM contract. Replace provider-specific OIDC endpoint assumptions with standards-based discovery, prove a real Operator BFF process journey, preserve Tenant/Operator isolation, and keep reusable IdP/O3K credentials server-side.
+3. **#40 / P1.4** — PASS: production configuration is explicit and fail-closed, with HTTPS/proxy/cookie/CSP/CSRF boundaries.
+4. **#43 / P1.5** — PASS: placeholder and unsupported production surfaces are removed or capability-hidden.
+5. **#44 / P2.1** — PASS: Araf uses standards-based discovery, real OIDC code flow with S256 PKCE, separate BFF sessions, server-side credentials, and O3K-authoritative context.
 6. Continue **#45 -> #50**, then run the hard **#51 / P2.8** real O3K production gate.
 7. Only after P2 is proven, complete P3 OpenStack support and P4 industrial release gates according to #42.
 

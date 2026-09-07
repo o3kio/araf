@@ -8,10 +8,11 @@ O3K P12-IAM is now complete and the original Araf identity blocker is resolved. 
 
 Current important repository findings:
 
-- P1.2 remains open: branch protection names `browser E2E (Chromium)`, but the current Araf CI workflow does not emit a browser job;
-- P1.3 is partially configured: `main` protection exists, but final acceptance waits on the actual browser check being produced and verified on a real PR;
-- P1.4 remains open: current `BffConfig::from_env()` can silently select `Fixture` when `ARAF_UPSTREAM_ADAPTER` is absent or unrecognized, which is not acceptable for production;
-- P2.1 is no longer upstream-blocked, but still requires provider-neutral OIDC discovery, explicit production fail-closed configuration and real Operator BFF process evidence.
+- P1.2 PASS: frontend, Rust and Chromium checks are emitted by CI;
+- P1.3 PASS: protected main requires the produced checks and independent review;
+- P1.4 PASS: production configuration is explicit and fail-closed, including HTTPS, proxy, cookie, CSP and CSRF boundaries;
+- P1.5 PASS: development-only and unsupported product surfaces are capability-hidden or explicitly unavailable;
+- P2.1 PASS: Araf uses standards-based OIDC discovery, server-side token custody, separate Tenant/Operator sessions and O3K-authoritative identity/scope projection. The real integrated production gate remains part of P2.8.
 
 ## Dependency graph
 
@@ -57,11 +58,8 @@ P4.6 Supportability/runbooks/docs
 
 ## Immediate execution order
 
-1. Close P1.2 by making browser E2E an actual CI-produced required check.
-2. Close P1.3 by validating repository protection against the real produced checks.
-3. Close P1.4 and P1.5 so production mode cannot silently use fixtures/placeholders.
-4. Close P2.1 against the completed P12-IAM baseline; do not reopen O3K IAM without a reproducible regression.
-5. Continue P2.2-P2.7, then run the hard P2.8 integrated production gate.
+1. Continue P2.2-P2.7 against the completed P12-IAM baseline; do not reopen O3K IAM without a reproducible regression.
+2. Run the hard P2.8 integrated production gate, including the real Tenant and Operator journeys.
 6. Begin OpenStack production claims only through P3 and its P3.9 gate.
 7. Earn final product readiness through P4.7.
 

@@ -5,7 +5,7 @@ This file documents the security features implemented in Araf and the evidence t
 ## Authentication
 
 - **Browser token absence**: Access tokens, refresh tokens, and O3K credentials are never stored in `localStorage`, `sessionStorage`, IndexedDB, or browser-readable cookies. The browser receives only an opaque HttpOnly Secure session cookie (prefixed `araf_tenant_session` or `araf_operator_session`) plus a non-secret CSRF cookie.
-- **OIDC authorization-code flow**: The confidential Rust BFF uses single-use state and PKCE (`code_challenge_method=S256` with a per-flow random verifier), resolves authorization/token/userinfo endpoints from the issuer's bounded OIDC Discovery document, and keeps tokens server-side in the `SessionStore`.
+- **OIDC authorization-code flow**: The confidential Rust BFF uses single-use state and S256 PKCE (`code_challenge_method=S256` with a per-flow random verifier), exchanges authorization codes at the discovered provider token endpoint, and keeps tokens server-side in the `SessionStore`.
 - **Fixture mode**: When OIDC is not configured, the fixture adapter creates sessions with synthetic identity. No real tokens are issued or exchanged.
 
 ## Tenant/Operator isolation
@@ -66,13 +66,3 @@ See `docs/engineering/upstream-gaps.md` entries:
 ## Security scan evidence
 
 (Dependency/SBOM scanning is not yet integrated into CI; see deferred scope.)
-
-## P2.1 real Operator process gate
-
-The real process harness verifies the seeded O3K database, the separate
-Operator OIDC client, and the `o3k` audience. It completes the authorization
-code flow, reaches an authenticated Operator BFF session, obtains a native
-system token, and receives the O3K-authorized `/api/v1/operator/profile`
-response. The same process rejects the normal tenant subject's system-scope
-exchange with HTTP 401/403. Logout succeeds with the required CSRF header.
-No Araf-local authorization fallback is used.
