@@ -364,6 +364,61 @@ impl O3kAdapter {
             .unwrap_or_else(|| self.client.clone())
     }
 
+    fn valid_discovery_identifier(value: &str) -> bool {
+        !value.is_empty()
+            && value.len() <= 128
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+    }
+
+    fn validate_discovered_service(
+        service: &crate::o3k_client::DiscoveredService,
+    ) -> Result<(), ApiError> {
+        let valid = Self::valid_discovery_identifier(&service.id)
+            && Self::valid_discovery_identifier(&service.namespace)
+            && Self::valid_discovery_identifier(&service.service_version)
+            && service
+                .ownership
+                .as_deref()
+                .is_none_or(|value| value.len() <= 128 && !value.chars().any(char::is_control))
+            && service
+                .lifecycle_state
+                .as_deref()
+                .is_none_or(|value| value.len() <= 64 && !value.chars().any(char::is_control));
+        if !valid {
+            return Err(ApiError::BadRequest(
+                "O3K returned an invalid service descriptor".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_discovered_resource_type(
+        resource_type: &crate::o3k_client::DiscoveredResourceType,
+    ) -> Result<(), ApiError> {
+        let valid_fields = [
+            resource_type.namespace.as_str(),
+            resource_type.name.as_str(),
+            resource_type.service.as_str(),
+            resource_type.schema_version.as_str(),
+            resource_type.collection.as_str(),
+            resource_type.scope.as_str(),
+        ]
+        .into_iter()
+        .all(Self::valid_discovery_identifier);
+        let valid_actions = resource_type
+            .lifecycle_actions
+            .keys()
+            .all(|action| Self::valid_discovery_identifier(action) && action.len() <= 64);
+        if !valid_fields || !valid_actions {
+            return Err(ApiError::BadRequest(
+                "O3K returned an invalid resource descriptor".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
     #[allow(dead_code)]
     fn compute_server_descriptor() -> ResourceTypeDescriptor {
         ResourceTypeDescriptor {
@@ -795,6 +850,9 @@ impl Upstream for O3kAdapter {
             .list_services()
             .await
             .map_err(Self::map_client_error)?;
+        for service in &discovered {
+            Self::validate_discovered_service(service)?;
+        }
         let resource_types = self
             .client_for(ctx)
             .list_resource_types()
@@ -808,6 +866,7 @@ impl Upstream for O3kAdapter {
         // to render a descriptor, but that knowledge is not evidence that the
         // capability exists in the connected cloud.
         for rt in resource_types {
+            Self::validate_discovered_resource_type(&rt)?;
             descriptors_by_service
                 .entry(rt.service.clone())
                 .or_default()
@@ -858,6 +917,9 @@ impl Upstream for O3kAdapter {
             .list_services()
             .await
             .map_err(Self::map_client_error)?;
+        for service in &discovered {
+            Self::validate_discovered_service(service)?;
+        }
         Ok(discovered
             .into_iter()
             .map(Self::map_discovered_service)
@@ -878,6 +940,9 @@ impl Upstream for O3kAdapter {
             .list_resource_types()
             .await
             .map_err(Self::map_client_error)?;
+        for resource_type in &resource_types {
+            Self::validate_discovered_resource_type(resource_type)?;
+        }
         Ok(resource_types
             .into_iter()
             .map(Self::map_discovered_resource_type)
