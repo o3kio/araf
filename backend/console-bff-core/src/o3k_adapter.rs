@@ -364,6 +364,62 @@ impl O3kAdapter {
             .unwrap_or_else(|| self.client.clone())
     }
 
+    fn valid_discovery_identifier(value: &str) -> bool {
+        !value.is_empty()
+            && value.len() <= 128
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+    }
+
+    fn validate_discovered_service(
+        service: &crate::o3k_client::DiscoveredService,
+    ) -> Result<(), ApiError> {
+        let valid = Self::valid_discovery_identifier(&service.id)
+            && Self::valid_discovery_identifier(&service.namespace)
+            && Self::valid_discovery_identifier(&service.service_version)
+            && service
+                .ownership
+                .as_deref()
+                .is_none_or(|value| value.len() <= 128 && !value.chars().any(char::is_control))
+            && service
+                .lifecycle_state
+                .as_deref()
+                .is_none_or(|value| value.len() <= 64 && !value.chars().any(char::is_control));
+        if !valid {
+            return Err(ApiError::BadRequest(
+                "O3K returned an invalid service descriptor".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_discovered_resource_type(
+        resource_type: &crate::o3k_client::DiscoveredResourceType,
+    ) -> Result<(), ApiError> {
+        let valid_fields = [
+            resource_type.namespace.as_str(),
+            resource_type.name.as_str(),
+            resource_type.service.as_str(),
+            resource_type.schema_version.as_str(),
+            resource_type.collection.as_str(),
+            resource_type.scope.as_str(),
+        ]
+        .into_iter()
+        .all(Self::valid_discovery_identifier);
+        let valid_actions = resource_type
+            .lifecycle_actions
+            .keys()
+            .all(|action| Self::valid_discovery_identifier(action) && action.len() <= 64);
+        if !valid_fields || !valid_actions {
+            return Err(ApiError::BadRequest(
+                "O3K returned an invalid resource descriptor".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    #[allow(dead_code)]
     fn compute_server_descriptor() -> ResourceTypeDescriptor {
         ResourceTypeDescriptor {
             id: "compute.server".to_owned(),
@@ -481,6 +537,7 @@ impl O3kAdapter {
         }
     }
 
+    #[allow(dead_code)]
     fn network_vpc_descriptor() -> ResourceTypeDescriptor {
         ResourceTypeDescriptor {
             id: "network.vpc".to_owned(),
@@ -556,6 +613,7 @@ impl O3kAdapter {
         }
     }
 
+    #[allow(dead_code)]
     fn storage_volume_descriptor() -> ResourceTypeDescriptor {
         ResourceTypeDescriptor {
             id: "storage.volume".to_owned(),
@@ -631,13 +689,102 @@ impl O3kAdapter {
         }
     }
 
-    fn descriptor_for(resource_type: &str) -> Option<ResourceTypeDescriptor> {
-        match resource_type {
-            "compute.server" => Some(Self::compute_server_descriptor()),
-            "network.vpc" => Some(Self::network_vpc_descriptor()),
-            "storage.volume" => Some(Self::storage_volume_descriptor()),
-            _ => None,
+    fn descriptor_for(rt: &crate::o3k_client::DiscoveredResourceType) -> ResourceTypeDescriptor {
+        let id = format!("{}.{}", rt.namespace, rt.name);
+        let display_name = rt
+            .name
+            .split(['_', '-'])
+            .map(|part| {
+                let mut chars = part.chars();
+                chars
+                    .next()
+                    .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let supported_actions = rt
+            .lifecycle_actions
+            .keys()
+            // Discovery is authoritative for what exists upstream, but the
+            // current Araf mutation boundary only has native routes for the
+            // compute-server lifecycle actions below. Do not advertise an
+            // action that the BFF cannot execute; capability hiding is safer
+            // than rendering a descriptor that fails at runtime.
+            .filter(|action| Self::is_supported_action(&id, action))
+            .map(|action| ActionDescriptor {
+                id: action.clone(),
+                name: action[..1].to_uppercase().to_string() + &action[1..],
+                requires_confirmation: matches!(action.as_str(), "delete" | "destroy"),
+                risk_class: if matches!(action.as_str(), "delete" | "destroy") {
+                    ActionRiskClass::Destructive
+                } else {
+                    ActionRiskClass::Normal
+                },
+                required_capability: Capability {
+                    resource_type: id.clone(),
+                    action: action.clone(),
+                },
+                input_schema: None,
+            })
+            .collect();
+
+        ResourceTypeDescriptor {
+            id: id.clone(),
+            name: if display_name.is_empty() {
+                rt.name.clone()
+            } else {
+                display_name
+            },
+            plural_name: format!("{}s", rt.name),
+            icon_token: "resource".to_owned(),
+            // O3K's current discovery projection does not publish a create
+            // schema. Never invent one in the BFF; mutations remain hidden
+            // until an authoritative schema is available.
+            create_schema: None,
+            create_capability: Capability {
+                resource_type: id,
+                action: "list".to_owned(),
+            },
+            supported_actions,
+            columns: vec![
+                ColumnDescriptor {
+                    id: "id".to_owned(),
+                    header: "ID".to_owned(),
+                    field: "id".to_owned(),
+                    width: None,
+                },
+                ColumnDescriptor {
+                    id: "name".to_owned(),
+                    header: "Name".to_owned(),
+                    field: "name".to_owned(),
+                    width: None,
+                },
+                ColumnDescriptor {
+                    id: "status".to_owned(),
+                    header: "Status".to_owned(),
+                    field: "status".to_owned(),
+                    width: None,
+                },
+            ],
+            filters: vec![FilterDescriptor {
+                id: "name".to_owned(),
+                label: "Name".to_owned(),
+                field: "name".to_owned(),
+                kind: FilterKind::Text,
+            }],
+            sortable_fields: vec!["name".to_owned(), "status".to_owned()],
+            details_sections: vec![DetailsSectionDescriptor {
+                id: "summary".to_owned(),
+                label: "Summary".to_owned(),
+                fields: vec!["id".to_owned(), "name".to_owned(), "status".to_owned()],
+            }],
+            relationships: vec![],
         }
+    }
+
+    fn is_supported_action(resource_type: &str, action: &str) -> bool {
+        resource_type == "compute.server" && matches!(action, "start" | "stop" | "delete")
     }
 
     fn service_name_from_id(id: &str) -> String {
@@ -703,6 +850,9 @@ impl Upstream for O3kAdapter {
             .list_services()
             .await
             .map_err(Self::map_client_error)?;
+        for service in &discovered {
+            Self::validate_discovered_service(service)?;
+        }
         let resource_types = self
             .client_for(ctx)
             .list_resource_types()
@@ -716,13 +866,11 @@ impl Upstream for O3kAdapter {
         // to render a descriptor, but that knowledge is not evidence that the
         // capability exists in the connected cloud.
         for rt in resource_types {
-            if let Some(descriptor) = Self::descriptor_for(&format!("{}.{}", rt.namespace, rt.name))
-            {
-                descriptors_by_service
-                    .entry(rt.service.clone())
-                    .or_default()
-                    .push(descriptor);
-            }
+            Self::validate_discovered_resource_type(&rt)?;
+            descriptors_by_service
+                .entry(rt.service.clone())
+                .or_default()
+                .push(Self::descriptor_for(&rt));
         }
 
         let services: Vec<ServiceDescriptor> = discovered
@@ -769,6 +917,9 @@ impl Upstream for O3kAdapter {
             .list_services()
             .await
             .map_err(Self::map_client_error)?;
+        for service in &discovered {
+            Self::validate_discovered_service(service)?;
+        }
         Ok(discovered
             .into_iter()
             .map(Self::map_discovered_service)
@@ -789,6 +940,9 @@ impl Upstream for O3kAdapter {
             .list_resource_types()
             .await
             .map_err(Self::map_client_error)?;
+        for resource_type in &resource_types {
+            Self::validate_discovered_resource_type(resource_type)?;
+        }
         Ok(resource_types
             .into_iter()
             .map(Self::map_discovered_resource_type)
