@@ -879,16 +879,10 @@ impl Upstream for O3kAdapter {
         &self,
         ctx: &RequestContext,
     ) -> Result<Vec<ServiceCatalogEntry>, ApiError> {
-        let session = self.context(ctx).await?;
-        let required_capability = if self.surface == "operator-bff" {
-            ("operator.service", "list")
-        } else {
-            ("tenant.service-catalog", "list")
-        };
-        if !session.has_capability(required_capability.0, required_capability.1) {
-            return Err(ApiError::Forbidden);
-        }
-
+        // Discovery authorization is authoritative in O3K.  `/identity/me`
+        // intentionally does not claim to be an evaluated capability
+        // document, so a local capability check here would reject valid
+        // production sessions before O3K can authorize the request.
         let discovered = self
             .client_for(ctx)
             .list_services()
@@ -907,11 +901,9 @@ impl Upstream for O3kAdapter {
         &self,
         ctx: &RequestContext,
     ) -> Result<Vec<DiscoveredResourceType>, ApiError> {
-        let session = self.context(ctx).await?;
-        if !session.has_capability("operator.service", "read") {
-            return Err(ApiError::Forbidden);
-        }
-
+        // As with service discovery, O3K authorizes this route.  Do not
+        // substitute an incomplete `/identity/me` capability projection for
+        // that decision.
         let resource_types = self
             .client_for(ctx)
             .list_resource_types()
