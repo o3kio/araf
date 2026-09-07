@@ -860,51 +860,6 @@ impl O3kAdapter {
     }
 }
 
-#[cfg(test)]
-mod resource_mapping_tests {
-    use super::*;
-
-    fn envelope(metadata: serde_json::Value) -> NativeResourceEnvelope {
-        serde_json::from_value(serde_json::json!({
-            "api_version": "o3k.io/v1",
-            "kind": "compute:server",
-            "metadata": metadata,
-            "spec": {"name": "server-1"},
-            "status": {"state": "active"}
-        }))
-        .expect("test envelope is valid")
-    }
-
-    #[test]
-    fn resource_mapping_rejects_missing_authoritative_metadata() {
-        let metadata = serde_json::json!({
-            "id": "server-1",
-            "owner_scope": "project-1",
-            "generation": 1,
-            "created_at": "2026-09-07T00:00:00Z",
-            "updated_at": "2026-09-07T00:00:00Z"
-        });
-
-        let error = O3kAdapter::map_native_resource(envelope(metadata))
-            .expect_err("missing region must not become a fabricated global resource");
-        assert!(matches!(error, ApiError::Upstream(_)));
-    }
-
-    #[test]
-    fn resource_mapping_rejects_missing_timestamps() {
-        let metadata = serde_json::json!({
-            "id": "server-1",
-            "owner_scope": "project-1",
-            "generation": 1,
-            "region": "eu-west"
-        });
-
-        let error = O3kAdapter::map_native_resource(envelope(metadata))
-            .expect_err("missing timestamps must not become current-time metadata");
-        assert!(matches!(error, ApiError::Upstream(_)));
-    }
-}
-
 #[async_trait]
 impl Upstream for O3kAdapter {
     fn surface(&self) -> &'static str {
@@ -1319,5 +1274,50 @@ impl O3kAdapter {
         let mut mapped = Self::map_native_operation(op);
         mapped.correlation_id = ctx.correlation_id().to_owned();
         Ok(mapped)
+    }
+}
+
+#[cfg(test)]
+mod resource_mapping_tests {
+    use super::*;
+
+    fn envelope(metadata: serde_json::Value) -> NativeResourceEnvelope {
+        serde_json::from_value(serde_json::json!({
+            "api_version": "o3k.io/v1",
+            "kind": "compute:server",
+            "metadata": metadata,
+            "spec": {"name": "server-1"},
+            "status": {"state": "active"}
+        }))
+        .expect("test envelope is valid")
+    }
+
+    #[test]
+    fn resource_mapping_rejects_missing_authoritative_metadata() {
+        let metadata = serde_json::json!({
+            "id": "server-1",
+            "owner_scope": "project-1",
+            "generation": 1,
+            "created_at": "2026-09-07T00:00:00Z",
+            "updated_at": "2026-09-07T00:00:00Z"
+        });
+
+        let error = O3kAdapter::map_native_resource(envelope(metadata))
+            .expect_err("missing region must not become a fabricated global resource");
+        assert!(matches!(error, ApiError::Upstream(_)));
+    }
+
+    #[test]
+    fn resource_mapping_rejects_missing_timestamps() {
+        let metadata = serde_json::json!({
+            "id": "server-1",
+            "owner_scope": "project-1",
+            "generation": 1,
+            "region": "eu-west"
+        });
+
+        let error = O3kAdapter::map_native_resource(envelope(metadata))
+            .expect_err("missing timestamps must not become current-time metadata");
+        assert!(matches!(error, ApiError::Upstream(_)));
     }
 }
