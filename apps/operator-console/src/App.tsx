@@ -1,5 +1,5 @@
 import { ArafThemeProvider } from "@araf/ui";
-import { FixtureIdentityProvider, OperatorShell, type OperatorNavigationItem } from "@araf/shell";
+import { BffSessionProvider, OperatorShell, type OperatorNavigationItem } from "@araf/shell";
 import {
   ResourceClientProvider,
   ResourceLandingPage,
@@ -120,9 +120,7 @@ export function App() {
 
   return (
     <ArafThemeProvider density={density}>
-      <FixtureIdentityProvider
-        initialIdentity={{ userId: "fixture-operator", userName: "Platform Operator" }}
-      >
+      <BffSessionProvider loadContext={() => arafClient.getContext()}>
         <ResourceClientProvider client={arafClient}>
           <OperationsClientProvider client={arafClient}>
             <OperatorPlatformClientProvider client={arafClient}>
@@ -262,7 +260,7 @@ export function App() {
             </OperatorPlatformClientProvider>
           </OperationsClientProvider>
         </ResourceClientProvider>
-      </FixtureIdentityProvider>
+      </BffSessionProvider>
     </ArafThemeProvider>
   );
 }
