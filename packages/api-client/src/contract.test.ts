@@ -33,6 +33,8 @@ function startTenantBff(port: number): Promise<ChildProcess> {
       env: {
         ...process.env,
         ARAF_TENANT_BFF_PORT: String(port),
+        ARAF_RUNTIME_PROFILE: "test",
+        ARAF_UPSTREAM_ADAPTER: "fixture",
         RUST_LOG: "info",
       },
       stdio: ["ignore", "pipe", "pipe"],

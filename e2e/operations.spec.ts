@@ -169,6 +169,8 @@ test.describe("operations UX prototype gate", () => {
     tenantBffProcess = spawn(join(repoRoot, "backend", "target", "debug", "tenant-bff"), {
       env: {
         ...process.env,
+        ARAF_RUNTIME_PROFILE: "test",
+        ARAF_UPSTREAM_ADAPTER: "fixture",
         ARAF_TENANT_BFF_PORT: String(tenantBffPort),
         RUST_LOG: process.env.RUST_LOG ?? "info",
       },
@@ -178,6 +180,8 @@ test.describe("operations UX prototype gate", () => {
     operatorBffProcess = spawn(join(repoRoot, "backend", "target", "debug", "operator-bff"), {
       env: {
         ...process.env,
+        ARAF_RUNTIME_PROFILE: "test",
+        ARAF_UPSTREAM_ADAPTER: "fixture",
         ARAF_OPERATOR_BFF_PORT: String(operatorBffPort),
         RUST_LOG: process.env.RUST_LOG ?? "info",
       },

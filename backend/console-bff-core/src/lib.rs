@@ -259,6 +259,9 @@ impl BffConfig {
         if profile == RuntimeProfile::Production && adapter != UpstreamAdapter::O3k {
             return Err(config_error("production requires the o3k upstream adapter"));
         }
+        if profile == RuntimeProfile::Production && adapter == UpstreamAdapter::O3k {
+            validate_production_o3k_url()?;
+        }
         let public_url = std::env::var("ARAF_PUBLIC_URL").ok();
         let trusted_origins: Vec<String> = std::env::var("ARAF_TRUSTED_ORIGINS")
             .ok()
@@ -292,6 +295,25 @@ impl BffConfig {
             trusted_origins,
         })
     }
+}
+
+fn validate_production_o3k_url() -> Result<(), ApiError> {
+    let value = std::env::var("O3K_URL")
+        .map_err(|_| config_error("O3K_URL is required for the production o3k adapter"))?;
+    let url = reqwest::Url::parse(value.trim())
+        .map_err(|_| config_error("production O3K_URL must be a valid absolute URL"))?;
+    if url.scheme() != "https"
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(config_error(
+            "production O3K_URL must be HTTPS, host-qualified, and contain no credentials, query, or fragment",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_public_url(value: &str) -> Result<(), ApiError> {

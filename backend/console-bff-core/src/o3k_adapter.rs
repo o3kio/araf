@@ -1134,43 +1134,16 @@ impl O3kAdapter {
         result: MutationResult,
         ctx: &RequestContext,
     ) -> Result<Operation, ApiError> {
-        // Prefer the canonical operation from O3K when available.
-        if let Ok(op) = self
+        // O3K is authoritative for operation state. Never turn an unavailable
+        // operation lookup into a synthetic pending operation: that would make
+        // an upstream failure look like a real cloud operation.
+        let op = self
             .client_for(ctx)
             .get_operation(&result.operation_id)
             .await
-        {
-            let mut mapped = Self::map_native_operation(op);
-            mapped.correlation_id = ctx.correlation_id().to_owned();
-            return Ok(mapped);
-        }
-
-        // Fallback: build a synthetic pending operation from the mutation result
-        // so the frontend can poll by id even if `GET /o3k/v1/operations/{id}`
-        // is temporarily unavailable.
-        let now = OffsetDateTime::now_utc();
-        let mut op = Operation {
-            id: result.operation_id,
-            action: "create".to_owned(),
-            state: OperationState::Pending,
-            resource_id: result.resource_id,
-            resource_type: None,
-            project_id: None,
-            region_id: None,
-            initiated_by: None,
-            started_at: Some(now),
-            updated_at: Some(now),
-            correlation_id: ctx.correlation_id().to_owned(),
-            error: None,
-            events: vec![],
-        };
-        op.events = vec![OperationEvent {
-            id: format!("{}-pending", op.id),
-            state: OperationState::Pending,
-            occurred_at: now,
-            message: "Operation accepted by upstream".to_owned(),
-            correlation_id: op.correlation_id.clone(),
-        }];
-        Ok(op)
+            .map_err(Self::map_client_error)?;
+        let mut mapped = Self::map_native_operation(op);
+        mapped.correlation_id = ctx.correlation_id().to_owned();
+        Ok(mapped)
     }
 }

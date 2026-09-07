@@ -191,19 +191,29 @@ fn oidc_client() -> Result<reqwest::Client, ApiError> {
         })
 }
 
-fn validate_oidc_endpoint(name: &str, value: &str, production: bool) -> Result<(), ApiError> {
+fn validate_oidc_endpoint(
+    name: &str,
+    value: &str,
+    issuer: &reqwest::Url,
+    production: bool,
+) -> Result<(), ApiError> {
     let url = reqwest::Url::parse(value).map_err(|_| {
         config_error(format!(
             "OIDC discovery {name} must be a valid absolute URL"
         ))
     })?;
-    if (production && url.scheme() != "https")
+    if (production
+        && (url.scheme() != "https"
+            || url.scheme() != issuer.scheme()
+            || url.host_str() != issuer.host_str()
+            || url.port_or_known_default() != issuer.port_or_known_default()))
         || url.host_str().is_none()
         || !url.username().is_empty()
         || url.password().is_some()
+        || url.fragment().is_some()
     {
         return Err(config_error(format!(
-            "OIDC discovery {name} must be HTTPS, host-qualified, and contain no credentials"
+            "OIDC discovery {name} must be HTTPS, host-qualified, credential-free, fragment-free, and use the configured issuer origin"
         )));
     }
     Ok(())
@@ -296,15 +306,17 @@ async fn discover_oidc(config: &OidcConfig) -> Result<OidcDiscovery, ApiError> {
     validate_oidc_endpoint(
         "authorization_endpoint",
         &metadata.authorization_endpoint,
+        &issuer,
         config.production,
     )?;
     validate_oidc_endpoint(
         "token_endpoint",
         &metadata.token_endpoint,
+        &issuer,
         config.production,
     )?;
     if let Some(userinfo) = &metadata.userinfo_endpoint {
-        validate_oidc_endpoint("userinfo_endpoint", userinfo, config.production)?;
+        validate_oidc_endpoint("userinfo_endpoint", userinfo, &issuer, config.production)?;
     }
     Ok(metadata)
 }

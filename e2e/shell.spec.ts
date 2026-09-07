@@ -117,6 +117,8 @@ test.describe("console shell integration", () => {
     tenantBff = spawn(join(root, "backend", "target", "debug", "tenant-bff"), {
       env: {
         ...process.env,
+        ARAF_RUNTIME_PROFILE: "test",
+        ARAF_UPSTREAM_ADAPTER: "fixture",
         ARAF_TENANT_BFF_PORT: String(tenantPort),
         RUST_LOG: process.env.RUST_LOG ?? "info",
       },
@@ -128,6 +130,8 @@ test.describe("console shell integration", () => {
     operatorBff = spawn(join(root, "backend", "target", "debug", "operator-bff"), {
       env: {
         ...process.env,
+        ARAF_RUNTIME_PROFILE: "test",
+        ARAF_UPSTREAM_ADAPTER: "fixture",
         ARAF_OPERATOR_BFF_PORT: String(operatorPort),
         RUST_LOG: process.env.RUST_LOG ?? "info",
       },

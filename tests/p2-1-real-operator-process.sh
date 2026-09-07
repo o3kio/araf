@@ -21,8 +21,13 @@ cleanup() { [[ -n "${bff_pid}" ]] && kill "${bff_pid}" 2>/dev/null || true; [[ -
 trap cleanup EXIT
 fail() { echo "P2.1 operator process FAILED: $1" >&2; exit 1; }
 
-admin_token="$(curl -fsS -X POST "http://127.0.0.1:${kc_port}/realms/master/protocol/openid-connect/token" -d grant_type=password -d client_id=admin-cli -d username=p12-7-admin -d password="${O3K_P12_7_KEYCLOAK_ADMIN_PASSWORD}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
-curl -fsS -X POST "http://127.0.0.1:${kc_port}/admin/realms/o3k-p12-7/clients" -H "Authorization: Bearer ${admin_token}" -H 'Content-Type: application/json' -d "{\"clientId\":\"${client_id}\",\"enabled\":true,\"publicClient\":false,\"clientAuthenticatorType\":\"client-secret\",\"secret\":\"${client_secret}\",\"standardFlowEnabled\":true,\"directAccessGrantsEnabled\":true,\"redirectUris\":[\"${redirect_uri}\"],\"protocol\":\"openid-connect\",\"protocolMappers\":[{\"name\":\"o3k-audience\",\"protocol\":\"openid-connect\",\"protocolMapper\":\"oidc-audience-mapper\",\"config\":{\"included.client.audience\":\"o3k\",\"id.token.claim\":\"false\",\"access.token.claim\":\"true\"}}]}" >/dev/null
+admin_token="$(curl -fsS -X POST "http://127.0.0.1:${kc_port}/realms/master/protocol/openid-connect/token" -d grant_type=password -d client_id=admin-cli -d username=p12-7-admin -d password="${O3K_P12_7_KEYCLOAK_ADMIN_PASSWORD}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')" || fail 'Keycloak admin authentication failed'
+client_payload="{\"clientId\":\"${client_id}\",\"enabled\":true,\"publicClient\":false,\"clientAuthenticatorType\":\"client-secret\",\"secret\":\"${client_secret}\",\"standardFlowEnabled\":true,\"directAccessGrantsEnabled\":true,\"redirectUris\":[\"${redirect_uri}\"],\"protocol\":\"openid-connect\",\"protocolMappers\":[{\"name\":\"o3k-audience\",\"protocol\":\"openid-connect\",\"protocolMapper\":\"oidc-audience-mapper\",\"config\":{\"included.client.audience\":\"o3k\",\"id.token.claim\":\"false\",\"access.token.claim\":\"true\"}}]}"
+client_status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:${kc_port}/admin/realms/o3k-p12-7/clients" -H "Authorization: Bearer ${admin_token}" -H 'Content-Type: application/json' -d "${client_payload}")"
+case "${client_status}" in
+  201|409) ;;
+  *) fail "Keycloak Operator client configuration HTTP ${client_status}" ;;
+esac
 
 sqlite3 "${db}" 'PRAGMA wal_checkpoint(TRUNCATE);'
 runtime_db="$(dirname "${db}")/o3k.sqlite"
@@ -37,9 +42,9 @@ echo 'P2.1 operator step: seeded binding verified' >&2
   O3K_LISTEN_ADDR="127.0.0.1:${o3k_port}" O3K_DATA_DIR="$(dirname "${db}")" O3K_PROVIDER=fake O3K_BOOTSTRAP_PASSWORD="${O3K_P12_7_BOOTSTRAP_SECRET}" O3K_TOKEN_SIGNING_KEY=p2-1-live-process-signing-key-at-least-32-bytes O3K_OIDC_TRUST_ID=p12-7-keycloak O3K_OIDC_ISSUER="${issuer}" O3K_OIDC_AUDIENCE=o3k O3K_OIDC_DISCOVERY_URL="${discovery}" O3K_OIDC_ALLOW_INSECURE_LOCAL=true cargo run --quiet -p o3kd
 ) >"${workdir}/p2-1-o3kd.log" 2>&1 & o3k_pid=$!
 for _ in $(seq 1 60); do curl -fsS "http://127.0.0.1:${o3k_port}/healthz" >/dev/null 2>&1 && break; sleep 1; done
-curl -fsS "http://127.0.0.1:${o3k_port}/healthz" >/dev/null
+curl -fsS "http://127.0.0.1:${o3k_port}/healthz" >/dev/null || fail "O3K did not become healthy; log=${workdir}/p2-1-o3kd.log"
 echo 'P2.1 operator step: OIDC client configured' >&2
-operator_probe_token="$(curl -fsS -X POST "http://127.0.0.1:${kc_port}/realms/o3k-p12-7/protocol/openid-connect/token" -d grant_type=password -d client_id="${client_id}" -d client_secret="${client_secret}" -d username=operator -d password="${P12_8_OPERATOR_PASSWORD}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
+operator_probe_token="$(curl -fsS -X POST "http://127.0.0.1:${kc_port}/realms/o3k-p12-7/protocol/openid-connect/token" -d grant_type=password -d client_id="${client_id}" -d client_secret="${client_secret}" -d username=operator -d password="${P12_8_OPERATOR_PASSWORD}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')" || fail 'Operator OIDC token acquisition failed'
 operator_aud="$(python3 - "${operator_probe_token}" <<'PY'
 import base64, json, sys
 claims=json.loads(base64.urlsafe_b64decode(sys.argv[1].split('.')[1] + '=' * (-len(sys.argv[1].split('.')[1]) % 4)))
@@ -66,7 +71,7 @@ test "${direct_profile_status}" = 200 || fail "O3K operator profile HTTP ${direc
   ARAF_RUNTIME_PROFILE=test ARAF_UPSTREAM_ADAPTER=o3k ARAF_OPERATOR_OIDC_CLIENT_ID="${client_id}" ARAF_OPERATOR_OIDC_CLIENT_SECRET="${client_secret}" ARAF_OPERATOR_OIDC_ISSUER_URL="${issuer}" ARAF_OPERATOR_OIDC_REDIRECT_URI="${redirect_uri}" O3K_URL="http://127.0.0.1:${o3k_port}" ARAF_OPERATOR_BFF_PORT="${operator_port}" cargo run --quiet -p operator-bff
 ) >"${workdir}/p2-1-operator-bff.log" 2>&1 & bff_pid=$!
 for _ in $(seq 1 60); do curl -fsS "http://127.0.0.1:${operator_port}/healthz" >/dev/null 2>&1 && break; sleep 1; done
-curl -fsS "http://127.0.0.1:${operator_port}/healthz" >/dev/null
+curl -fsS "http://127.0.0.1:${operator_port}/healthz" >/dev/null || fail "Operator BFF did not become healthy; log=${workdir}/p2-1-operator-bff.log"
 
 jar="${workdir}/p2-1-operator.cookies"
 curl -fsS -D "${workdir}/p2-1-login.headers" -o /dev/null "http://127.0.0.1:${operator_port}/api/v1/auth/login"
@@ -101,13 +106,13 @@ echo "${profile}" | grep -q '"scope":"system"' || fail "system AuthContext missi
 echo 'P2.1 operator step: O3K system AuthContext obtained' >&2
 echo "${profile}" | grep -q 'operator-console' || fail 'operator profile not authorized'
 echo 'P2.1 operator step: operator profile authorized' >&2
-if grep -Eiq 'access_token|refresh_token|id_token' "${jar}" "${workdir}/p2-1-callback.headers"; then exit 1; fi
+if grep -Eiq 'access_token|refresh_token|id_token' "${jar}" "${workdir}/p2-1-callback.headers"; then fail 'browser artifacts contain token fields'; fi
 csrf_token="$(awk '$6 == "araf_csrf" {print $7}' "${jar}")"
 test -n "${csrf_token}" || fail 'operator CSRF cookie missing'
 curl -fsS -X POST -b "${jar}" -H "x-csrf-token: ${csrf_token}" "http://127.0.0.1:${operator_port}/api/v1/auth/logout" >/dev/null
 
 alice_system="$(curl -sS -w '\n%{http_code}' -H 'content-type: application/json' -X POST "http://127.0.0.1:${o3k_port}/o3k/v1/identity/tokens" -d "{\"auth\":{\"method\":\"federated\",\"federated\":{\"access_token\":\"${O3K_P12_7_ALICE_TOKEN}\",\"scope\":{\"kind\":\"system\"}}}}")"
-echo "${alice_system}" | tail -1 | grep -Eq '^4(01|03)$'
+echo "${alice_system}" | tail -1 | grep -Eq '^4(01|03)$' || fail "tenant system exchange was not rejected (response=$(echo "${alice_system}" | tail -1))"
 echo 'P2.1 negative: tenant system exchange rejected' >&2
 echo 'P2.1 operator step: logout passed' >&2
 echo 'P2.1 real Operator process evidence: PASS'

@@ -124,6 +124,8 @@ test.describe("generic resource runtime", () => {
     bffProcess = spawn(join(repoRoot, "backend", "target", "debug", "tenant-bff"), {
       env: {
         ...process.env,
+        ARAF_RUNTIME_PROFILE: "test",
+        ARAF_UPSTREAM_ADAPTER: "fixture",
         ARAF_TENANT_BFF_PORT: String(bffPort),
         RUST_LOG: process.env.RUST_LOG ?? "info",
       },
