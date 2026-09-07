@@ -11,6 +11,7 @@ export type {
 // Scope / identity contexts
 export { ScopeProvider, useScope, type ScopeProviderProps } from "./scope/context";
 export { IdentityProvider, useIdentity, type IdentityProviderProps } from "./identity/context";
+export { BffSessionProvider, type BffSessionContext } from "./bff-session";
 
 // URL state
 export {

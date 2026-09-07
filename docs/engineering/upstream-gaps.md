@@ -349,3 +349,23 @@ Implementation phases must add new gaps here instead of inventing production O3K
 - **Acceptable fallback:** Fixture descriptors remain confined to the fixture
   adapter. Production exposes the bounded O3K identity projection and hides
   unsupported schema/geography-dependent actions.
+
+## M13-O3K-002: Evaluated production capabilities
+
+- **Gap id:** `M13-O3K-002`
+- **Required O3K contract:** `/o3k/v1/identity/me` or an equivalent
+  scope-bound authorization contract must return evaluated capabilities for
+  the authenticated principal, including the resource/action pairs that the
+  current scope permits.
+- **Why Araf P2.2 needs it:** Araf must not derive permissions from the
+  resource types it knows how to render or from IdP profile claims. Without
+  evaluated capabilities, a production BFF cannot truthfully enable or hide
+  actions based on the caller's actual O3K authority.
+- **Current status:** Confirmed missing. The current O3K identity response
+  returns principal and effective-scope identity only.
+- **Blocked Araf feature:** Capability-driven production navigation and
+  action exposure beyond server-side rejection.
+- **Acceptable fallback:** The production adapter returns no capabilities and
+  therefore exposes no capability-gated actions/catalog routes. The fixture
+  adapter remains the only source of deterministic development capabilities;
+  Araf must not substitute a fixed production capability list.

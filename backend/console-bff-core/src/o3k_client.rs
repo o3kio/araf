@@ -10,7 +10,11 @@
 
 use std::collections::HashMap;
 
+use futures_util::StreamExt;
 use serde::Deserialize;
+
+const DISCOVERY_RESPONSE_MAX_BYTES: usize = 64 * 1024;
+const JSON_RESPONSE_MAX_BYTES: usize = 4 * 1024 * 1024;
 
 /// Configuration needed to talk to an O3K native API.
 #[derive(Clone, Debug)]
@@ -251,7 +255,20 @@ impl O3kClient {
             .header("Authorization", self.auth_header())
             .send()
             .await?;
-        Self::handle_response(response).await
+        Self::handle_response(response, JSON_RESPONSE_MAX_BYTES).await
+    }
+
+    async fn get_discovery_json<T: for<'de> Deserialize<'de>>(
+        &self,
+        url: &str,
+    ) -> Result<T, O3kClientError> {
+        let response = self
+            .http
+            .get(url)
+            .header("Authorization", self.auth_header())
+            .send()
+            .await?;
+        Self::handle_response(response, DISCOVERY_RESPONSE_MAX_BYTES).await
     }
 
     async fn post_json<T: for<'de> Deserialize<'de>>(
@@ -266,7 +283,7 @@ impl O3kClient {
             .json(&body)
             .send()
             .await?;
-        Self::handle_response(response).await
+        Self::handle_response(response, JSON_RESPONSE_MAX_BYTES).await
     }
 
     async fn delete_json<T: for<'de> Deserialize<'de>>(
@@ -279,19 +296,58 @@ impl O3kClient {
             .header("Authorization", self.auth_header())
             .send()
             .await?;
-        Self::handle_response(response).await
+        Self::handle_response(response, JSON_RESPONSE_MAX_BYTES).await
     }
 
     async fn handle_response<T: for<'de> Deserialize<'de>>(
         response: reqwest::Response,
+        max_bytes: usize,
     ) -> Result<T, O3kClientError> {
         let status = response.status().as_u16();
+        let declared_length = response.content_length();
+        if declared_length.is_some_and(|length| length > max_bytes as u64) {
+            return Err(O3kClientError::InvalidResponse(format!(
+                "response exceeds {max_bytes} byte limit"
+            )));
+        }
         if response.status().is_success() {
-            response.json::<T>().await.map_err(|e| {
+            let mut body = Vec::with_capacity(
+                declared_length
+                    .map(|length| length as usize)
+                    .unwrap_or(0)
+                    .min(max_bytes),
+            );
+            let mut stream = response.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(O3kClientError::from)?;
+                if body.len().saturating_add(chunk.len()) > max_bytes {
+                    return Err(O3kClientError::InvalidResponse(format!(
+                        "success response exceeds {max_bytes} byte limit"
+                    )));
+                }
+                body.extend_from_slice(&chunk);
+            }
+            serde_json::from_slice(&body).map_err(|e| {
                 O3kClientError::InvalidResponse(format!("failed to parse success body: {e}"))
             })
         } else {
-            let body_text = response.text().await.unwrap_or_default();
+            let mut body = Vec::with_capacity(
+                declared_length
+                    .map(|length| length as usize)
+                    .unwrap_or(0)
+                    .min(max_bytes),
+            );
+            let mut stream = response.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(O3kClientError::from)?;
+                if body.len().saturating_add(chunk.len()) > max_bytes {
+                    return Err(O3kClientError::InvalidResponse(format!(
+                        "error response exceeds {max_bytes} byte limit"
+                    )));
+                }
+                body.extend_from_slice(&chunk);
+            }
+            let body_text = String::from_utf8_lossy(&body).into_owned();
             // Try to extract O3K Problem Details fields.
             let (title, detail) =
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&body_text) {
@@ -321,14 +377,17 @@ impl O3kClient {
 
     /// GET /o3k/v1/services
     pub async fn list_services(&self) -> Result<Vec<DiscoveredService>, O3kClientError> {
-        let response: ServicesResponse = self.get_json(&self.url("/o3k/v1/services")).await?;
+        let response: ServicesResponse = self
+            .get_discovery_json(&self.url("/o3k/v1/services"))
+            .await?;
         Ok(response.services)
     }
 
     /// GET /o3k/v1/resource-types
     pub async fn list_resource_types(&self) -> Result<Vec<DiscoveredResourceType>, O3kClientError> {
-        let response: ResourceTypesResponse =
-            self.get_json(&self.url("/o3k/v1/resource-types")).await?;
+        let response: ResourceTypesResponse = self
+            .get_discovery_json(&self.url("/o3k/v1/resource-types"))
+            .await?;
         Ok(response.resource_types)
     }
 
@@ -600,5 +659,48 @@ mod tests {
             .await
             .expect("exchange");
         assert_eq!(token.token.id, "native-project-a");
+    }
+
+    #[tokio::test]
+    async fn discovery_rejects_body_larger_than_bounded_limit() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/o3k/v1/services"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![
+                b' ';
+                DISCOVERY_RESPONSE_MAX_BYTES
+                    + 1
+            ]))
+            .mount(&server)
+            .await;
+
+        let client = O3kClient::new(O3kClientConfig {
+            base_url: server.uri(),
+            token: "unused".into(),
+        });
+        let error = client
+            .list_services()
+            .await
+            .expect_err("oversized discovery");
+        assert!(error.to_string().contains("byte limit"));
+    }
+
+    #[tokio::test]
+    async fn discovery_retains_exact_limit_before_parsing() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/o3k/v1/services"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_bytes(vec![b' '; DISCOVERY_RESPONSE_MAX_BYTES]),
+            )
+            .mount(&server)
+            .await;
+
+        let client = O3kClient::new(O3kClientConfig {
+            base_url: server.uri(),
+            token: "unused".into(),
+        });
+        let error = client.list_services().await.expect_err("invalid JSON");
+        assert!(!error.to_string().contains("byte limit"));
     }
 }
