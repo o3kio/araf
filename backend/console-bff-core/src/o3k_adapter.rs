@@ -27,11 +27,11 @@ use crate::{
     model::{
         ActionDescriptor, ActionRequest, ActionRiskClass, Capability, CapacitySummary,
         ColumnDescriptor, CreateResourceRequest, CustomerAccount, DetailsSectionDescriptor,
-        DiscoveredResourceType, FilterDescriptor, FilterKind, JsonSchema, Operation,
-        OperationError, OperationEvent, OperationState, OperatorAuditEvent, OperatorProfile,
-        OperatorProject, PaginatedCollection, PlatformOverview, ProviderHealth, Region, Resource,
-        ResourceStatus, ResourceTypeDescriptor, ServiceCatalogEntry, ServiceDescriptor,
-        ServiceHealth, SessionContext,
+        DiscoveredResourceType, FilterDescriptor, FilterKind, Operation, OperationError,
+        OperationEvent, OperationState, OperatorAuditEvent, OperatorProfile, OperatorProject,
+        PaginatedCollection, PlatformOverview, ProviderHealth, Region, Resource, ResourceStatus,
+        ResourceTypeDescriptor, ServiceCatalogEntry, ServiceDescriptor, ServiceHealth,
+        SessionContext,
     },
     o3k_client::{
         MutationResult, NativeOperation, NativeResourceEnvelope, O3kClient, O3kClientConfig,
@@ -323,62 +323,17 @@ impl O3kAdapter {
             .await
             .map_err(Self::map_client_error)?;
 
-        // M7-O3K-007: `/identity/me` does not expose evaluated capabilities.
-        // We derive a fixed capability set from the resource types/actions that
-        // the adapter supports in M7. Server-side authorization remains with
-        // O3K; these capabilities are presentation-only.
-        let mut capabilities = vec![
-            Capability {
-                resource_type: "compute.server".to_owned(),
-                action: "list".to_owned(),
-            },
-            Capability {
-                resource_type: "compute.server".to_owned(),
-                action: "create".to_owned(),
-            },
-            Capability {
-                resource_type: "compute.server".to_owned(),
-                action: "delete".to_owned(),
-            },
-            Capability {
-                resource_type: "network.vpc".to_owned(),
-                action: "list".to_owned(),
-            },
-            Capability {
-                resource_type: "storage.volume".to_owned(),
-                action: "list".to_owned(),
-            },
-        ];
-
-        // Surface-aware catalog/service capabilities keep tenant and operator
-        // authorization audiences separate while still allowing shared compute
-        // resource presentation.
-        if self.surface == "tenant-bff" {
-            capabilities.push(Capability {
-                resource_type: "tenant.service-catalog".to_owned(),
-                action: "list".to_owned(),
-            });
-        } else if self.surface == "operator-bff" {
-            capabilities.extend([
-                Capability {
-                    resource_type: "operator.service".to_owned(),
-                    action: "list".to_owned(),
-                },
-                Capability {
-                    resource_type: "operator.service".to_owned(),
-                    action: "read".to_owned(),
-                },
-            ]);
-        }
-
         Ok(SessionContext {
             surface: self.surface,
             user_id: me.principal_id,
             user_name: me.principal_name,
             organization_id: None,
             project_id: Some(me.effective_scope_id),
-            region_id: Some("global".to_owned()),
-            capabilities,
+            // O3K `/identity/me` does not currently return a region or
+            // evaluated capabilities. Do not turn missing upstream truth into
+            // a synthetic `global` region or a fixed permission set.
+            region_id: None,
+            capabilities: Vec::new(),
         })
     }
 
@@ -452,15 +407,11 @@ impl O3kAdapter {
             name: "Server".to_owned(),
             plural_name: "Servers".to_owned(),
             icon_token: "server".to_owned(),
-            create_schema: Some(JsonSchema(serde_json::json!({
-                "type": "object",
-                "required": ["name"],
-                "properties": {
-                    "name": { "type": "string", "minLength": 1 },
-                    "flavor_id": { "type": "string" },
-                    "image_id": { "type": "string" }
-                }
-            }))),
+            // Kept only for legacy fixture-unit coverage. Production
+            // discovery never calls this helper and must not use a static
+            // schema; the live descriptor path below returns `None` until O3K
+            // publishes an authoritative schema.
+            create_schema: None,
             create_capability: Capability {
                 resource_type: "compute.server".to_owned(),
                 action: "create".to_owned(),
