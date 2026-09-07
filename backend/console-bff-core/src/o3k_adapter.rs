@@ -21,7 +21,6 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use time::OffsetDateTime;
-use tracing::debug;
 
 use crate::{
     error::{ApiError, UpstreamError},
@@ -641,15 +640,6 @@ impl O3kAdapter {
         }
     }
 
-    fn service_for(resource_type: &str) -> Option<(&'static str, &'static str, &'static str)> {
-        match resource_type {
-            "compute.server" => Some(("compute", "Compute", "Services")),
-            "network.vpc" => Some(("network", "Networking", "Services")),
-            "storage.volume" => Some(("storage", "Storage", "Services")),
-            _ => None,
-        }
-    }
-
     fn service_name_from_id(id: &str) -> String {
         id.split('.')
             .next()
@@ -722,9 +712,9 @@ impl Upstream for O3kAdapter {
         let mut descriptors_by_service: HashMap<String, Vec<ResourceTypeDescriptor>> =
             HashMap::new();
 
-        // Hard-code the descriptors we know how to render, regardless of what
-        // O3K advertises. This keeps Araf's UX contract explicit and avoids
-        // exposing provider-specific names to tenants.
+        // Map only resource types actually advertised by O3K. Araf may know how
+        // to render a descriptor, but that knowledge is not evidence that the
+        // capability exists in the connected cloud.
         for rt in resource_types {
             if let Some(descriptor) = Self::descriptor_for(&format!("{}.{}", rt.namespace, rt.name))
             {
@@ -735,27 +725,7 @@ impl Upstream for O3kAdapter {
             }
         }
 
-        // Ensure the canonical M7 services exist even if O3K discovery is empty.
-        for rt_id in ["compute.server", "network.vpc", "storage.volume"] {
-            if let Some((service_id, _service_name, _category)) = Self::service_for(rt_id) {
-                let descriptor = Self::descriptor_for(rt_id).expect("known descriptor");
-                if !descriptors_by_service
-                    .get(service_id)
-                    .map(|v| v.iter().any(|d| d.id == descriptor.id))
-                    .unwrap_or(false)
-                {
-                    descriptors_by_service
-                        .entry(service_id.to_owned())
-                        .or_default()
-                        .push(descriptor);
-                }
-                if !discovered.iter().any(|s| s.id == service_id) {
-                    debug!(service_id, "adding synthetic service entry for M7");
-                }
-            }
-        }
-
-        let mut services: Vec<ServiceDescriptor> = discovered
+        let services: Vec<ServiceDescriptor> = discovered
             .into_iter()
             .filter_map(|s| {
                 let service_id = s.id;
@@ -776,27 +746,6 @@ impl Upstream for O3kAdapter {
                     })
             })
             .collect();
-
-        // If O3K returned no services at all, still produce the M7 catalog.
-        if services.is_empty() {
-            for (service_id, service_name, category) in [
-                ("compute", "Compute", "Services"),
-                ("network", "Networking", "Services"),
-                ("storage", "Storage", "Services"),
-            ] {
-                let types = descriptors_by_service
-                    .remove(service_id)
-                    .unwrap_or_default();
-                if !types.is_empty() {
-                    services.push(ServiceDescriptor {
-                        id: service_id.to_owned(),
-                        name: service_name.to_owned(),
-                        category: category.to_owned(),
-                        resource_types: types,
-                    });
-                }
-            }
-        }
 
         Ok(services)
     }
