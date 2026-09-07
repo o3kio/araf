@@ -27,7 +27,7 @@ The completed architecture/MVP roadmap is tracked by GitHub epic **#2**.
 
 The active production program is tracked by GitHub epic **#42**. P1.1 was completed by #34 / PR #35.
 
-O3K P12-IAM and the corresponding Araf federation convergence evidence are complete; the old upstream identity blocker is resolved. P2.1 remains open only for Araf-side production closure work described in #44 and its refreshed prompt.
+O3K P12-IAM and the corresponding Araf federation convergence evidence are complete; the old upstream identity blocker is resolved. P2.1 / #44 is closed. The remaining integrated real-environment acceptance is tracked by P2.8 / #51.
 
 | Phase | Issue | Purpose |
 |---|---:|---|

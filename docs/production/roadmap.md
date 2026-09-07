@@ -66,7 +66,7 @@ P4.6 Supportability/runbooks/docs
 ## Gate rules
 
 - Do not start broad P2 work while production mode can silently use fixtures.
-- P12-IAM PASS means Araf should consume the authoritative O3K IAM contract; it does not waive Araf production configuration, generic OIDC-client or real Operator-BFF evidence requirements.
+- P12-IAM PASS means Araf should consume the authoritative O3K IAM contract; it does not waive the remaining P2.8 integrated real-environment evidence requirement.
 - Do not start P3 service adapters before P3.1 freezes the backend boundary and compatibility-Operation semantics.
 - Do not call OpenStack support complete until P3.9 runs the same critical tenant journeys against a real supported OpenStack deployment.
 - Do not call Araf production-ready until P4.7 passes against at least one real O3K environment. OpenStack can be a separately supported backend profile, but if advertised as production-supported it must also pass P3.9 and applicable P4 gates.
