@@ -526,8 +526,11 @@ impl O3kClient {
         &self,
         id: &str,
     ) -> Result<NativeResourceEnvelope, O3kClientError> {
-        self.get_json(&self.url(&format!("/o3k/v1/compute/servers/{id}")))
-            .await
+        self.get_json(&self.url(&format!(
+            "/o3k/v1/compute/servers/{}",
+            Self::path_segment(id)
+        )))
+        .await
     }
 
     /// POST /o3k/v1/compute/servers
@@ -569,13 +572,16 @@ impl O3kClient {
 
     /// DELETE /o3k/v1/compute/servers/{id}
     pub async fn delete_compute_server(&self, id: &str) -> Result<MutationResult, O3kClientError> {
-        self.delete_json(&self.url(&format!("/o3k/v1/compute/servers/{id}")))
-            .await
+        self.delete_json(&self.url(&format!(
+            "/o3k/v1/compute/servers/{}",
+            Self::path_segment(id)
+        )))
+        .await
     }
 
     /// GET /o3k/v1/operations/{id}
     pub async fn get_operation(&self, id: &str) -> Result<NativeOperation, O3kClientError> {
-        self.get_json(&self.url(&format!("/o3k/v1/operations/{id}")))
+        self.get_json(&self.url(&format!("/o3k/v1/operations/{}", Self::path_segment(id))))
             .await
     }
 
