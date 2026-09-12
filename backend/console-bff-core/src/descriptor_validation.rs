@@ -28,6 +28,11 @@ const URL_LIKE_PREFIXES: &[&str] = &["http://", "https://", "//", "data:", "file
 
 /// Documentation fields that are allowed to contain URLs.
 const DOCUMENTATION_FIELDS: &[&str] = &["documentationUrl", "documentation_url"];
+/// Schema documents are authoritative data, so permit only the two public
+/// schema registries used by O3K/JSON Schema. Arbitrary remote URLs remain
+/// rejected everywhere else.
+const SCHEMA_REFERENCE_FIELDS: &[&str] = &["$schema", "$id", "$ref"];
+const TRUSTED_SCHEMA_PREFIXES: &[&str] = &["https://json-schema.org/", "https://o3k.io/"];
 
 fn is_forbidden_key(key: &str) -> bool {
     let lower = key.to_lowercase();
@@ -53,6 +58,12 @@ fn looks_like_url(value: &str) -> bool {
         .any(|prefix| value.to_lowercase().starts_with(prefix))
 }
 
+fn is_trusted_schema_url(value: &str) -> bool {
+    TRUSTED_SCHEMA_PREFIXES
+        .iter()
+        .any(|prefix| value.starts_with(prefix))
+}
+
 fn validate_value(value: &serde_json::Value, path: &str, allow_url: bool) -> Result<(), ApiError> {
     match value {
         serde_json::Value::Object(map) => {
@@ -62,7 +73,9 @@ fn validate_value(value: &serde_json::Value, path: &str, allow_url: bool) -> Res
                         "dangerous descriptor key at {path}.{key}: executable/unsafe keys are not allowed"
                     )));
                 }
-                let child_allow_url = DOCUMENTATION_FIELDS.contains(&key.as_str());
+                let child_allow_url = DOCUMENTATION_FIELDS.contains(&key.as_str())
+                    || (SCHEMA_REFERENCE_FIELDS.contains(&key.as_str())
+                        && child.as_str().is_some_and(is_trusted_schema_url));
                 let child_path = if path.is_empty() {
                     key.clone()
                 } else {
@@ -176,5 +189,21 @@ mod tests {
             "documentation_url": "https://docs.example.com/service"
         });
         assert!(validate_descriptor_json(&descriptor).is_ok());
+    }
+
+    #[test]
+    fn allows_trusted_schema_references_but_rejects_remote_schema_urls() {
+        let descriptor = json!({
+            "createSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$id": "https://o3k.io/schemas/compute/server/v1/resource",
+                "$ref": "https://o3k.io/contracts/native-resource-envelope-v1.schema.json"
+            }
+        });
+        assert!(validate_descriptor_json(&descriptor).is_ok());
+
+        let remote = json!({"createSchema": {"$schema": "https://evil.example/schema"}});
+        let err = validate_descriptor_json(&remote).expect_err("remote schema must be rejected");
+        assert!(err.to_string().contains("arbitrary URLs"), "got {err}");
     }
 }

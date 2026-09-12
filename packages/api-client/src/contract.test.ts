@@ -195,6 +195,22 @@ describe("tenant-bff fixture contract", () => {
     expect(operation.events[0]?.state).toBe("pending");
   });
 
+  it("routes native lifecycle update with a generation precondition", async () => {
+    const client = createArafClient(`http://127.0.0.1:${String(port)}`);
+
+    await expect(
+      client.updateResource("compute.server", "resource-0000000001", { name: "updated" }, 1),
+    ).rejects.toMatchObject({ status: 501 });
+  });
+
+  it("routes native lifecycle delete through the BFF", async () => {
+    const client = createArafClient(`http://127.0.0.1:${String(port)}`);
+    const operation = await client.deleteResource("compute.server", "resource-0000000001", 1);
+
+    expect(operation.action).toBe("delete");
+    expect(operation.resourceId).toBe("resource-0000000001");
+  });
+
   it("lists operations and supports filtering by resource type and state", async () => {
     const client = createArafClient(`http://127.0.0.1:${String(port)}`);
 

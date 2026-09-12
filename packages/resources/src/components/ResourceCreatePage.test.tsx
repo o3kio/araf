@@ -109,6 +109,8 @@ function TestWrapper({
     listResources: vi.fn(),
     getResource: vi.fn(),
     createResource: vi.fn().mockResolvedValue(createdOperation),
+    updateResource: vi.fn(),
+    deleteResource: vi.fn(),
     submitAction: vi.fn(),
     listOperations: vi.fn(),
     getOperation: vi.fn(),

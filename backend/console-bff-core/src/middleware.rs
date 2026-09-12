@@ -68,6 +68,8 @@ pub fn apply_default_layers(router: Router, surface: &'static str) -> Router {
             crate::request::request_id_header(),
             crate::csrf::csrf_header_name(),
             axum::http::header::CONTENT_TYPE,
+            axum::http::HeaderName::from_static("idempotency-key"),
+            axum::http::HeaderName::from_static("if-match"),
         ])
         .expose_headers([
             crate::request::correlation_id_header(),
@@ -145,6 +147,8 @@ pub fn apply_production_layers(
             crate::request::request_id_header(),
             crate::csrf::csrf_header_name(),
             axum::http::header::CONTENT_TYPE,
+            axum::http::HeaderName::from_static("idempotency-key"),
+            axum::http::HeaderName::from_static("if-match"),
         ]);
     let origin_guard = trusted_origins;
     router

@@ -37,6 +37,7 @@ const server: Resource = {
   status: "ready",
   createdAt: "2024-01-01T00:00:00Z",
   updatedAt: "2024-01-01T00:01:00Z",
+  generation: 1,
 };
 
 const serverDescriptor: ResourceDescriptor = {
@@ -120,6 +121,7 @@ const volume: Resource = {
   status: "ready",
   createdAt: "2024-01-01T00:00:00Z",
   updatedAt: "2024-01-01T00:01:00Z",
+  generation: 1,
 };
 
 const startOperation: Operation = {
@@ -186,6 +188,8 @@ function TestWrapper({
     listResources: vi.fn(),
     getResource: vi.fn(),
     createResource: vi.fn(),
+    updateResource: vi.fn(),
+    deleteResource: vi.fn(),
     submitAction: vi
       .fn()
       .mockImplementation((_resourceType: string, _id: string, request: ActionRequest) => {

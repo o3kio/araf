@@ -38,6 +38,8 @@ export function createMockClient(overrides: Partial<ArafClient> = {}): ArafClien
     listResources: vi.fn(),
     getResource: vi.fn(),
     createResource: vi.fn(),
+    updateResource: vi.fn(),
+    deleteResource: vi.fn(),
     submitAction: vi.fn(),
     listOperations: vi.fn(),
     getOperation: vi.fn(),

@@ -11,6 +11,7 @@ const resource: Resource = {
   status: "ready",
   createdAt: "2024-01-01T00:00:00Z",
   updatedAt: "2024-01-01T00:01:00Z",
+  generation: 1,
   properties: {
     sizeGb: 100,
     attachedServerId: "resource-0000000002",

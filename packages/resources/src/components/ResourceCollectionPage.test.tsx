@@ -63,6 +63,7 @@ const resources: Resource[] = [
     status: "ready",
     createdAt: "2024-01-01T00:00:00Z",
     updatedAt: "2024-01-01T00:01:00Z",
+    generation: 1,
   },
   {
     id: "resource-0000000002",
@@ -73,6 +74,7 @@ const resources: Resource[] = [
     status: "error",
     createdAt: "2024-01-01T00:00:00Z",
     updatedAt: "2024-01-01T00:01:00Z",
+    generation: 1,
   },
 ];
 
@@ -92,6 +94,8 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
     listResources: vi.fn().mockResolvedValue(collection),
     getResource: vi.fn(),
     createResource: vi.fn(),
+    updateResource: vi.fn(),
+    deleteResource: vi.fn(),
     submitAction: vi.fn(),
     listOperations: vi.fn(),
     getOperation: vi.fn(),
@@ -181,6 +185,8 @@ describe("ResourceCollectionPage", () => {
         listResources: vi.fn(),
         getResource: vi.fn(),
         createResource: vi.fn(),
+        updateResource: vi.fn(),
+        deleteResource: vi.fn(),
         submitAction: vi.fn(),
         listOperations: vi.fn(),
         getOperation: vi.fn(),

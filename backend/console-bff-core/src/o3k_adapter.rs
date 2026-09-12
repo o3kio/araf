@@ -74,10 +74,37 @@ impl O3kAdapter {
         match err {
             O3kClientError::NotImplemented(msg) => ApiError::NotImplemented(msg),
             O3kClientError::Upstream { status: 404, .. } => ApiError::NotFound,
+            O3kClientError::Upstream {
+                status: 403,
+                title,
+                detail,
+            } if title.to_ascii_lowercase().contains("quota")
+                || detail.to_ascii_lowercase().contains("quota") =>
+            {
+                ApiError::QuotaExceeded(Self::public_error_detail(&title, &detail))
+            }
             O3kClientError::Upstream { status: 403, .. } => ApiError::Forbidden,
             O3kClientError::Upstream { status: 401, .. } => ApiError::Unauthorized,
+            O3kClientError::Upstream {
+                status: 409,
+                title,
+                detail,
+            } => ApiError::Conflict(Self::public_error_detail(&title, &detail)),
             other => ApiError::Upstream(UpstreamError::Error(other.to_string())),
         }
+    }
+
+    fn public_error_detail(title: &str, detail: &str) -> String {
+        let source = if detail.trim().is_empty() {
+            title
+        } else {
+            detail
+        };
+        source
+            .chars()
+            .filter(|character| !character.is_control())
+            .take(512)
+            .collect()
     }
 
     fn parse_timestamp(value: Option<&str>) -> Option<OffsetDateTime> {
@@ -130,6 +157,10 @@ impl O3kAdapter {
             "start".to_owned()
         } else if verb == "StopServer" || verb == "Stop" {
             "stop".to_owned()
+        } else if verb == "UpdateServer" || verb == "Update" {
+            "update".to_owned()
+        } else if verb == "RebootServer" || verb == "Reboot" {
+            "reboot".to_owned()
         } else {
             verb.to_lowercase()
         }
@@ -206,6 +237,7 @@ impl O3kAdapter {
             status,
             created_at,
             updated_at,
+            generation: envelope.metadata.generation,
             properties: if properties.is_empty() {
                 None
             } else {
@@ -321,17 +353,49 @@ impl O3kAdapter {
             .await
             .map_err(Self::map_client_error)?;
 
+        // `/identity/me` intentionally carries identity and effective scope,
+        // not an evaluated capability document.  For the tenant shell,
+        // capability entries are therefore a presentation-safe projection of
+        // the same authoritative resource discovery used by the runtime. The
+        // BFF still revalidates every mutation against O3K on dispatch.
+        let discovered = self
+            .client_for(ctx)
+            .list_resource_types()
+            .await
+            .map_err(Self::map_client_error)?;
+        let mut capabilities = Vec::new();
+        for resource_type in discovered {
+            Self::validate_discovered_resource_type(&resource_type)?;
+            if !resource_type.ready {
+                continue;
+            }
+            let resource_id = format!("{}.{}", resource_type.namespace, resource_type.name);
+            capabilities.extend(
+                resource_type
+                    .lifecycle_actions
+                    .keys()
+                    .map(|action| Capability {
+                        resource_type: resource_id.clone(),
+                        action: action.clone(),
+                    }),
+            );
+            capabilities.extend(resource_type.actions.iter().map(|action| Capability {
+                resource_type: resource_id.clone(),
+                action: action.name.clone(),
+            }));
+        }
+
         Ok(SessionContext {
             surface: self.surface,
             user_id: me.principal_id,
             user_name: me.principal_name,
             organization_id: None,
             project_id: Some(me.effective_scope_id),
-            // O3K `/identity/me` does not currently return a region or
-            // evaluated capabilities. Do not turn missing upstream truth into
-            // a synthetic `global` region or a fixed permission set.
+            // O3K `/identity/me` does not currently return a region. Keep
+            // location identity on the dedicated discovery path rather than
+            // inventing a synthetic default.
             region_id: None,
-            capabilities: Vec::new(),
+            capabilities,
         })
     }
 
@@ -799,7 +863,11 @@ impl O3kAdapter {
                         resource_type: id.clone(),
                         action,
                     },
-                    input_schema: None,
+                    input_schema: if verb == "update" {
+                        create_schema.clone()
+                    } else {
+                        None
+                    },
                 }
             })
             .collect();
@@ -870,7 +938,7 @@ impl O3kAdapter {
     fn is_supported_action(action: &str) -> bool {
         matches!(
             Self::action_verb(action).as_str(),
-            "start" | "stop" | "reboot" | "delete" | "destroy"
+            "start" | "stop" | "reboot" | "delete" | "destroy" | "update"
         )
     }
 
@@ -1216,7 +1284,31 @@ impl Upstream for O3kAdapter {
         let collection = discovered.collection;
         let result = if request.action_id == "delete" {
             self.client_for(ctx)
-                .delete_generic_resource(&namespace, &collection, id)
+                .delete_generic_resource(
+                    &namespace,
+                    &collection,
+                    id,
+                    ctx.idempotency_key.as_deref(),
+                )
+                .await
+        } else if request.action_id == "update" {
+            let current = self
+                .client_for(ctx)
+                .get_generic_resource(&namespace, &collection, id)
+                .await
+                .map_err(Self::map_client_error)?;
+            self.client_for(ctx)
+                .update_generic_resource(crate::o3k_client::GenericResourceUpdate {
+                    namespace: namespace.clone(),
+                    collection: collection.clone(),
+                    id: id.to_owned(),
+                    kind: format!("{}:{}", namespace, discovered.name),
+                    payload: request
+                        .payload
+                        .unwrap_or(serde_json::Value::Object(Default::default())),
+                    idempotency_key: ctx.idempotency_key.clone(),
+                    expected_generation: current.metadata.generation,
+                })
                 .await
         } else {
             self.client_for(ctx)
@@ -1228,12 +1320,14 @@ impl Upstream for O3kAdapter {
                     request
                         .payload
                         .unwrap_or(serde_json::Value::Object(Default::default())),
+                    ctx.idempotency_key.as_deref(),
                 )
                 .await
         }
         .map_err(Self::map_client_error)?;
 
-        self.fetch_or_build_operation(result, ctx).await
+        self.fetch_or_build_operation(result, ctx, &request.action_id, resource_type)
+            .await
     }
 
     async fn create_resource(
@@ -1257,11 +1351,86 @@ impl Upstream for O3kAdapter {
         );
         let result = self
             .client_for(ctx)
-            .create_generic_resource(&namespace, &collection, &kind, request.payload)
+            .create_generic_resource(
+                &namespace,
+                &collection,
+                &kind,
+                request.payload,
+                ctx.idempotency_key.as_deref(),
+            )
             .await
             .map_err(Self::map_client_error)?;
 
-        self.fetch_or_build_operation(result, ctx).await
+        self.fetch_or_build_operation(result, ctx, "create", resource_type)
+            .await
+    }
+
+    async fn update_resource(
+        &self,
+        ctx: &RequestContext,
+        resource_type: &str,
+        id: &str,
+        request: crate::model::UpdateResourceRequest,
+    ) -> Result<Operation, ApiError> {
+        let discovered = self.discovered_type_for(ctx, resource_type).await?;
+        if !discovered.lifecycle_actions.contains_key("update") {
+            return Err(ApiError::NotImplemented(format!(
+                "update is not advertised for {resource_type}"
+            )));
+        }
+        let expected_generation = ctx
+            .if_match
+            .as_deref()
+            .and_then(|value| value.strip_prefix("generation-"))
+            .and_then(|value| value.parse::<i64>().ok())
+            .filter(|generation| *generation > 0)
+            .ok_or_else(|| {
+                ApiError::BadRequest(
+                    "update requires an If-Match generation-N precondition".to_owned(),
+                )
+            })?;
+        let kind = format!("{}:{}", discovered.namespace, discovered.name);
+        let result = self
+            .client_for(ctx)
+            .update_generic_resource(crate::o3k_client::GenericResourceUpdate {
+                namespace: discovered.namespace,
+                collection: discovered.collection,
+                id: id.to_owned(),
+                kind,
+                payload: request.payload,
+                idempotency_key: ctx.idempotency_key.clone(),
+                expected_generation,
+            })
+            .await
+            .map_err(Self::map_client_error)?;
+        self.fetch_or_build_operation(result, ctx, "update", resource_type)
+            .await
+    }
+
+    async fn delete_resource(
+        &self,
+        ctx: &RequestContext,
+        resource_type: &str,
+        id: &str,
+    ) -> Result<Operation, ApiError> {
+        let discovered = self.discovered_type_for(ctx, resource_type).await?;
+        if !discovered.lifecycle_actions.contains_key("delete") {
+            return Err(ApiError::NotImplemented(format!(
+                "delete is not advertised for {resource_type}"
+            )));
+        }
+        let result = self
+            .client_for(ctx)
+            .delete_generic_resource(
+                &discovered.namespace,
+                &discovered.collection,
+                id,
+                ctx.idempotency_key.as_deref(),
+            )
+            .await
+            .map_err(Self::map_client_error)?;
+        self.fetch_or_build_operation(result, ctx, "delete", resource_type)
+            .await
     }
 
     async fn list_operations(
@@ -1423,7 +1592,45 @@ impl O3kAdapter {
         &self,
         result: MutationResult,
         ctx: &RequestContext,
+        action: &str,
+        resource_type: &str,
     ) -> Result<Operation, ApiError> {
+        // Native CRUD routes may complete synchronously and return the
+        // canonical operation identity without persisting a pollable record.
+        // In that documented case, the mutation response itself is the
+        // authoritative terminal operation result; do not turn a successful
+        // response into a false 404 by probing an unavailable history route.
+        if result.complete {
+            let project_id = result
+                .resource
+                .as_ref()
+                .and_then(|resource| resource.get("metadata"))
+                .and_then(|metadata| metadata.get("owner_scope"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned);
+            let region_id = result
+                .resource
+                .as_ref()
+                .and_then(|resource| resource.get("metadata"))
+                .and_then(|metadata| metadata.get("region"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned);
+            return Ok(Operation {
+                id: result.operation_id,
+                action: action.to_owned(),
+                state: OperationState::Succeeded,
+                resource_id: result.resource_id,
+                resource_type: Some(resource_type.to_owned()),
+                project_id,
+                region_id,
+                initiated_by: ctx.session.user_id.clone(),
+                started_at: None,
+                updated_at: None,
+                correlation_id: ctx.correlation_id().to_owned(),
+                error: None,
+                events: Vec::new(),
+            });
+        }
         // O3K is authoritative for operation state. Never turn an unavailable
         // operation lookup into a synthetic pending operation: that would make
         // an upstream failure look like a real cloud operation.
@@ -1517,6 +1724,26 @@ mod discovery_validation_tests {
             detail: "not authorized".to_owned(),
         });
         assert!(matches!(error, ApiError::Forbidden));
+    }
+
+    #[test]
+    fn preserves_quota_and_conflict_mutation_reasons() {
+        let quota = O3kAdapter::map_client_error(O3kClientError::Upstream {
+            status: 403,
+            title: "Forbidden".to_owned(),
+            detail: "Quota exceeded for compute:servers".to_owned(),
+        });
+        assert!(
+            matches!(quota, ApiError::QuotaExceeded(detail) if detail.contains("Quota exceeded"))
+        );
+
+        let conflict = O3kAdapter::map_client_error(O3kClientError::Upstream {
+            status: 409,
+            title: "Conflict".to_owned(),
+            detail: "generation precondition failed".to_owned(),
+        });
+        assert_eq!(conflict.status(), axum::http::StatusCode::CONFLICT);
+        assert!(matches!(conflict, ApiError::Conflict(detail) if detail.contains("generation")));
     }
 
     #[test]

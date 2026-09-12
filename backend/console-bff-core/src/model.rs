@@ -259,6 +259,9 @@ pub struct Resource {
     pub status: ResourceStatus,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
+    /// O3K optimistic-concurrency generation used for update/delete
+    /// preconditions. Fixture resources expose generation 1 for parity.
+    pub generation: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub properties: Option<HashMap<String, serde_json::Value>>,
 }
@@ -369,6 +372,14 @@ pub struct CreateResourceRequest {
     /// The create payload is the body itself, flattened so the frontend sends
     /// the resource fields directly while the handler receives them as a single
     /// `Value` for schema validation.
+    #[serde(flatten)]
+    pub payload: serde_json::Value,
+}
+
+/// Request to update a resource through its discovered native contract.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateResourceRequest {
     #[serde(flatten)]
     pub payload: serde_json::Value,
 }

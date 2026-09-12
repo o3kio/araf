@@ -20,8 +20,8 @@ use crate::{
         ListAuditEventsParams, Operation, OperationState, OperatorAuditEvent, OperatorProfile,
         OperatorProject, PaginatedCollection, PlatformOverview, Project, ProjectMember,
         ProjectQuota, ProviderHealth, Region, Resource, Role, ServiceCatalogEntry,
-        ServiceDescriptor, ServiceHealth, SessionContext, SortDirection, UsageQuery, UsageSummary,
-        User,
+        ServiceDescriptor, ServiceHealth, SessionContext, SortDirection, UpdateResourceRequest,
+        UsageQuery, UsageSummary, User,
     },
     request::RequestContext,
     upstream::{
@@ -29,6 +29,28 @@ use crate::{
         ListResourcesParams, Upstream,
     },
 };
+
+fn validate_mutation_headers(ctx: &RequestContext) -> Result<(), ApiError> {
+    if ctx
+        .idempotency_key
+        .as_deref()
+        .is_some_and(|key| key.is_empty() || key.len() > 128 || !key.is_ascii())
+    {
+        return Err(ApiError::BadRequest(
+            "Idempotency-Key must be 1-128 ASCII characters".to_owned(),
+        ));
+    }
+    if ctx
+        .if_match
+        .as_deref()
+        .is_some_and(|value| value.len() > 64 || !value.is_ascii())
+    {
+        return Err(ApiError::BadRequest(
+            "If-Match is too long or contains invalid characters".to_owned(),
+        ));
+    }
+    Ok(())
+}
 
 /// Attach the request's correlation id to an upstream error so Problem Details
 /// responses can be traced end-to-end.
@@ -289,6 +311,7 @@ pub async fn create_resource(
     ctx: RequestContext,
     request: Result<Json<CreateResourceRequest>, JsonRejection>,
 ) -> Result<Json<Operation>, BffError> {
+    validate_mutation_headers(&ctx).map_err(|e| with_ctx(e, &ctx))?;
     let Json(request) = request.map_err(|e| with_ctx(e, &ctx))?;
 
     info!(
@@ -299,6 +322,36 @@ pub async fn create_resource(
     let operation = state
         .upstream
         .create_resource(&ctx, &resource_type, request)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(operation))
+}
+
+pub async fn update_resource(
+    State(state): State<AppState>,
+    Path((resource_type, id)): Path<(String, String)>,
+    ctx: RequestContext,
+    request: Result<Json<UpdateResourceRequest>, JsonRejection>,
+) -> Result<Json<Operation>, BffError> {
+    validate_mutation_headers(&ctx).map_err(|e| with_ctx(e, &ctx))?;
+    let Json(request) = request.map_err(|e| with_ctx(e, &ctx))?;
+    let operation = state
+        .upstream
+        .update_resource(&ctx, &resource_type, &id, request)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(operation))
+}
+
+pub async fn delete_resource(
+    State(state): State<AppState>,
+    Path((resource_type, id)): Path<(String, String)>,
+    ctx: RequestContext,
+) -> Result<Json<Operation>, BffError> {
+    validate_mutation_headers(&ctx).map_err(|e| with_ctx(e, &ctx))?;
+    let operation = state
+        .upstream
+        .delete_resource(&ctx, &resource_type, &id)
         .await
         .map_err(|e| with_ctx(e, &ctx))?;
     Ok(Json(operation))
@@ -323,6 +376,7 @@ pub async fn submit_action(
     ctx: RequestContext,
     request: Result<Json<ActionRequest>, JsonRejection>,
 ) -> Result<Json<Operation>, BffError> {
+    validate_mutation_headers(&ctx).map_err(|e| with_ctx(e, &ctx))?;
     let Json(request) = request.map_err(|e| with_ctx(e, &ctx))?;
 
     info!(

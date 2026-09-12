@@ -166,6 +166,7 @@ export interface Resource {
   status: ResourceStatus;
   createdAt: string;
   updatedAt: string;
+  generation: number;
   properties?: Record<string, unknown>;
 }
 
@@ -573,6 +574,13 @@ export interface ArafClient {
   ): Promise<PaginatedCollection<Resource>>;
   getResource(resourceType: string, id: string): Promise<Resource>;
   createResource(resourceType: string, payload: unknown): Promise<Operation>;
+  updateResource(
+    resourceType: string,
+    id: string,
+    payload: unknown,
+    generation: number,
+  ): Promise<Operation>;
+  deleteResource(resourceType: string, id: string, generation?: number): Promise<Operation>;
   submitAction(resourceType: string, id: string, actionRequest: ActionRequest): Promise<Operation>;
   listOperations(query?: ListOperationsQuery): Promise<PaginatedCollection<Operation>>;
   getOperation(id: string): Promise<Operation>;
@@ -616,6 +624,7 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
     options: {
       method?: string;
       body?: string;
+      headers?: Record<string, string>;
       query?: Record<string, string | number | undefined>;
     } = {},
   ): Promise<T> {
@@ -635,6 +644,7 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
         "Content-Type": "application/json",
         "x-request-id": requestId,
         "x-correlation-id": correlationId,
+        ...options.headers,
       },
       body: options.body,
     });
@@ -693,7 +703,33 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
       request<Operation>(`/api/v1/resources/${encodeURIComponent(resourceType)}`, {
         method: "POST",
         body: JSON.stringify(payload),
+        headers: { "Idempotency-Key": generateId() },
       }),
+
+    updateResource: (resourceType, id, payload, generation) =>
+      request<Operation>(
+        `/api/v1/resources/${encodeURIComponent(resourceType)}/${encodeURIComponent(id)}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(payload),
+          headers: {
+            "Idempotency-Key": generateId(),
+            "If-Match": `generation-${String(generation)}`,
+          },
+        },
+      ),
+
+    deleteResource: (resourceType, id, generation) =>
+      request<Operation>(
+        `/api/v1/resources/${encodeURIComponent(resourceType)}/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Idempotency-Key": generateId(),
+            ...(generation === undefined ? {} : { "If-Match": `generation-${String(generation)}` }),
+          },
+        },
+      ),
 
     submitAction: (resourceType, id, actionRequest) =>
       request<Operation>(
@@ -701,6 +737,7 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
         {
           method: "POST",
           body: JSON.stringify(actionRequest),
+          headers: { "Idempotency-Key": generateId() },
         },
       ),
 

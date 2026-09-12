@@ -26,7 +26,8 @@ use crate::{
         Project, ProjectMember, ProjectQuota, ProviderHealth, ProviderKind, QuotaEntry, Region,
         RegionStatus, RelationshipDescriptor, RelationshipDirection, Resource, ResourceStatus,
         ResourceTypeDescriptor, Role, ServiceCatalogEntry, ServiceDescriptor, ServiceHealth,
-        SessionContext, SortDirection, StatusCount, UsageQuery, UsageRecord, UsageSummary, User,
+        SessionContext, SortDirection, StatusCount, UpdateResourceRequest, UsageQuery, UsageRecord,
+        UsageSummary, User,
     },
     request::RequestContext,
     upstream::{
@@ -139,6 +140,7 @@ impl FixtureAdapter {
                 + time::Duration::seconds((seed % 1_000_000) as i64),
             updated_at: OffsetDateTime::UNIX_EPOCH
                 + time::Duration::seconds((seed % 1_000_000) as i64 + 60),
+            generation: 1,
             properties: None,
         }
     }
@@ -175,6 +177,7 @@ impl FixtureAdapter {
                 + time::Duration::seconds((seed % 1_000_000) as i64),
             updated_at: OffsetDateTime::UNIX_EPOCH
                 + time::Duration::seconds((seed % 1_000_000) as i64 + 60),
+            generation: 1,
             properties: Some(properties),
         }
     }
@@ -219,6 +222,7 @@ impl FixtureAdapter {
                 + time::Duration::seconds((seed % 1_000_000) as i64),
             updated_at: OffsetDateTime::UNIX_EPOCH
                 + time::Duration::seconds((seed % 1_000_000) as i64 + 60),
+            generation: 1,
             properties: Some(properties),
         }
     }
@@ -258,6 +262,7 @@ impl FixtureAdapter {
                 + time::Duration::seconds((seed % 1_000_000) as i64),
             updated_at: OffsetDateTime::UNIX_EPOCH
                 + time::Duration::seconds((seed % 1_000_000) as i64 + 60),
+            generation: 1,
             properties: Some(properties),
         }
     }
@@ -1765,6 +1770,37 @@ impl Upstream for FixtureAdapter {
             .operations
             .push(op.clone());
         Ok(op)
+    }
+
+    async fn update_resource(
+        &self,
+        _ctx: &RequestContext,
+        _resource_type: &str,
+        _id: &str,
+        _request: UpdateResourceRequest,
+    ) -> Result<Operation, ApiError> {
+        Err(ApiError::NotImplemented(
+            "fixture update is intentionally unavailable; use O3K for lifecycle validation"
+                .to_owned(),
+        ))
+    }
+
+    async fn delete_resource(
+        &self,
+        ctx: &RequestContext,
+        resource_type: &str,
+        id: &str,
+    ) -> Result<Operation, ApiError> {
+        self.submit_action(
+            ctx,
+            resource_type,
+            id,
+            ActionRequest {
+                action_id: "delete".to_owned(),
+                payload: None,
+            },
+        )
+        .await
     }
 
     async fn list_operations(

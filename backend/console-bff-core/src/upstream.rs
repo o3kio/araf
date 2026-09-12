@@ -18,7 +18,8 @@ use crate::{
         Operation, OperationState, OperatorAuditEvent, OperatorProfile, OperatorProject,
         PaginatedCollection, PlatformOverview, Project, ProjectMember, ProjectQuota,
         ProviderHealth, Region, Resource, Role, ServiceCatalogEntry, ServiceDescriptor,
-        ServiceHealth, SessionContext, SortDirection, UsageQuery, UsageSummary, User,
+        ServiceHealth, SessionContext, SortDirection, UpdateResourceRequest, UsageQuery,
+        UsageSummary, User,
     },
     request::RequestContext,
 };
@@ -150,6 +151,31 @@ pub trait Upstream: Send + Sync + 'static {
         resource_type: &str,
         request: CreateResourceRequest,
     ) -> Result<Operation, ApiError>;
+
+    /// Update a resource using its authoritative generation precondition.
+    async fn update_resource(
+        &self,
+        _ctx: &RequestContext,
+        _resource_type: &str,
+        _id: &str,
+        _request: UpdateResourceRequest,
+    ) -> Result<Operation, ApiError> {
+        Err(ApiError::NotImplemented(
+            "resource update is not implemented by upstream".to_owned(),
+        ))
+    }
+
+    /// Delete a resource through its native lifecycle contract.
+    async fn delete_resource(
+        &self,
+        _ctx: &RequestContext,
+        _resource_type: &str,
+        _id: &str,
+    ) -> Result<Operation, ApiError> {
+        Err(ApiError::NotImplemented(
+            "resource delete is not implemented by upstream".to_owned(),
+        ))
+    }
 
     /// List Operations.
     async fn list_operations(
