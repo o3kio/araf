@@ -157,6 +157,7 @@ async fn maps_native_compute_server_envelope_to_resource() {
     assert_eq!(resource.project_id, "project-1");
     assert_eq!(resource.region_id, "RegionOne");
     assert_eq!(resource.status, ResourceStatus::Ready);
+    assert_eq!(resource.generation, 3);
 }
 
 #[tokio::test]
@@ -328,6 +329,65 @@ async fn delete_compute_server_calls_native_delete_and_returns_operation() {
 
     assert_eq!(operation.id, "op-delete-1");
     assert_eq!(operation.action, "delete");
+}
+
+#[tokio::test]
+async fn update_resource_uses_discovered_generation_precondition() {
+    let server = MockServer::start().await;
+    let adapter = adapter_for(&server);
+    mount_compute_discovery(
+        &server,
+        serde_json::json!({"update":"compute:UpdateServer"}),
+    )
+    .await;
+
+    Mock::given(method("PUT"))
+        .and(path("/o3k/v1/compute/servers/server-1"))
+        .and(header("Authorization", "Bearer test-token"))
+        .and(header("If-Match", "generation-3"))
+        .respond_with(ResponseTemplate::new(202).set_body_json(serde_json::json!({
+            "operation_id": "op-update-1",
+            "resource_id": "server-1",
+            "complete": false
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/operations/op-update-1"))
+        .and(header("Authorization", "Bearer test-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "op-update-1",
+            "service": "compute",
+            "action": "compute:UpdateServer",
+            "actor": "user-1",
+            "owner_scope": "project-1",
+            "resource_type": "compute:server",
+            "resource_id": "server-1",
+            "state": "pending",
+            "attempt": 0,
+            "created_at": "2024-01-01T00:00:00Z",
+            "request_id": "req-upstream-1"
+        })))
+        .mount(&server)
+        .await;
+
+    let mut ctx = test_context();
+    ctx.if_match = Some("generation-3".to_owned());
+    let operation = adapter
+        .update_resource(
+            &ctx,
+            "compute.server",
+            "server-1",
+            console_bff_core::model::UpdateResourceRequest {
+                payload: serde_json::json!({"name": "updated"}),
+            },
+        )
+        .await
+        .expect("update should return an operation");
+
+    assert_eq!(operation.id, "op-update-1");
+    assert_eq!(operation.action, "update");
 }
 
 #[tokio::test]

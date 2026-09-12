@@ -33,9 +33,9 @@ impl O3kClientConfig {
     /// - `O3K_TOKEN` is an optional development fallback. Production calls use
     ///   the native token held by the current server-side BFF session.
     ///
-    /// Per M3-O3K-002 there is no production OIDC exchange in the BFF yet,
-    /// so the token is supplied directly. Do not put end-user tokens in
-    /// browser storage.
+    /// The optional token is only a development fallback. In authenticated
+    /// production requests the adapter replaces it with the native token held
+    /// by the server-side session; no end-user token reaches browser code.
     pub fn from_env() -> Result<Self, O3kClientError> {
         let base_url = std::env::var("O3K_URL")
             .map_err(|_| O3kClientError::Configuration("O3K_URL is required".into()))?;
@@ -143,6 +143,19 @@ pub struct MutationResult {
     pub resource_id: Option<String>,
     pub complete: bool,
     pub resource: Option<serde_json::Value>,
+}
+
+/// Parameters for a native generic resource update. Keeping these together
+/// prevents callers from accidentally swapping the resource identity and
+/// generation precondition.
+pub struct GenericResourceUpdate {
+    pub namespace: String,
+    pub collection: String,
+    pub id: String,
+    pub kind: String,
+    pub payload: serde_json::Value,
+    pub idempotency_key: Option<String>,
+    pub expected_generation: i64,
 }
 
 /// Response from `GET /o3k/v1/compute/servers`.
@@ -352,12 +365,18 @@ impl O3kClient {
         &self,
         url: &str,
         body: serde_json::Value,
+        idempotency_key: Option<&str>,
     ) -> Result<T, O3kClientError> {
         let response = self
             .http
             .post(url)
             .header("Authorization", self.auth_header())
-            .header("Idempotency-Key", Uuid::new_v4().to_string())
+            .header(
+                "Idempotency-Key",
+                idempotency_key
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(|| Uuid::new_v4().to_string()),
+            )
             .json(&body)
             .send()
             .await?;
@@ -367,12 +386,18 @@ impl O3kClient {
     async fn delete_json<T: for<'de> Deserialize<'de>>(
         &self,
         url: &str,
+        idempotency_key: Option<&str>,
     ) -> Result<T, O3kClientError> {
         let response = self
             .http
             .delete(url)
             .header("Authorization", self.auth_header())
-            .header("Idempotency-Key", Uuid::new_v4().to_string())
+            .header(
+                "Idempotency-Key",
+                idempotency_key
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(|| Uuid::new_v4().to_string()),
+            )
             .send()
             .await?;
         Self::handle_response(response, JSON_RESPONSE_MAX_BYTES).await
@@ -547,23 +572,18 @@ impl O3kClient {
             .await
     }
 
-    /// Start a compute server.
-    ///
-    /// **Upstream gap:** the O3K native API exposes concrete create/delete
-    /// routes for `compute:server` but no native start/stop route. The
-    /// actions are defined in the manifest (`compute:StartServer`) but are
-    /// not bound to HTTP endpoints in M7. This method therefore returns
-    /// `O3kClientError::NotImplemented` rather than inventing a route.
+    /// Legacy concrete helper retained for callers outside the generic
+    /// runtime. Tenant lifecycle actions use the discovered generic action
+    /// route below, so this helper deliberately fails closed when no concrete
+    /// route has been configured.
     pub async fn start_compute_server(&self, _id: &str) -> Result<MutationResult, O3kClientError> {
         Err(O3kClientError::NotImplemented(
             "native start route for compute:server is not available".to_owned(),
         ))
     }
 
-    /// Stop a compute server.
-    ///
-    /// **Upstream gap:** same as `start_compute_server`; no native stop route
-    /// exists in M7.
+    /// Legacy concrete helper; use discovered generic action dispatch for
+    /// production lifecycle calls.
     pub async fn stop_compute_server(&self, _id: &str) -> Result<MutationResult, O3kClientError> {
         Err(O3kClientError::NotImplemented(
             "native stop route for compute:server is not available".to_owned(),
@@ -572,10 +592,13 @@ impl O3kClient {
 
     /// DELETE /o3k/v1/compute/servers/{id}
     pub async fn delete_compute_server(&self, id: &str) -> Result<MutationResult, O3kClientError> {
-        self.delete_json(&self.url(&format!(
-            "/o3k/v1/compute/servers/{}",
-            Self::path_segment(id)
-        )))
+        self.delete_json(
+            &self.url(&format!(
+                "/o3k/v1/compute/servers/{}",
+                Self::path_segment(id)
+            )),
+            None,
+        )
         .await
     }
 
@@ -701,6 +724,7 @@ impl O3kClient {
         collection: &str,
         kind: &str,
         payload: serde_json::Value,
+        idempotency_key: Option<&str>,
     ) -> Result<MutationResult, O3kClientError> {
         self.post_mutation_json(
             &self.url(&format!(
@@ -709,29 +733,35 @@ impl O3kClient {
                 Self::path_segment(collection)
             )),
             serde_json::json!({"api_version":"o3k.io/v1", "kind": kind, "spec": payload}),
+            idempotency_key,
         )
         .await
     }
 
     pub async fn update_generic_resource(
         &self,
-        namespace: &str,
-        collection: &str,
-        id: &str,
-        kind: &str,
-        payload: serde_json::Value,
+        request: GenericResourceUpdate,
     ) -> Result<MutationResult, O3kClientError> {
         let response = self
             .http
             .put(self.url(&format!(
                 "/o3k/v1/{}/{}/{}",
-                Self::path_segment(namespace),
-                Self::path_segment(collection),
-                Self::path_segment(id)
+                Self::path_segment(&request.namespace),
+                Self::path_segment(&request.collection),
+                Self::path_segment(&request.id)
             )))
             .header("Authorization", self.auth_header())
-            .header("Idempotency-Key", Uuid::new_v4().to_string())
-            .json(&serde_json::json!({"api_version":"o3k.io/v1", "kind": kind, "spec": payload}))
+            .header(
+                "Idempotency-Key",
+                request
+                    .idempotency_key
+                    .unwrap_or_else(|| Uuid::new_v4().to_string()),
+            )
+            .header(
+                "If-Match",
+                format!("generation-{}", request.expected_generation),
+            )
+            .json(&serde_json::json!({"api_version":"o3k.io/v1", "kind": request.kind, "spec": request.payload}))
             .send()
             .await?;
         Self::handle_response(response, JSON_RESPONSE_MAX_BYTES).await
@@ -742,13 +772,17 @@ impl O3kClient {
         namespace: &str,
         collection: &str,
         id: &str,
+        idempotency_key: Option<&str>,
     ) -> Result<MutationResult, O3kClientError> {
-        self.delete_json(&self.url(&format!(
-            "/o3k/v1/{}/{}/{}",
-            Self::path_segment(namespace),
-            Self::path_segment(collection),
-            Self::path_segment(id)
-        )))
+        self.delete_json(
+            &self.url(&format!(
+                "/o3k/v1/{}/{}/{}",
+                Self::path_segment(namespace),
+                Self::path_segment(collection),
+                Self::path_segment(id)
+            )),
+            idempotency_key,
+        )
         .await
     }
 
@@ -759,6 +793,7 @@ impl O3kClient {
         id: &str,
         action: &str,
         input: serde_json::Value,
+        idempotency_key: Option<&str>,
     ) -> Result<MutationResult, O3kClientError> {
         self.post_mutation_json(
             &self.url(&format!(
@@ -769,6 +804,7 @@ impl O3kClient {
                 Self::path_segment(action)
             )),
             serde_json::json!({"input": input}),
+            idempotency_key,
         )
         .await
     }

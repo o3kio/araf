@@ -16,6 +16,10 @@ pub struct RequestContext {
     pub request_id: String,
     pub correlation_id: String,
     pub session: Arc<SessionState>,
+    /// Client-supplied idempotency identity for one logical mutation.
+    pub idempotency_key: Option<String>,
+    /// O3K generation precondition for update/delete mutations.
+    pub if_match: Option<String>,
 }
 
 impl RequestContext {
@@ -24,6 +28,8 @@ impl RequestContext {
             request_id,
             correlation_id,
             session,
+            idempotency_key: None,
+            if_match: None,
         }
     }
 
@@ -80,13 +86,27 @@ where
             .and_then(|h| h.to_str().ok())
             .map_or_else(|| request_id.clone(), ToString::to_string);
 
+        let idempotency_key = parts
+            .headers
+            .get("idempotency-key")
+            .and_then(|h| h.to_str().ok())
+            .map(str::to_owned);
+        let if_match = parts
+            .headers
+            .get("if-match")
+            .and_then(|h| h.to_str().ok())
+            .map(str::to_owned);
+
         let session = parts
             .extensions
             .get::<Arc<SessionState>>()
             .cloned()
             .unwrap_or_default();
 
-        Ok(Self::new(request_id, correlation_id, session))
+        let mut context = Self::new(request_id, correlation_id, session);
+        context.idempotency_key = idempotency_key;
+        context.if_match = if_match;
+        Ok(context)
     }
 }
 

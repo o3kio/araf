@@ -72,7 +72,9 @@ fn base_routes(router: Router<AppState>) -> Router<AppState> {
         )
         .route(
             "/api/v1/resources/{resource_type}/{id}",
-            get(handlers::get_resource),
+            get(handlers::get_resource)
+                .put(handlers::update_resource)
+                .delete(handlers::delete_resource),
         )
         .route(
             "/api/v1/resources/{resource_type}/{id}/actions",

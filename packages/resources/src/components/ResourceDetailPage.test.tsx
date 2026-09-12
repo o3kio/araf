@@ -76,6 +76,7 @@ const volume: Resource = {
   status: "ready",
   createdAt: "2024-01-01T00:00:00Z",
   updatedAt: "2024-01-01T00:01:00Z",
+  generation: 1,
   properties: {
     sizeGb: 100,
     attachedServerId: "resource-0000000001",
@@ -91,6 +92,7 @@ const relatedServer: Resource = {
   status: "ready",
   createdAt: "2024-01-01T00:00:00Z",
   updatedAt: "2024-01-01T00:01:00Z",
+  generation: 1,
 };
 
 const operationsCollection: PaginatedCollection<Operation> = {
@@ -140,6 +142,8 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
       return Promise.reject(new Error("Not found"));
     }),
     createResource: vi.fn(),
+    updateResource: vi.fn(),
+    deleteResource: vi.fn(),
     submitAction: vi.fn(),
     listOperations: vi.fn().mockResolvedValue(operationsCollection),
     getOperation: vi.fn(),
