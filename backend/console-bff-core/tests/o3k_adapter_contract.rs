@@ -101,6 +101,79 @@ async fn tenant_service_descriptors_exclude_not_ready_resource_types() {
 }
 
 #[tokio::test]
+async fn operator_diagnostics_are_normalized_without_fabricated_health() {
+    let server = MockServer::start().await;
+    let adapter = adapter_for(&server);
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/operator/diagnostics"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "version":"v1","evaluated_at_unix_ms":1700000000000i64,"status":"degraded",
+            "counts":{"services":{"total":1,"healthy":0,"degraded":0,"unavailable":0,"stale":0,"unknown":1},"providers":{"total":1,"healthy":0,"degraded":0,"unavailable":0,"stale":1,"unknown":0}},
+            "control_plane":null,"locations":{"configured":true,"regions":1,"availability_domains":2}
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/operator/diagnostics/providers"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "items":[{"provider_id":"future-provider","state":"draining","availability":"limited","status":"stale","observed_at_unix_ms":null,"reason":"observation_stale","capacity":[]}],"has_more":false,"next_cursor":null
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/operator/diagnostics/services"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "items":[{"service_id":"compute","namespace":"compute","service_version":"v1","ownership":"o3k","lifecycle_state":"degraded","status":"unknown","observed_at_unix_ms":null,"reason":"never_observed","controller":null}],"has_more":false,"next_cursor":null
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/operator/diagnostics/capacity"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "version":"v1","status":"unknown","observed_at_unix_ms":null,"reason":"never_observed","providers_enabled":0,"providers_draining":1,"providers_unavailable":0,"providers_deleted":0,"dimensions":[{"resource_class":"vcpu","unit":"cores","allocatable":10,"reserved":2,"allocated":3,"available":5}]
+        })))
+        .mount(&server)
+        .await;
+
+    let ctx = test_context();
+    let providers = adapter.list_provider_health(&ctx).await.expect("providers");
+    assert_eq!(
+        providers[0].status,
+        console_bff_core::model::RegionStatus::Stale
+    );
+    assert_eq!(providers[0].region_id, None);
+    assert_eq!(providers[0].last_seen_at, None);
+    assert_eq!(
+        providers[0].kind,
+        console_bff_core::model::ProviderKind::Unknown
+    );
+    let services = adapter.list_service_health(&ctx).await.expect("services");
+    assert_eq!(
+        services[0].status,
+        console_bff_core::model::RegionStatus::Unknown
+    );
+    assert_eq!(services[0].reason.as_deref(), Some("never_observed"));
+    let capacity = adapter.get_capacity_summary(&ctx).await.expect("capacity");
+    assert_eq!(capacity[0].used, 5);
+    assert_eq!(
+        capacity[0].status,
+        console_bff_core::model::RegionStatus::Unknown
+    );
+    assert_eq!(capacity[0].reason.as_deref(), Some("never_observed"));
+    assert_eq!(capacity[0].updated_at, None);
+    let overview = adapter.get_platform_overview(&ctx).await.expect("overview");
+    assert_eq!(overview.active_operations_count, None);
+    assert_eq!(
+        overview.region_status_summary[0].status,
+        console_bff_core::model::RegionStatus::Unknown
+    );
+    assert_eq!(
+        overview.provider_status_summary[0].status,
+        console_bff_core::model::RegionStatus::Stale
+    );
+}
+
+#[tokio::test]
 async fn maps_native_compute_server_envelope_to_resource() {
     let server = MockServer::start().await;
     let adapter = adapter_for(&server);

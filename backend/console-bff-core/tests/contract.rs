@@ -2029,6 +2029,12 @@ async fn o3k_adapter_operator_methods_return_expected_errors() {
         Arc::new(SessionState::default()),
     );
 
+    macro_rules! assert_upstream_failure {
+        ($expr:expr) => {
+            let err = $expr.expect_err("expected upstream failure");
+            assert_eq!(err.status(), StatusCode::BAD_GATEWAY);
+        };
+    }
     macro_rules! assert_not_implemented {
         ($expr:expr) => {
             let err = $expr.expect_err("expected NotImplemented");
@@ -2049,9 +2055,9 @@ async fn o3k_adapter_operator_methods_return_expected_errors() {
         .expect_err("expected upstream failure");
     assert_eq!(err.status(), StatusCode::BAD_GATEWAY);
 
-    assert_not_implemented!(adapter.list_provider_health(&ctx).await);
-    assert_not_implemented!(adapter.list_service_health(&ctx).await);
-    assert_not_implemented!(adapter.get_capacity_summary(&ctx).await);
+    assert_upstream_failure!(adapter.list_provider_health(&ctx).await);
+    assert_upstream_failure!(adapter.list_service_health(&ctx).await);
+    assert_upstream_failure!(adapter.get_capacity_summary(&ctx).await);
     assert_not_implemented!(adapter.list_customer_accounts(&ctx).await);
     assert_not_implemented!(adapter.list_operator_projects(&ctx, None).await);
     assert_not_implemented!(
@@ -2064,7 +2070,7 @@ async fn o3k_adapter_operator_methods_return_expected_errors() {
             .list_operator_audit_events(&ctx, Default::default())
             .await
     );
-    assert_not_implemented!(adapter.get_platform_overview(&ctx).await);
+    assert_upstream_failure!(adapter.get_platform_overview(&ctx).await);
 }
 
 #[tokio::test]

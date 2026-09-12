@@ -10,7 +10,8 @@ import type { CapacitySummary } from "@araf/api-client";
 import { useCapacity } from "../hooks/useCapacity";
 import { errorMessage, errorCorrelationId } from "../errors";
 
-function formatTimestamp(iso: string): string {
+function formatTimestamp(iso: string | null): string {
+  if (!iso) return "Not observed";
   try {
     return new Date(iso).toLocaleString();
   } catch {
@@ -36,6 +37,12 @@ export function CapacityPage() {
       cell: (entry) => String(entry.available),
     },
     { id: "unit", header: "Unit", cell: (entry) => entry.unit },
+    { id: "status", header: "Status", cell: (entry) => entry.status },
+    {
+      id: "reason",
+      header: "Reason",
+      cell: (entry) => entry.reason ?? "Not specified",
+    },
     {
       id: "updated",
       header: "Updated",

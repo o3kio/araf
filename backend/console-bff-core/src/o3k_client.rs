@@ -362,6 +362,122 @@ pub struct OperatorProfile {
     pub audit_id: String,
 }
 
+/// Native O3K operator diagnostics v1 transport projections. These types stay
+/// behind the adapter boundary; the browser receives only Araf-normalized
+/// models.
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeDiagnosticsSummary {
+    pub version: String,
+    pub evaluated_at_unix_ms: i64,
+    pub status: String,
+    pub counts: NativeDiagnosticsCounts,
+    pub control_plane: Option<NativeControlPlaneStatus>,
+    pub locations: NativeLocationDiagnostics,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeDiagnosticsCounts {
+    pub services: NativeComponentCounts,
+    pub providers: NativeComponentCounts,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeComponentCounts {
+    pub total: u64,
+    pub healthy: u64,
+    pub degraded: u64,
+    pub unavailable: u64,
+    pub stale: u64,
+    pub unknown: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeControlPlaneStatus {
+    pub status: String,
+    pub active_sessions: u64,
+    pub observed_at_unix_ms: Option<i64>,
+    pub reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeLocationDiagnostics {
+    pub configured: bool,
+    pub regions: u64,
+    pub availability_domains: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeServiceDiagnostics {
+    pub service_id: String,
+    pub namespace: String,
+    pub service_version: String,
+    pub ownership: String,
+    pub lifecycle_state: String,
+    pub status: String,
+    pub observed_at_unix_ms: Option<i64>,
+    pub reason: Option<String>,
+    pub controller: Option<NativeControllerDiagnostics>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeControllerDiagnostics {
+    pub mode: String,
+    pub protocol: String,
+    pub protocol_version: String,
+    pub healthy: bool,
+    pub session_generation: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeProviderDiagnostics {
+    pub provider_id: String,
+    pub state: String,
+    pub availability: String,
+    pub status: String,
+    pub observed_at_unix_ms: Option<i64>,
+    pub reason: Option<String>,
+    pub capacity: Vec<NativeProviderCapacityDimension>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeProviderCapacityDimension {
+    pub resource_class: String,
+    pub total: u64,
+    pub reserved: u64,
+    pub allocated: u64,
+    pub available: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeCapacityDiagnostics {
+    pub version: String,
+    pub status: String,
+    pub observed_at_unix_ms: Option<i64>,
+    pub reason: Option<String>,
+    pub providers_enabled: u64,
+    pub providers_draining: u64,
+    pub providers_unavailable: u64,
+    pub providers_deleted: u64,
+    pub dimensions: Vec<NativeCapacityDimension>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeCapacityDimension {
+    pub resource_class: String,
+    pub unit: String,
+    pub allocatable: u64,
+    pub reserved: u64,
+    pub allocated: u64,
+    pub available: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeDiagnosticsPage<T> {
+    pub items: Vec<T>,
+    pub has_more: bool,
+    pub next_cursor: Option<String>,
+}
+
 /// Async HTTP client for the O3K native API.
 #[derive(Clone, Debug)]
 pub struct O3kClient {
@@ -773,6 +889,68 @@ impl O3kClient {
         self.get_json(&self.url("/o3k/v1/operator/profile")).await
     }
 
+    /// GET /o3k/v1/operator/diagnostics. O3K performs system/operator
+    /// authorization before returning this secret-safe projection.
+    pub async fn get_operator_diagnostics_summary(
+        &self,
+    ) -> Result<NativeDiagnosticsSummary, O3kClientError> {
+        self.get_json(&self.url("/o3k/v1/operator/diagnostics"))
+            .await
+    }
+
+    /// GET /o3k/v1/operator/diagnostics/services with bounded pagination.
+    pub async fn list_operator_diagnostics_services(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<NativeDiagnosticsPage<NativeServiceDiagnostics>, O3kClientError> {
+        self.list_operator_diagnostics_page("services", limit, cursor)
+            .await
+    }
+
+    /// GET /o3k/v1/operator/diagnostics/providers with bounded pagination.
+    pub async fn list_operator_diagnostics_providers(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<NativeDiagnosticsPage<NativeProviderDiagnostics>, O3kClientError> {
+        self.list_operator_diagnostics_page("providers", limit, cursor)
+            .await
+    }
+
+    /// GET /o3k/v1/operator/diagnostics/capacity.
+    pub async fn get_operator_diagnostics_capacity(
+        &self,
+    ) -> Result<NativeCapacityDiagnostics, O3kClientError> {
+        self.get_json(&self.url("/o3k/v1/operator/diagnostics/capacity"))
+            .await
+    }
+
+    async fn list_operator_diagnostics_page<T: for<'de> Deserialize<'de>>(
+        &self,
+        collection: &str,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<NativeDiagnosticsPage<T>, O3kClientError> {
+        let mut url = self.url(&format!(
+            "/o3k/v1/operator/diagnostics/{}",
+            Self::path_segment(collection)
+        ));
+        let mut params = vec![("limit", limit.clamp(1, 200).to_string())];
+        if let Some(cursor) = cursor {
+            params.push(("cursor", cursor.to_owned()));
+        }
+        url.push('?');
+        url.push_str(
+            &params
+                .iter()
+                .map(|(key, value)| format!("{key}={}", Self::path_segment(value)))
+                .collect::<Vec<_>>()
+                .join("&"),
+        );
+        self.get_json(&url).await
+    }
+
     /// POST /o3k/v1/identity/scopes
     pub async fn discover_federated_scopes(
         &self,
@@ -1157,5 +1335,76 @@ mod tests {
         assert_eq!(schema["allOf"][1]["properties"]["spec"]["type"], "object");
         let regions = client.list_regions().await.expect("regions");
         assert_eq!(regions[0].availability_domains[0].id, "eu-test-a");
+    }
+
+    #[tokio::test]
+    async fn diagnostics_client_uses_bounded_native_routes() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/o3k/v1/operator/diagnostics"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "version":"v1","evaluated_at_unix_ms":1700000000000i64,"status":"degraded",
+                "counts":{"services":{"total":1,"healthy":0,"degraded":1,"unavailable":0,"stale":0,"unknown":0},"providers":{"total":1,"healthy":1,"degraded":0,"unavailable":0,"stale":0,"unknown":0}},
+                "control_plane":null,"locations":{"configured":true,"regions":1,"availability_domains":2}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/o3k/v1/operator/diagnostics/services"))
+            .and(wiremock::matchers::query_param("limit", "200"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items":[],"has_more":false,"next_cursor":null
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/o3k/v1/operator/diagnostics/providers"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items":[],"has_more":false,"next_cursor":null
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/o3k/v1/operator/diagnostics/capacity"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "version":"v1","status":"unknown","observed_at_unix_ms":null,"reason":"never_observed",
+                "providers_enabled":0,"providers_draining":0,"providers_unavailable":0,"providers_deleted":0,"dimensions":[]
+            })))
+            .mount(&server)
+            .await;
+        let client = O3kClient::new(O3kClientConfig {
+            base_url: server.uri(),
+            token: "operator".into(),
+        });
+        assert_eq!(
+            client
+                .get_operator_diagnostics_summary()
+                .await
+                .unwrap()
+                .status,
+            "degraded"
+        );
+        assert!(
+            !client
+                .list_operator_diagnostics_services(200, None)
+                .await
+                .unwrap()
+                .has_more
+        );
+        assert!(
+            !client
+                .list_operator_diagnostics_providers(201, None)
+                .await
+                .unwrap()
+                .has_more
+        );
+        assert_eq!(
+            client
+                .get_operator_diagnostics_capacity()
+                .await
+                .unwrap()
+                .version,
+            "v1"
+        );
     }
 }

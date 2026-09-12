@@ -24,18 +24,18 @@ use time::OffsetDateTime;
 use crate::{
     error::{ApiError, UpstreamError},
     model::{
-        ActionDescriptor, ActionRequest, ActionRiskClass, ActionSchemaMetadata, Capability,
-        CapacitySummary, ColumnDescriptor, CreateResourceRequest, CustomerAccount,
+        ActionDescriptor, ActionRequest, ActionRiskClass, ActionSchemaMetadata, AlertSeverity,
+        Capability, CapacitySummary, ColumnDescriptor, CreateResourceRequest, CustomerAccount,
         DetailsSectionDescriptor, DiscoveredResourceType, FilterDescriptor, FilterKind, JsonSchema,
         ListAuditEventsParams, Operation, OperationError, OperationEvent, OperationState,
-        OperatorAuditEvent, OperatorProfile, OperatorProject, PaginatedCollection,
-        PlatformOverview, ProviderHealth, Region, RegionStatus, Resource, ResourceStatus,
-        ResourceTypeDescriptor, SchemaReference, ServiceCatalogEntry, ServiceDescriptor,
-        ServiceHealth, SessionContext,
+        OperatorAuditEvent, OperatorProfile, OperatorProject, PaginatedCollection, PlatformAlert,
+        PlatformOverview, ProviderHealth, ProviderKind, Region, RegionStatus, Resource,
+        ResourceStatus, ResourceTypeDescriptor, SchemaReference, ServiceCatalogEntry,
+        ServiceDescriptor, ServiceHealth, SessionContext, StatusCount,
     },
     o3k_client::{
-        MutationResult, NativeOperation, NativeResourceEnvelope, O3kClient, O3kClientConfig,
-        O3kClientError,
+        MutationResult, NativeOperation, NativeProviderDiagnostics, NativeResourceEnvelope,
+        NativeServiceDiagnostics, O3kClient, O3kClientConfig, O3kClientError,
     },
     request::RequestContext,
     upstream::{
@@ -55,6 +55,8 @@ impl O3kAdapter {
     const MAX_SCHEMA_DEPTH: usize = 32;
     const MAX_SCHEMA_CHILDREN: usize = 256;
     const MAX_OPERATION_PAGES: u32 = 100;
+    const MAX_DIAGNOSTICS_PAGES: u32 = 100;
+    const DIAGNOSTICS_PAGE_SIZE: u32 = 200;
 
     /// Build an adapter for the given surface using configuration from the
     /// environment.
@@ -113,6 +115,84 @@ impl O3kAdapter {
         value.and_then(|s| {
             time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok()
         })
+    }
+
+    fn parse_unix_millis(value: Option<i64>) -> Option<OffsetDateTime> {
+        value.and_then(|millis| {
+            (millis >= 0).then_some(millis).and_then(|millis| {
+                OffsetDateTime::from_unix_timestamp_nanos(i128::from(millis) * 1_000_000).ok()
+            })
+        })
+    }
+
+    fn map_diagnostic_status(value: &str) -> RegionStatus {
+        match value {
+            "healthy" => RegionStatus::Healthy,
+            "degraded" => RegionStatus::Degraded,
+            "unavailable" => RegionStatus::Unavailable,
+            "stale" => RegionStatus::Stale,
+            _ => RegionStatus::Unknown,
+        }
+    }
+
+    fn validate_diagnostics_version(version: &str, kind: &str) -> Result<(), ApiError> {
+        if version == "v1" {
+            Ok(())
+        } else {
+            Err(ApiError::Upstream(UpstreamError::Error(format!(
+                "unsupported O3K {kind} diagnostics contract version"
+            ))))
+        }
+    }
+
+    fn status_counts(counts: &crate::o3k_client::NativeComponentCounts) -> Vec<StatusCount> {
+        [
+            (RegionStatus::Healthy, counts.healthy),
+            (RegionStatus::Degraded, counts.degraded),
+            (RegionStatus::Unavailable, counts.unavailable),
+            (RegionStatus::Stale, counts.stale),
+            (RegionStatus::Unknown, counts.unknown),
+        ]
+        .into_iter()
+        .filter(|(_, count)| *count > 0)
+        .map(|(status, count)| StatusCount { status, count })
+        .collect()
+    }
+
+    fn map_provider_health(provider: NativeProviderDiagnostics) -> ProviderHealth {
+        let status = Self::map_diagnostic_status(&provider.status);
+        let message = provider
+            .reason
+            .clone()
+            .unwrap_or_else(|| format!("Provider status: {}", provider.status));
+        ProviderHealth {
+            id: provider.provider_id.clone(),
+            // The diagnostics contract does not advertise a provider kind.
+            // Do not infer semantic identity from an implementation-specific ID.
+            kind: ProviderKind::Unknown,
+            name: provider.provider_id,
+            status,
+            // Provider diagnostics deliberately carry no region identity.
+            region_id: None,
+            last_seen_at: Self::parse_unix_millis(provider.observed_at_unix_ms),
+            message,
+            reason: provider.reason,
+        }
+    }
+
+    fn map_service_health(service: NativeServiceDiagnostics) -> ServiceHealth {
+        let ready_since = (service.lifecycle_state == "ready")
+            .then(|| Self::parse_unix_millis(service.observed_at_unix_ms))
+            .flatten();
+        ServiceHealth {
+            id: service.service_id.clone(),
+            name: service.service_id,
+            lifecycle_state: service.lifecycle_state,
+            ready_since,
+            status: Self::map_diagnostic_status(&service.status),
+            observed_at: Self::parse_unix_millis(service.observed_at_unix_ms),
+            reason: service.reason,
+        }
     }
 
     fn map_status_state(state: &str) -> ResourceStatus {
@@ -1905,7 +1985,9 @@ impl Upstream for O3kAdapter {
             .map(|region| Region {
                 id: region.id.clone(),
                 name: region.id.clone(),
-                status: RegionStatus::Healthy,
+                // O3K location discovery is identity-only; diagnostics does
+                // not claim region/AZ liveness. Never fabricate healthy state.
+                status: RegionStatus::Unknown,
                 azs: region
                     .availability_domains
                     .into_iter()
@@ -1913,10 +1995,10 @@ impl Upstream for O3kAdapter {
                         id: az.id.clone(),
                         name: az.id,
                         region_id: region.id.clone(),
-                        status: RegionStatus::Healthy,
+                        status: RegionStatus::Unknown,
                     })
                     .collect(),
-                updated_at: OffsetDateTime::UNIX_EPOCH,
+                updated_at: None,
             })
             .collect())
     }
@@ -1937,29 +2019,103 @@ impl Upstream for O3kAdapter {
 
     async fn list_provider_health(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
     ) -> Result<Vec<ProviderHealth>, ApiError> {
-        Err(ApiError::NotImplemented(
-            "O3K does not expose a provider health endpoint".to_owned(),
-        ))
+        let client = self.client_for(ctx);
+        let mut cursor: Option<String> = None;
+        let mut seen_cursors = HashSet::new();
+        let mut providers = Vec::new();
+        for page_number in 0..Self::MAX_DIAGNOSTICS_PAGES {
+            let page = client
+                .list_operator_diagnostics_providers(Self::DIAGNOSTICS_PAGE_SIZE, cursor.as_deref())
+                .await
+                .map_err(Self::map_client_error)?;
+            providers.extend(page.items.into_iter().map(Self::map_provider_health));
+            if !page.has_more {
+                return Ok(providers);
+            }
+            let Some(next) = page.next_cursor.filter(|value| !value.is_empty()) else {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K indicated more provider diagnostics without a cursor".to_owned(),
+                )));
+            };
+            if !seen_cursors.insert(next.clone()) {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K returned a repeated provider diagnostics cursor".to_owned(),
+                )));
+            }
+            cursor = Some(next);
+            if page_number + 1 == Self::MAX_DIAGNOSTICS_PAGES {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K provider diagnostics exceeded the bounded page limit".to_owned(),
+                )));
+            }
+        }
+        unreachable!()
     }
 
     async fn list_service_health(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
     ) -> Result<Vec<ServiceHealth>, ApiError> {
-        Err(ApiError::NotImplemented(
-            "O3K does not expose a service health endpoint".to_owned(),
-        ))
+        let client = self.client_for(ctx);
+        let mut cursor: Option<String> = None;
+        let mut seen_cursors = HashSet::new();
+        let mut services = Vec::new();
+        for page_number in 0..Self::MAX_DIAGNOSTICS_PAGES {
+            let page = client
+                .list_operator_diagnostics_services(Self::DIAGNOSTICS_PAGE_SIZE, cursor.as_deref())
+                .await
+                .map_err(Self::map_client_error)?;
+            services.extend(page.items.into_iter().map(Self::map_service_health));
+            if !page.has_more {
+                return Ok(services);
+            }
+            let Some(next) = page.next_cursor.filter(|value| !value.is_empty()) else {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K indicated more service diagnostics without a cursor".to_owned(),
+                )));
+            };
+            if !seen_cursors.insert(next.clone()) {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K returned a repeated service diagnostics cursor".to_owned(),
+                )));
+            }
+            cursor = Some(next);
+            if page_number + 1 == Self::MAX_DIAGNOSTICS_PAGES {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K service diagnostics exceeded the bounded page limit".to_owned(),
+                )));
+            }
+        }
+        unreachable!()
     }
 
     async fn get_capacity_summary(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
     ) -> Result<Vec<CapacitySummary>, ApiError> {
-        Err(ApiError::NotImplemented(
-            "O3K does not expose a normalized capacity summary endpoint".to_owned(),
-        ))
+        let capacity = self
+            .client_for(ctx)
+            .get_operator_diagnostics_capacity()
+            .await
+            .map_err(Self::map_client_error)?;
+        Self::validate_diagnostics_version(&capacity.version, "capacity")?;
+        let updated_at = Self::parse_unix_millis(capacity.observed_at_unix_ms);
+        Ok(capacity
+            .dimensions
+            .into_iter()
+            .map(|dimension| CapacitySummary {
+                resource_class: dimension.resource_class,
+                total: dimension.allocatable,
+                used: dimension.reserved.saturating_add(dimension.allocated),
+                available: dimension.available,
+                unit: dimension.unit,
+                status: Self::map_diagnostic_status(&capacity.status),
+                reason: capacity.reason.clone(),
+                updated_at,
+            })
+            .collect())
     }
 
     async fn list_customer_accounts(
@@ -2003,11 +2159,56 @@ impl Upstream for O3kAdapter {
 
     async fn get_platform_overview(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
     ) -> Result<PlatformOverview, ApiError> {
-        Err(ApiError::NotImplemented(
-            "O3K does not expose a platform overview endpoint".to_owned(),
-        ))
+        let summary = self
+            .client_for(ctx)
+            .get_operator_diagnostics_summary()
+            .await
+            .map_err(Self::map_client_error)?;
+        Self::validate_diagnostics_version(&summary.version, "summary")?;
+        let data_freshness_at = Self::parse_unix_millis(Some(summary.evaluated_at_unix_ms))
+            .ok_or_else(|| {
+                ApiError::Upstream(UpstreamError::Error(
+                    "O3K diagnostics summary has an invalid evaluation timestamp".to_owned(),
+                ))
+            })?;
+        let region_status_summary = if summary.locations.regions == 0 {
+            Vec::new()
+        } else {
+            vec![StatusCount {
+                // Locations are identity-only in the O3K contract.
+                status: RegionStatus::Unknown,
+                count: summary.locations.regions,
+            }]
+        };
+        let provider_status_summary = Self::status_counts(&summary.counts.providers);
+        let overall_status = Self::map_diagnostic_status(&summary.status);
+        let recent_alerts = if matches!(overall_status, RegionStatus::Healthy) {
+            Vec::new()
+        } else {
+            Some(PlatformAlert {
+                id: "o3k-diagnostics-status".to_owned(),
+                severity: if matches!(overall_status, RegionStatus::Unavailable) {
+                    AlertSeverity::Critical
+                } else {
+                    AlertSeverity::Warning
+                },
+                message: format!("O3K diagnostics status: {}", summary.status),
+                occurred_at: data_freshness_at,
+            })
+            .into_iter()
+            .collect()
+        };
+        Ok(PlatformOverview {
+            region_status_summary,
+            provider_status_summary,
+            // The diagnostics summary intentionally has no operation count;
+            // #47 remains the canonical Operations view.
+            active_operations_count: None,
+            recent_alerts,
+            data_freshness_at,
+        })
     }
 
     async fn get_operator_profile(

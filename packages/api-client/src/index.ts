@@ -324,9 +324,10 @@ export interface ListUsageQuery {
 
 // Operator platform types
 
-export type RegionStatus = "healthy" | "degraded" | "unavailable" | "maintenance";
+export type RegionStatus =
+  "healthy" | "degraded" | "unavailable" | "maintenance" | "stale" | "unknown";
 
-export type ProviderKind = "compute" | "network" | "storage";
+export type ProviderKind = "compute" | "network" | "storage" | "unknown";
 
 export type AlertSeverity = "info" | "warning" | "critical";
 
@@ -350,9 +351,10 @@ export interface ProviderHealth {
   kind: ProviderKind;
   name: string;
   status: RegionStatus;
-  regionId: string;
-  lastSeenAt: string;
+  regionId: string | null;
+  lastSeenAt: string | null;
   message: string;
+  reason: string | null;
 }
 
 export interface ServiceHealth {
@@ -360,6 +362,9 @@ export interface ServiceHealth {
   name: string;
   lifecycleState: string;
   readySince: string | null;
+  status: RegionStatus;
+  observedAt: string | null;
+  reason: string | null;
 }
 
 export interface CapacitySummary {
@@ -368,7 +373,9 @@ export interface CapacitySummary {
   used: number;
   available: number;
   unit: string;
-  updatedAt: string;
+  status: RegionStatus;
+  reason: string | null;
+  updatedAt: string | null;
 }
 
 export interface CustomerAccount {
@@ -415,7 +422,7 @@ export interface PlatformAlert {
 export interface PlatformOverview {
   regionStatusSummary: StatusCount[];
   providerStatusSummary: StatusCount[];
-  activeOperationsCount: number;
+  activeOperationsCount: number | null;
   recentAlerts: PlatformAlert[];
   dataFreshnessAt: string;
 }
