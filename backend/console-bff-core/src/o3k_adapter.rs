@@ -1453,3 +1453,29 @@ mod resource_mapping_tests {
         assert!(matches!(error, ApiError::Upstream(_)));
     }
 }
+
+#[cfg(test)]
+mod discovery_validation_tests {
+    use super::O3kAdapter;
+
+    #[test]
+    fn accepts_converged_o3k_action_and_schema_references() {
+        assert!(O3kAdapter::valid_action_identifier("compute:CreateServer"));
+        assert!(O3kAdapter::valid_contract_reference(
+            "https://o3k.io/schemas/compute/servers/v1/resource#/allOf/1/properties/spec"
+        ));
+    }
+
+    #[test]
+    fn rejects_unsafe_discovery_references() {
+        assert!(!O3kAdapter::valid_action_identifier(
+            "compute:Create Server"
+        ));
+        assert!(!O3kAdapter::valid_contract_reference(
+            "http://o3k.io/contracts/native-resource-envelope-v1.schema.json"
+        ));
+        assert!(!O3kAdapter::valid_contract_reference(
+            "https://o3k.io/schemas/resource?redirect=https://evil.example"
+        ));
+    }
+}
