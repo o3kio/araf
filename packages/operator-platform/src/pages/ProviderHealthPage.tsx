@@ -10,7 +10,8 @@ import type { ProviderHealth } from "@araf/api-client";
 import { useProviderHealth } from "../hooks/useProviderHealth";
 import { errorMessage, errorCorrelationId } from "../errors";
 
-function formatTimestamp(iso: string): string {
+function formatTimestamp(iso: string | null): string {
+  if (!iso) return "Not observed";
   try {
     return new Date(iso).toLocaleString();
   } catch {
@@ -38,7 +39,7 @@ export function ProviderHealthPage() {
       header: "Status",
       cell: (provider) => statusLabel(provider.status),
     },
-    { id: "region", header: "Region", cell: (provider) => provider.regionId },
+    { id: "region", header: "Region", cell: (provider) => provider.regionId ?? "Not specified" },
     {
       id: "lastSeen",
       header: "Last seen",

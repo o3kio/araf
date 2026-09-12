@@ -216,17 +216,30 @@ pub async fn list_installed_services(
             acc
         });
 
+    // Readiness is authoritative diagnostics, not a catalog lifecycle guess.
+    let service_health = state
+        .upstream
+        .list_service_health(&ctx)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    let health_by_service: std::collections::HashMap<_, _> = service_health
+        .into_iter()
+        .map(|health| (health.id.clone(), health))
+        .collect();
+
     let installed: Vec<InstalledService> = catalog
         .into_iter()
-        .map(|entry| InstalledService {
-            resource_types: types_by_service.get(&entry.id).cloned().unwrap_or_default(),
-            health: match entry.lifecycle_state.as_str() {
-                "ready" => "healthy".to_owned(),
-                "degraded" => "degraded".to_owned(),
-                "unavailable" => "unavailable".to_owned(),
-                _ => "unknown".to_owned(),
-            },
-            ..installed_service_from_catalog_entry(&entry)
+        .map(|entry| {
+            let diagnostics = health_by_service.get(&entry.id);
+            InstalledService {
+                resource_types: types_by_service.get(&entry.id).cloned().unwrap_or_default(),
+                health: diagnostics
+                    .map(|health| region_status_label(health.status))
+                    .unwrap_or_else(|| "unknown".to_owned()),
+                controller_info: diagnostics.and_then(|health| health.reason.clone()),
+                updated_at: diagnostics.and_then(|health| health.observed_at),
+                ..installed_service_from_catalog_entry(&entry)
+            }
         })
         .collect();
 
@@ -238,6 +251,18 @@ pub async fn list_installed_services(
     }
 
     Ok(Json(installed))
+}
+
+fn region_status_label(status: crate::model::RegionStatus) -> String {
+    match status {
+        crate::model::RegionStatus::Healthy => "healthy",
+        crate::model::RegionStatus::Degraded => "degraded",
+        crate::model::RegionStatus::Unavailable => "unavailable",
+        crate::model::RegionStatus::Maintenance => "maintenance",
+        crate::model::RegionStatus::Stale => "stale",
+        crate::model::RegionStatus::Unknown => "unknown",
+    }
+    .to_owned()
 }
 
 pub async fn list_discovered_resource_types(

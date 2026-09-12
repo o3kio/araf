@@ -1114,6 +1114,8 @@ impl FixtureAdapter {
             RegionStatus::Degraded,
             RegionStatus::Unavailable,
             RegionStatus::Maintenance,
+            RegionStatus::Stale,
+            RegionStatus::Unknown,
         ];
         let status = statuses[(seed as usize) % statuses.len()];
         let base_id = match id % 4 {
@@ -1150,8 +1152,9 @@ impl FixtureAdapter {
             name,
             status,
             azs,
-            updated_at: OffsetDateTime::UNIX_EPOCH
-                + time::Duration::seconds((seed % 1_000_000) as i64),
+            updated_at: Some(
+                OffsetDateTime::UNIX_EPOCH + time::Duration::seconds((seed % 1_000_000) as i64),
+            ),
         }
     }
 
@@ -1168,6 +1171,8 @@ impl FixtureAdapter {
             RegionStatus::Degraded,
             RegionStatus::Unavailable,
             RegionStatus::Maintenance,
+            RegionStatus::Stale,
+            RegionStatus::Unknown,
         ];
         let status = statuses[(seed as usize) % statuses.len()];
         let regions = ["eu-west", "us-east", "ap-south", "sa-east"];
@@ -1178,6 +1183,8 @@ impl FixtureAdapter {
             RegionStatus::Degraded => "Elevated latency on some control-plane calls",
             RegionStatus::Unavailable => "Control-plane heartbeats missed",
             RegionStatus::Maintenance => "Scheduled maintenance in progress",
+            RegionStatus::Stale => "Last health observation is stale",
+            RegionStatus::Unknown => "Health has not been observed",
         }
         .to_string();
 
@@ -1186,10 +1193,12 @@ impl FixtureAdapter {
             kind,
             name,
             status,
-            region_id,
-            last_seen_at: OffsetDateTime::UNIX_EPOCH
-                + time::Duration::seconds((seed % 1_000_000) as i64),
+            region_id: Some(region_id),
+            last_seen_at: Some(
+                OffsetDateTime::UNIX_EPOCH + time::Duration::seconds((seed % 1_000_000) as i64),
+            ),
             message,
+            reason: None,
         }
     }
 
@@ -1210,6 +1219,9 @@ impl FixtureAdapter {
             name,
             lifecycle_state,
             ready_since,
+            status: RegionStatus::Healthy,
+            observed_at: ready_since,
+            reason: None,
         }
     }
 
@@ -1233,8 +1245,9 @@ impl FixtureAdapter {
             used,
             available,
             unit: unit.to_owned(),
-            updated_at: OffsetDateTime::UNIX_EPOCH
-                + time::Duration::seconds((seed % 1_000_000) as i64),
+            updated_at: Some(
+                OffsetDateTime::UNIX_EPOCH + time::Duration::seconds((seed % 1_000_000) as i64),
+            ),
         }
     }
 
@@ -1401,7 +1414,7 @@ impl FixtureAdapter {
         PlatformOverview {
             region_status_summary,
             provider_status_summary,
-            active_operations_count,
+            active_operations_count: Some(active_operations_count),
             recent_alerts,
             data_freshness_at: OffsetDateTime::now_utc(),
         }

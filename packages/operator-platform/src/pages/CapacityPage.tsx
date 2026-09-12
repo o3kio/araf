@@ -10,7 +10,8 @@ import type { CapacitySummary } from "@araf/api-client";
 import { useCapacity } from "../hooks/useCapacity";
 import { errorMessage, errorCorrelationId } from "../errors";
 
-function formatTimestamp(iso: string): string {
+function formatTimestamp(iso: string | null): string {
+  if (!iso) return "Not observed";
   try {
     return new Date(iso).toLocaleString();
   } catch {

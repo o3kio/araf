@@ -76,7 +76,8 @@ function OverviewContent({ overview }: { overview: PlatformOverview }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       <p>
-        <strong>Active operations:</strong> {overview.activeOperationsCount}
+        <strong>Active operations:</strong>{" "}
+        {overview.activeOperationsCount ?? "Shown in Operations"}
       </p>
 
       <section aria-label="Region status summary">

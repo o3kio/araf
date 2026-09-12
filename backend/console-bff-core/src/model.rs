@@ -543,6 +543,7 @@ pub enum ProviderKind {
     Compute,
     Network,
     Storage,
+    Unknown,
 }
 
 /// Region status for operator platform views.
@@ -553,6 +554,8 @@ pub enum RegionStatus {
     Degraded,
     Unavailable,
     Maintenance,
+    Stale,
+    Unknown,
 }
 
 /// Availability zone within a region.
@@ -573,7 +576,9 @@ pub struct Region {
     pub name: String,
     pub status: RegionStatus,
     pub azs: Vec<AvailabilityZone>,
-    pub updated_at: OffsetDateTime,
+    /// Location discovery is identity-only in O3K. A missing timestamp is
+    /// represented explicitly rather than fabricated from a sentinel value.
+    pub updated_at: Option<OffsetDateTime>,
 }
 
 /// Provider health entry for operator platform views.
@@ -584,9 +589,10 @@ pub struct ProviderHealth {
     pub kind: ProviderKind,
     pub name: String,
     pub status: RegionStatus,
-    pub region_id: String,
-    pub last_seen_at: OffsetDateTime,
+    pub region_id: Option<String>,
+    pub last_seen_at: Option<OffsetDateTime>,
     pub message: String,
+    pub reason: Option<String>,
 }
 
 /// Service lifecycle health for operator platform views.
@@ -597,6 +603,9 @@ pub struct ServiceHealth {
     pub name: String,
     pub lifecycle_state: String,
     pub ready_since: Option<OffsetDateTime>,
+    pub status: RegionStatus,
+    pub observed_at: Option<OffsetDateTime>,
+    pub reason: Option<String>,
 }
 
 /// Normalized capacity summary for a resource class.
@@ -608,7 +617,7 @@ pub struct CapacitySummary {
     pub used: u64,
     pub available: u64,
     pub unit: String,
-    pub updated_at: OffsetDateTime,
+    pub updated_at: Option<OffsetDateTime>,
 }
 
 /// Customer account/organization visible to operators.
@@ -659,7 +668,7 @@ pub struct OperatorAuditEvent {
 pub struct PlatformOverview {
     pub region_status_summary: Vec<StatusCount>,
     pub provider_status_summary: Vec<StatusCount>,
-    pub active_operations_count: u64,
+    pub active_operations_count: Option<u64>,
     pub recent_alerts: Vec<PlatformAlert>,
     pub data_freshness_at: OffsetDateTime,
 }
