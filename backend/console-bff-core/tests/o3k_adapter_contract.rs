@@ -73,7 +73,9 @@ async fn tenant_service_descriptors_exclude_not_ready_resource_types() {
                 {
                     "namespace": "compute", "name": "server", "service": "compute",
                     "schema_version": "v1", "collection": "servers", "scope": "project",
-                    "ready": true, "lifecycle_actions": {"show": "compute:ShowServer"}
+                    "ready": true, "lifecycle_actions": {
+                        "list": "compute:ListServers", "show": "compute:ShowServer"
+                    }
                 },
                 {
                     "namespace": "compute", "name": "gpu", "service": "compute",

@@ -985,12 +985,15 @@ impl Upstream for O3kAdapter {
 
         // Map only resource types actually advertised by O3K. Araf may know how
         // to render a descriptor, but that knowledge is not evidence that the
-        // capability exists in the connected cloud. Keep not-ready types in
-        // the raw discovery projection for truthful diagnostics, but do not
-        // turn them into executable tenant routes.
+        // capability exists in the connected cloud. Keep not-ready or
+        // read-incomplete types in the raw discovery projection for truthful
+        // diagnostics, but do not turn them into executable tenant routes.
         for rt in resource_types {
             Self::validate_discovered_resource_type(&rt)?;
-            if !rt.ready {
+            if !rt.ready
+                || !rt.lifecycle_actions.contains_key("list")
+                || !rt.lifecycle_actions.contains_key("show")
+            {
                 continue;
             }
             let create_schema = if rt.lifecycle_actions.contains_key("create") {
