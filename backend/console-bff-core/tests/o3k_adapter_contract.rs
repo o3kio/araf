@@ -14,7 +14,7 @@ use console_bff_core::{
     upstream::{ListOperationsParams, ListResourcesParams, Upstream},
 };
 use wiremock::{
-    matchers::{body_json, header, method, path},
+    matchers::{body_json, header, method, path, query_param, query_param_is_missing},
     Mock, MockServer, ResponseTemplate,
 };
 
@@ -417,18 +417,156 @@ async fn undiscovered_actions_are_rejected_before_dispatch() {
 }
 
 #[tokio::test]
-async fn list_operations_returns_not_implemented() {
+async fn list_operations_consumes_native_bounded_cursor_and_filters() {
     let server = MockServer::start().await;
     let adapter = adapter_for(&server);
 
-    let result = adapter
-        .list_operations(&test_context(), ListOperationsParams::default())
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/operations"))
+        .and(query_param_is_missing("cursor"))
+        .and(header("Authorization", "Bearer test-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "items": [{
+                "id": "op-create-1", "service": "compute",
+                "action": {"namespace": "compute", "action": "CreateServer"}, "actor": "user-1",
+                "owner_scope": {"id": "project-1", "kind": "project", "name": null, "domain_id": null},
+                "resource_type": {"namespace": "compute", "name": "server"},
+                "resource_id": "server-1", "state": "succeeded", "attempt": 0,
+                "created_at": "2024-01-01T00:00:00Z",
+                "started_at": "2024-01-01T00:00:01Z",
+                "finished_at": "2024-01-01T00:00:02Z",
+                "request_id": "req-1"
+            }, {
+                "id": "op-delete-2", "service": "compute",
+                "action": {"namespace": "compute", "action": "DeleteServer"}, "actor": "user-1",
+                "owner_scope": {"id": "project-1", "kind": "project", "name": null, "domain_id": null},
+                "resource_type": {"namespace": "compute", "name": "server"},
+                "resource_id": "server-2", "state": "failed", "attempt": 1,
+                "created_at": "2024-01-02T00:00:00Z",
+                "started_at": "2024-01-02T00:00:01Z",
+                "finished_at": "2024-01-02T00:00:02Z",
+                "error": "quota exceeded", "request_id": "req-2"
+            }],
+            "next_cursor": null,
+            "has_more": false
+        })))
+        .mount(&server)
         .await;
 
-    assert!(
-        matches!(result, Err(console_bff_core::ApiError::NotImplemented(_))),
-        "list_operations should be not implemented, got {result:?}"
-    );
+    let result = adapter
+        .list_operations(
+            &test_context(),
+            ListOperationsParams {
+                state: Some(OperationState::Failed),
+                ..ListOperationsParams::default()
+            },
+        )
+        .await;
+
+    let collection = result.expect("native operation list should map successfully");
+    assert_eq!(collection.items.len(), 1);
+    assert_eq!(collection.items[0].id, "op-delete-2");
+    assert_eq!(collection.items[0].state, OperationState::Failed);
+    assert!(!collection.has_more);
+}
+
+#[tokio::test]
+async fn list_operations_preserves_opaque_cursor_and_page_bounds() {
+    let server = MockServer::start().await;
+    let adapter = adapter_for(&server);
+
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/operations"))
+        .and(query_param_is_missing("cursor"))
+        .and(header("Authorization", "Bearer test-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "items": [], "next_cursor": "opaque-cursor-1", "has_more": true
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/operations"))
+        .and(query_param("cursor", "opaque-cursor-1"))
+        .and(header("Authorization", "Bearer test-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "items": [], "next_cursor": null, "has_more": false
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let collection = adapter
+        .list_operations(
+            &test_context(),
+            ListOperationsParams {
+                page: 1,
+                page_size: 5,
+                ..ListOperationsParams::default()
+            },
+        )
+        .await
+        .expect("second page should consume the opaque cursor");
+    assert_eq!(collection.page, 1);
+    assert_eq!(collection.page_size, 5);
+    assert!(!collection.has_more);
+}
+
+#[tokio::test]
+async fn list_operations_does_not_fabricate_total_for_exhausted_page() {
+    let server = MockServer::start().await;
+    let adapter = adapter_for(&server);
+
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/operations"))
+        .and(query_param_is_missing("cursor"))
+        .and(header("Authorization", "Bearer test-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "items": [], "next_cursor": null, "has_more": false
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let collection = adapter
+        .list_operations(
+            &test_context(),
+            ListOperationsParams {
+                page: 50,
+                page_size: 10,
+                ..ListOperationsParams::default()
+            },
+        )
+        .await
+        .expect("an exhausted native page should be valid");
+    assert!(collection.items.is_empty());
+    assert!(!collection.has_more);
+    assert_eq!(collection.total, 0);
+}
+
+#[tokio::test]
+async fn list_operations_rejects_empty_continuation_cursor() {
+    let server = MockServer::start().await;
+    let adapter = adapter_for(&server);
+
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/operations"))
+        .and(query_param_is_missing("cursor"))
+        .and(header("Authorization", "Bearer test-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "items": [], "next_cursor": "", "has_more": true
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let error = adapter
+        .list_operations(&test_context(), ListOperationsParams::default())
+        .await
+        .expect_err("empty native cursor must fail closed");
+    assert!(error
+        .to_string()
+        .contains("empty operation pagination cursor"));
 }
 
 #[tokio::test]

@@ -115,11 +115,12 @@ Implementation phases must add new gaps here instead of inventing production O3K
 ## M7-O3K-002: Operation list/search endpoint
 
 - **Gap id:** `M7-O3K-002`
-- **Required O3K contract:** A server-bounded `GET /o3k/v1/operations` endpoint that returns operations visible to the caller, filterable by state, action, resource type, resource id, scope, and time bounds.
+- **Required O3K contract:** A server-bounded `GET /o3k/v1/operations` endpoint that returns operations visible to the caller with an opaque continuation cursor.
 - **Why Araf M7 needs it:** Araf M6 built a global Operations list page (`OperationsListPage`) and the prototype gate requires global/resource operation navigation. The O3K native API only exposes `GET /o3k/v1/operations/{id}`.
-- **Current status:** Confirmed missing.
-- **Blocked Araf feature:** Global Operations list backed by real O3K data.
-- **Acceptable fallback:** The M7 `O3kAdapter::list_operations` explicitly returns `501 Not Implemented` with a clear Problem Details message. Keep the global Operations list as a fixture-only page in M7 and document the gap; operation detail pages can use real `GET /o3k/v1/operations/{id}`.
+- **Current status:** Resolved by O3K convergence commit `21fe687c387a04f107b6e87fac04060b1c28e449`. The native route is tenant-safe and cursor-bounded; it intentionally leaves filtering dimensions to the consumer because the public contract accepts only `limit` and `cursor`.
+- **Araf adaptation:** The #47 adapter preserves O3K authorization/cursor semantics and applies the existing stable Araf filter DTO server-side over a bounded scan. Region remains unset when O3K does not advertise one; Araf never infers geography.
+- **Blocked Araf feature:** None for the agreed Operations Center scope.
+- **Acceptable fallback:** Fixture operation lists remain available only through explicit fixture mode for deterministic tests/development.
 
 ## M7-O3K-003: Operation event timeline
 

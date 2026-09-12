@@ -21,6 +21,8 @@ const STATE_OPTIONS: { value: OperationState | ""; label: string }[] = [
   { value: "running", label: "Running" },
   { value: "succeeded", label: "Succeeded" },
   { value: "failed", label: "Failed" },
+  { value: "retryable", label: "Retryable" },
+  { value: "unknownOutcome", label: "Unknown outcome" },
 ];
 
 function formatTimestamp(iso: string | null | undefined): string {
@@ -67,7 +69,15 @@ export function OperationsListPage() {
       id: "resource",
       header: "Resource",
       cell: (op) =>
-        op.resourceType && op.resourceId ? `${op.resourceType}/${op.resourceId}` : "—",
+        op.resourceType && op.resourceId ? (
+          <Link
+            to={`/resources/${encodeURIComponent(op.resourceType)}/${encodeURIComponent(op.resourceId)}`}
+          >
+            {op.resourceType}/{op.resourceId}
+          </Link>
+        ) : (
+          "—"
+        ),
     },
     {
       id: "scope",

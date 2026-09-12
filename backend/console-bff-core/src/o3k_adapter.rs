@@ -5,8 +5,8 @@
 //! and the adapter does not retain resources or operations between requests.
 //!
 //! Known upstream boundaries handled explicitly:
-//! - O3K does not expose `GET /o3k/v1/operations`; `list_operations` remains
-//!   rejected rather than fabricating an inventory.
+//! - O3K Operation list/show reads are delegated to its tenant-safe,
+//!   scope-bound native routes; Araf never fabricates an inventory.
 //! - O3K Operation has no event array; events are derived from its canonical
 //!   timestamps and error fields.
 //! - Native list endpoints do not filter/sort or return totals; Araf keeps
@@ -16,7 +16,7 @@
 //! - `/identity/me` returns identity context, not evaluated capabilities;
 //!   capability truth therefore comes from service/resource discovery.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use time::OffsetDateTime;
@@ -53,6 +53,7 @@ pub struct O3kAdapter {
 impl O3kAdapter {
     const MAX_SCHEMA_DEPTH: usize = 32;
     const MAX_SCHEMA_CHILDREN: usize = 256;
+    const MAX_OPERATION_PAGES: u32 = 100;
 
     /// Build an adapter for the given surface using configuration from the
     /// environment.
@@ -316,6 +317,11 @@ impl O3kAdapter {
     fn map_native_operation(op: NativeOperation) -> Operation {
         let correlation_id = op.request_id.clone().unwrap_or_else(|| op.id.clone());
         let state = Self::map_operation_state(&op.state);
+        let created_at = Self::parse_timestamp(Some(&op.created_at));
+        let started_at = Self::parse_timestamp(op.started_at.as_deref()).or(created_at);
+        let updated_at = Self::parse_timestamp(op.finished_at.as_deref())
+            .or_else(|| Self::parse_timestamp(op.started_at.as_deref()))
+            .or(created_at);
         let error = op.error.as_ref().and_then(|e| {
             if e.is_empty() {
                 None
@@ -338,8 +344,8 @@ impl O3kAdapter {
             project_id: Some(op.owner_scope),
             region_id: None,
             initiated_by: Some(op.actor),
-            started_at: Self::parse_timestamp(op.started_at.as_deref()),
-            updated_at: Self::parse_timestamp(op.finished_at.as_deref()),
+            started_at,
+            updated_at,
             correlation_id,
             error,
             events,
@@ -1042,6 +1048,45 @@ impl O3kAdapter {
             _ => true,
         }
     }
+
+    fn operation_matches(operation: &Operation, params: &ListOperationsParams) -> bool {
+        params
+            .state
+            .as_ref()
+            .is_none_or(|state| operation.state == *state)
+            && params
+                .action
+                .as_ref()
+                .is_none_or(|action| operation.action == *action)
+            && params.resource_type.as_ref().is_none_or(|resource_type| {
+                operation.resource_type.as_ref() == Some(resource_type)
+            })
+            && params
+                .resource_id
+                .as_ref()
+                .is_none_or(|resource_id| operation.resource_id.as_ref() == Some(resource_id))
+            && params
+                .project_id
+                .as_ref()
+                .is_none_or(|project_id| operation.project_id.as_ref() == Some(project_id))
+            // Native O3K operations currently do not carry a region field.
+            // Never infer one; a region filter therefore matches only an
+            // operation that explicitly has the requested identity.
+            && params
+                .region_id
+                .as_ref()
+                .is_none_or(|region_id| operation.region_id.as_ref() == Some(region_id))
+            && params.since.is_none_or(|since| {
+                operation
+                    .started_at
+                    .is_some_and(|started_at| started_at >= since)
+            })
+            && params.until.is_none_or(|until| {
+                operation
+                    .started_at
+                    .is_some_and(|started_at| started_at <= until)
+            })
+    }
 }
 
 #[async_trait]
@@ -1435,13 +1480,115 @@ impl Upstream for O3kAdapter {
 
     async fn list_operations(
         &self,
-        _ctx: &RequestContext,
-        _params: ListOperationsParams,
+        ctx: &RequestContext,
+        params: ListOperationsParams,
     ) -> Result<PaginatedCollection<Operation>, ApiError> {
-        // M7-O3K-002: O3K has no `GET /o3k/v1/operations` endpoint.
-        Err(ApiError::NotImplemented(
-            "O3K does not expose a list operations endpoint in M7".to_owned(),
-        ))
+        // O3K owns authorization, ordering and cursor integrity. Araf only
+        // adapts the bounded cursor stream to its stable page DTO and applies
+        // presentation filters server-side when the native contract does not
+        // expose those filter dimensions.
+        let page_size = params.page_size.clamp(1, 100);
+        let target_page = params.page.min(Self::MAX_OPERATION_PAGES);
+        let has_filters = params.state.is_some()
+            || params.action.is_some()
+            || params.resource_type.is_some()
+            || params.resource_id.is_some()
+            || params.project_id.is_some()
+            || params.region_id.is_some()
+            || params.since.is_some()
+            || params.until.is_some();
+        let scan_limit = if has_filters {
+            Self::MAX_OPERATION_PAGES
+        } else {
+            target_page.saturating_add(1)
+        };
+
+        let mut cursor: Option<String> = None;
+        let mut seen_cursors: HashSet<String> = HashSet::new();
+        let mut all_matching = Vec::new();
+        let mut page_items = Vec::new();
+        let mut has_more = false;
+        let mut observed_items = 0u64;
+
+        for page_index in 0..scan_limit {
+            let response = self
+                .client_for(ctx)
+                .list_operations(page_size, cursor.as_deref())
+                .await
+                .map_err(Self::map_client_error)?;
+            let next_cursor = response.next_cursor.clone();
+            let native_item_count = response.items.len() as u64;
+            let mapped: Vec<Operation> = response
+                .items
+                .into_iter()
+                .map(Self::map_native_operation)
+                .filter(|operation| Self::operation_matches(operation, &params))
+                .collect();
+
+            if has_filters {
+                all_matching.extend(mapped);
+            } else if page_index == target_page {
+                page_items = mapped;
+            }
+            if !has_filters {
+                observed_items = observed_items.saturating_add(native_item_count);
+            }
+
+            has_more = response.has_more || next_cursor.is_some();
+            if !has_more {
+                break;
+            }
+            let Some(next_cursor_value) = next_cursor.as_deref() else {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K indicated more operations without a continuation cursor".to_owned(),
+                )));
+            };
+            if next_cursor_value.is_empty() {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K returned an empty operation pagination cursor".to_owned(),
+                )));
+            }
+            if !seen_cursors.insert(next_cursor_value.to_owned()) {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K returned a repeated operation pagination cursor".to_owned(),
+                )));
+            }
+            cursor = next_cursor;
+        }
+
+        if has_filters {
+            let start = usize::try_from(target_page)
+                .unwrap_or(usize::MAX)
+                .saturating_mul(page_size as usize);
+            let end = start
+                .saturating_add(page_size as usize)
+                .min(all_matching.len());
+            page_items = if start < all_matching.len() {
+                all_matching[start..end].to_vec()
+            } else {
+                Vec::new()
+            };
+            return Ok(PaginatedCollection {
+                // A bounded filter scan cannot know the exact total when the
+                // defensive page ceiling is reached; retain a truthful lower
+                // bound until the native cursor is exhausted.
+                total: all_matching.len() as u64 + u64::from(has_more),
+                page: params.page,
+                page_size,
+                has_more: end < all_matching.len() || has_more,
+                items: page_items,
+            });
+        }
+
+        Ok(PaginatedCollection {
+            // O3K intentionally exposes continuation, not an expensive total.
+            // Report a lower bound that keeps the page control truthful.
+            total: observed_items.saturating_add(u64::from(has_more)),
+            page: params.page,
+            page_size,
+            has_more,
+            items: page_items,
+        })
     }
 
     async fn get_operation(&self, ctx: &RequestContext, id: &str) -> Result<Operation, ApiError> {

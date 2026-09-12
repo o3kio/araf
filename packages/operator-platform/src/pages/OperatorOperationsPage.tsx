@@ -35,6 +35,8 @@ const STATE_OPTIONS: { value: OperationState | ""; label: string }[] = [
   { value: "running", label: "Running" },
   { value: "succeeded", label: "Succeeded" },
   { value: "failed", label: "Failed" },
+  { value: "retryable", label: "Retryable" },
+  { value: "unknownOutcome", label: "Unknown outcome" },
 ];
 
 export function OperatorOperationsPage() {

@@ -59,7 +59,14 @@ function clampPageSize(pageSize: number): number {
 }
 
 function isOperationState(value: string): value is OperationState {
-  return value === "pending" || value === "running" || value === "succeeded" || value === "failed";
+  return (
+    value === "pending" ||
+    value === "running" ||
+    value === "succeeded" ||
+    value === "failed" ||
+    value === "retryable" ||
+    value === "unknownOutcome"
+  );
 }
 
 function buildFilters(params: URLSearchParams): OperationsFilters {
