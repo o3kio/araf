@@ -573,6 +573,19 @@ pub async fn list_audit_events(
     Ok(Json(events))
 }
 
+pub async fn get_audit_event(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ctx: RequestContext,
+) -> Result<Json<AuditEvent>, BffError> {
+    let event = state
+        .upstream
+        .get_audit_event(&ctx, &id)
+        .await
+        .map_err(|e| with_ctx(e, &ctx))?;
+    Ok(Json(event))
+}
+
 pub async fn list_api_credentials(
     State(state): State<AppState>,
     Query(_query): Query<ListGovernanceQuery>,

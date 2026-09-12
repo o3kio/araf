@@ -277,6 +277,17 @@ pub trait Upstream: Send + Sync + 'static {
         ))
     }
 
+    /// Get one audit event by its canonical O3K event id.
+    async fn get_audit_event(
+        &self,
+        _ctx: &RequestContext,
+        _id: &str,
+    ) -> Result<AuditEvent, ApiError> {
+        Err(ApiError::NotImplemented(
+            "tenant governance audit detail is not implemented by upstream O3K".to_owned(),
+        ))
+    }
+
     /// List API credentials visible to the caller.
     async fn list_api_credentials(
         &self,

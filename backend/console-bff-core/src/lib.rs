@@ -102,6 +102,10 @@ fn governance_routes(router: Router<AppState>) -> Router<AppState> {
         .route("/api/v1/governance/usage", get(handlers::list_usage))
         .route("/api/v1/governance/audit", get(handlers::list_audit_events))
         .route(
+            "/api/v1/governance/audit/{id}",
+            get(handlers::get_audit_event),
+        )
+        .route(
             "/api/v1/governance/api-credentials",
             get(handlers::list_api_credentials).post(handlers::create_api_credential),
         )

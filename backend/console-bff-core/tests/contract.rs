@@ -1707,7 +1707,8 @@ async fn o3k_adapter_governance_methods_return_501() {
     assert_not_implemented!(adapter.list_users(&ctx).await);
     assert_not_implemented!(adapter.get_user(&ctx, "user-001").await);
     assert_not_implemented!(adapter.list_roles(&ctx).await);
-    assert_not_implemented!(adapter.list_quotas(&ctx, None).await);
+    let quota_err = adapter.list_quotas(&ctx, None).await.expect_err("expected upstream quota failure");
+    assert_ne!(quota_err.status(), StatusCode::NOT_IMPLEMENTED);
     assert_not_implemented!(
         adapter
             .list_usage(
@@ -1721,7 +1722,8 @@ async fn o3k_adapter_governance_methods_return_501() {
             )
             .await
     );
-    assert_not_implemented!(adapter.list_audit_events(&ctx, Default::default()).await);
+    let audit_err = adapter.list_audit_events(&ctx, Default::default()).await.expect_err("expected upstream audit failure");
+    assert_ne!(audit_err.status(), StatusCode::NOT_IMPLEMENTED);
     assert_not_implemented!(adapter.list_api_credentials(&ctx).await);
     assert_not_implemented!(
         adapter

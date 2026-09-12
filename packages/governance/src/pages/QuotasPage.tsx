@@ -151,11 +151,13 @@ function QuotaEntries({ entries }: { entries: QuotaEntry[] }) {
   return (
     <ul style={{ margin: 0, paddingInlineStart: "1rem" }}>
       {entries.map((entry) => {
-        const percentage = entry.limit > 0 ? Math.min((entry.used / entry.limit) * 100, 100) : 0;
+        const percentage = entry.limit != null && entry.limit > 0
+          ? Math.min((entry.used / entry.limit) * 100, 100)
+          : 0;
         return (
           <li key={entry.resourceType} style={{ marginBottom: "0.5rem" }}>
             <div>
-              {entry.resourceType}: {entry.used} / {entry.limit} {entry.unit}
+              {entry.resourceType}: {entry.used} / {entry.limit ?? "Unlimited"} {entry.unit}
             </div>
             <div
               role="img"

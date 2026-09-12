@@ -14,6 +14,7 @@ import {
   ResourceDetailPage,
   ResourceCreatePage,
   ServiceCatalogPage,
+  useCapabilities,
 } from "@araf/resources";
 import {
   OperationsClientProvider,
@@ -29,6 +30,7 @@ import {
   QuotasPage,
   UsagePage,
   AuditPage,
+  AuditDetailPage,
   ApiCredentialsPage,
 } from "@araf/governance";
 import { createArafClient } from "@araf/api-client";
@@ -84,6 +86,7 @@ const staticNavigationItems: TenantNavigationItem[] = [
  */
 function useTenantNavigation(): TenantNavigationItem[] {
   const client = useResourceClient();
+  const { capabilities } = useCapabilities();
   const [services, setServices] = useState<
     { id: string; name: string; resourceTypes: { id: string; pluralName: string }[] }[] | undefined
   >(undefined);
@@ -117,6 +120,19 @@ function useTenantNavigation(): TenantNavigationItem[] {
   }, [client]);
 
   return useMemo(() => {
+    const can = (resourceType: string, action: string) =>
+      capabilities.some((capability) => capability.resourceType === resourceType && capability.action === action);
+    const visibleStatic = staticNavigationItems.map((item) => {
+      if (item.type !== "section") return item;
+      const items = (item.items ?? []).filter((child) => {
+        if (child.id === "projects" || child.id === "users") return can("tenant.project", "list") || can("tenant.role", "list");
+        if (child.id === "quotas") return can("tenant.quota", "read");
+        if (child.id === "audit") return can("tenant.audit", "read");
+        if (child.id === "api") return can("tenant.api-credential", "list");
+        return true;
+      });
+      return { ...item, items };
+    }).filter((item) => item.type !== "section" || (item.items ?? []).length > 0);
     const serviceLinks: TenantNavigationItem[] = [
       { id: "catalog", type: "link", text: "Service catalog", href: "/services/catalog" },
       ...(services ?? []).flatMap((service) =>
@@ -137,11 +153,11 @@ function useTenantNavigation(): TenantNavigationItem[] {
     };
 
     return [
-      ...staticNavigationItems.slice(0, 1),
+      ...visibleStatic.slice(0, 1),
       servicesSection,
-      ...staticNavigationItems.slice(1),
+      ...visibleStatic.slice(1),
     ];
-  }, [services]);
+  }, [services, capabilities]);
 }
 
 function NotFound() {
@@ -366,6 +382,7 @@ export function App() {
                         </TenantRouterShell>
                       }
                     />
+                    <Route path="/organization/audit/:id" element={<TenantRouterShell><AuditDetailPage /></TenantRouterShell>} />
                     <Route
                       path="/developer/api"
                       element={
