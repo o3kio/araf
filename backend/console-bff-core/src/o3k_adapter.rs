@@ -1543,6 +1543,11 @@ impl Upstream for O3kAdapter {
                     "O3K indicated more operations without a continuation cursor".to_owned(),
                 )));
             };
+            if next_cursor_value.is_empty() {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K returned an empty operation pagination cursor".to_owned(),
+                )));
+            }
             if !seen_cursors.insert(next_cursor_value.to_owned()) {
                 return Err(ApiError::Upstream(UpstreamError::Error(
                     "O3K returned a repeated operation pagination cursor".to_owned(),

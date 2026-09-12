@@ -545,6 +545,31 @@ async fn list_operations_does_not_fabricate_total_for_exhausted_page() {
 }
 
 #[tokio::test]
+async fn list_operations_rejects_empty_continuation_cursor() {
+    let server = MockServer::start().await;
+    let adapter = adapter_for(&server);
+
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/operations"))
+        .and(query_param_is_missing("cursor"))
+        .and(header("Authorization", "Bearer test-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "items": [], "next_cursor": "", "has_more": true
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let error = adapter
+        .list_operations(&test_context(), ListOperationsParams::default())
+        .await
+        .expect_err("empty native cursor must fail closed");
+    assert!(error
+        .to_string()
+        .contains("empty operation pagination cursor"));
+}
+
+#[tokio::test]
 async fn adapter_does_not_leak_resources_across_project_scopes() {
     let server = MockServer::start().await;
     let adapter = adapter_for(&server);
