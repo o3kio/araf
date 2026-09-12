@@ -193,7 +193,6 @@ pub struct NativeOperationListResponse {
     pub items: Vec<NativeOperation>,
     #[serde(default)]
     pub next_cursor: Option<String>,
-    #[serde(default)]
     pub has_more: bool,
 }
 

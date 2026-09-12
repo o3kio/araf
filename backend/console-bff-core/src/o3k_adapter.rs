@@ -16,7 +16,7 @@
 //! - `/identity/me` returns identity context, not evaluated capabilities;
 //!   capability truth therefore comes from service/resource discovery.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use time::OffsetDateTime;
@@ -1504,6 +1504,7 @@ impl Upstream for O3kAdapter {
         };
 
         let mut cursor: Option<String> = None;
+        let mut seen_cursors: HashSet<String> = HashSet::new();
         let mut all_matching = Vec::new();
         let mut page_items = Vec::new();
         let mut has_more = false;
@@ -1532,9 +1533,14 @@ impl Upstream for O3kAdapter {
             if !has_more {
                 break;
             }
-            if next_cursor.as_deref() == cursor.as_deref() || next_cursor.is_none() {
+            let Some(next_cursor_value) = next_cursor.as_deref() else {
                 return Err(ApiError::Upstream(UpstreamError::Error(
-                    "O3K returned an invalid repeated operation pagination cursor".to_owned(),
+                    "O3K indicated more operations without a continuation cursor".to_owned(),
+                )));
+            };
+            if !seen_cursors.insert(next_cursor_value.to_owned()) {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K returned a repeated operation pagination cursor".to_owned(),
                 )));
             }
             cursor = next_cursor;
