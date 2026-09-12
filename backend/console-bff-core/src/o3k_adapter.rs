@@ -1574,14 +1574,28 @@ impl O3kAdapter {
         // authoritative terminal operation result; do not turn a successful
         // response into a false 404 by probing an unavailable history route.
         if result.complete {
+            let project_id = result
+                .resource
+                .as_ref()
+                .and_then(|resource| resource.get("metadata"))
+                .and_then(|metadata| metadata.get("owner_scope"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned);
+            let region_id = result
+                .resource
+                .as_ref()
+                .and_then(|resource| resource.get("metadata"))
+                .and_then(|metadata| metadata.get("region"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned);
             return Ok(Operation {
                 id: result.operation_id,
                 action: action.to_owned(),
                 state: OperationState::Succeeded,
                 resource_id: result.resource_id,
                 resource_type: Some(resource_type.to_owned()),
-                project_id: None,
-                region_id: None,
+                project_id,
+                region_id,
                 initiated_by: ctx.session.user_id.clone(),
                 started_at: None,
                 updated_at: None,
