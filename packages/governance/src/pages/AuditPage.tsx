@@ -119,7 +119,15 @@ export function AuditPage() {
     },
     { id: "project", header: "Project", cell: (event) => event.projectId ?? "—" },
     { id: "outcome", header: "Outcome", cell: (event) => event.outcome },
-    { id: "correlation", header: "Correlation ID", cell: (event) => <Link to={`/organization/audit/${encodeURIComponent(event.id)}`}>{event.correlationId}</Link> },
+    {
+      id: "correlation",
+      header: "Correlation ID",
+      cell: (event) => (
+        <Link to={`/organization/audit/${encodeURIComponent(event.id)}`}>
+          {event.correlationId}
+        </Link>
+      ),
+    },
   ];
 
   const totalPages = collection ? Math.ceil(collection.total / collection.pageSize) : 0;

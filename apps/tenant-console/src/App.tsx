@@ -121,18 +121,23 @@ function useTenantNavigation(): TenantNavigationItem[] {
 
   return useMemo(() => {
     const can = (resourceType: string, action: string) =>
-      capabilities.some((capability) => capability.resourceType === resourceType && capability.action === action);
-    const visibleStatic = staticNavigationItems.map((item) => {
-      if (item.type !== "section") return item;
-      const items = (item.items ?? []).filter((child) => {
-        if (child.id === "projects" || child.id === "users") return can("tenant.project", "list") || can("tenant.role", "list");
-        if (child.id === "quotas") return can("tenant.quota", "read");
-        if (child.id === "audit") return can("tenant.audit", "read");
-        if (child.id === "api") return can("tenant.api-credential", "list");
-        return true;
-      });
-      return { ...item, items };
-    }).filter((item) => item.type !== "section" || (item.items ?? []).length > 0);
+      capabilities.some(
+        (capability) => capability.resourceType === resourceType && capability.action === action,
+      );
+    const visibleStatic = staticNavigationItems
+      .map((item) => {
+        if (item.type !== "section") return item;
+        const items = (item.items ?? []).filter((child) => {
+          if (child.id === "projects" || child.id === "users")
+            return can("tenant.project", "list") || can("tenant.role", "list");
+          if (child.id === "quotas") return can("tenant.quota", "read");
+          if (child.id === "audit") return can("tenant.audit", "read");
+          if (child.id === "api") return can("tenant.api-credential", "list");
+          return true;
+        });
+        return { ...item, items };
+      })
+      .filter((item) => item.type !== "section" || (item.items ?? []).length > 0);
     const serviceLinks: TenantNavigationItem[] = [
       { id: "catalog", type: "link", text: "Service catalog", href: "/services/catalog" },
       ...(services ?? []).flatMap((service) =>
@@ -152,11 +157,7 @@ function useTenantNavigation(): TenantNavigationItem[] {
       items: serviceLinks,
     };
 
-    return [
-      ...visibleStatic.slice(0, 1),
-      servicesSection,
-      ...visibleStatic.slice(1),
-    ];
+    return [...visibleStatic.slice(0, 1), servicesSection, ...visibleStatic.slice(1)];
   }, [services, capabilities]);
 }
 
@@ -382,7 +383,14 @@ export function App() {
                         </TenantRouterShell>
                       }
                     />
-                    <Route path="/organization/audit/:id" element={<TenantRouterShell><AuditDetailPage /></TenantRouterShell>} />
+                    <Route
+                      path="/organization/audit/:id"
+                      element={
+                        <TenantRouterShell>
+                          <AuditDetailPage />
+                        </TenantRouterShell>
+                      }
+                    />
                     <Route
                       path="/developer/api"
                       element={

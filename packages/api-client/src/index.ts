@@ -812,7 +812,8 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
         },
       }),
 
-    getAuditEvent: (id) => request<AuditEvent>(`/api/v1/governance/audit/${encodeURIComponent(id)}`),
+    getAuditEvent: (id) =>
+      request<AuditEvent>(`/api/v1/governance/audit/${encodeURIComponent(id)}`),
 
     listApiCredentials: (query) =>
       request<PaginatedCollection<ApiCredential>>("/api/v1/governance/api-credentials", {

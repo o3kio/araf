@@ -206,7 +206,12 @@ function QuotaOverview({
     { id: "project", header: "Project", cell: (r) => r.projectId },
     { id: "resourceType", header: "Resource type", cell: (r) => r.resourceType },
     { id: "used", header: "Used", cell: (r) => `${r.used.toLocaleString()} ${r.unit}` },
-    { id: "limit", header: "Limit", cell: (r) => (r.limit == null ? `Unlimited ${r.unit}` : `${r.limit.toLocaleString()} ${r.unit}`) },
+    {
+      id: "limit",
+      header: "Limit",
+      cell: (r) =>
+        r.limit == null ? `Unlimited ${r.unit}` : `${r.limit.toLocaleString()} ${r.unit}`,
+    },
     {
       id: "usagePct",
       header: "Usage",
