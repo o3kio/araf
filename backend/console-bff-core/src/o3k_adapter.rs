@@ -660,7 +660,18 @@ impl O3kAdapter {
                 .list_meter_definitions(Self::METER_DEFINITION_PAGE_SIZE, cursor.as_deref())
                 .await
                 .map_err(Self::map_client_error)?;
-            definitions.extend(page.definitions.into_iter().map(Self::map_meter_definition));
+            for definition in page.definitions {
+                let mapped = Self::map_meter_definition(definition);
+                if definitions
+                    .iter()
+                    .any(|existing: &MeterDefinition| existing.key == mapped.key)
+                {
+                    return Err(ApiError::Upstream(UpstreamError::Error(
+                        "O3K returned a duplicate meter definition key".to_owned(),
+                    )));
+                }
+                definitions.push(mapped);
+            }
             if !page.has_more && page.next_cursor.is_none() {
                 return Ok(definitions);
             }
@@ -1977,6 +1988,22 @@ impl Upstream for O3kAdapter {
             if !seen.insert(usage.meter_key.clone()) {
                 return Err(ApiError::Upstream(UpstreamError::Error(
                     "O3K metering response repeated a meter key".to_owned(),
+                )));
+            }
+            let Some(definition) = definitions
+                .iter()
+                .find(|definition| definition.key == usage.meter_key)
+            else {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K metering response references an unknown definition".to_owned(),
+                )));
+            };
+            if usage.unit != definition.unit
+                || usage.aggregation != definition.aggregation
+                || usage.granularity != "hour"
+            {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K metering response does not match its definition".to_owned(),
                 )));
             }
             meters.push(Self::map_meter_usage(usage)?);
