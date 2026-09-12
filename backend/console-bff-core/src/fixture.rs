@@ -1245,6 +1245,8 @@ impl FixtureAdapter {
             used,
             available,
             unit: unit.to_owned(),
+            status: RegionStatus::Healthy,
+            reason: None,
             updated_at: Some(
                 OffsetDateTime::UNIX_EPOCH + time::Duration::seconds((seed % 1_000_000) as i64),
             ),

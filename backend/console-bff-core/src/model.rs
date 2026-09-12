@@ -617,6 +617,8 @@ pub struct CapacitySummary {
     pub used: u64,
     pub available: u64,
     pub unit: String,
+    pub status: RegionStatus,
+    pub reason: Option<String>,
     pub updated_at: Option<OffsetDateTime>,
 }
 

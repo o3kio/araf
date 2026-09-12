@@ -373,6 +373,8 @@ export interface CapacitySummary {
   used: number;
   available: number;
   unit: string;
+  status: RegionStatus;
+  reason: string | null;
   updatedAt: string | null;
 }
 

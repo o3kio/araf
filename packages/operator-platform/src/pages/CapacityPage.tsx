@@ -37,6 +37,12 @@ export function CapacityPage() {
       cell: (entry) => String(entry.available),
     },
     { id: "unit", header: "Unit", cell: (entry) => entry.unit },
+    { id: "status", header: "Status", cell: (entry) => entry.status },
+    {
+      id: "reason",
+      header: "Reason",
+      cell: (entry) => entry.reason ?? "Not specified",
+    },
     {
       id: "updated",
       header: "Updated",

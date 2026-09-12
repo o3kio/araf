@@ -2111,6 +2111,8 @@ impl Upstream for O3kAdapter {
                 used: dimension.reserved.saturating_add(dimension.allocated),
                 available: dimension.available,
                 unit: dimension.unit,
+                status: Self::map_diagnostic_status(&capacity.status),
+                reason: capacity.reason.clone(),
                 updated_at,
             })
             .collect())
