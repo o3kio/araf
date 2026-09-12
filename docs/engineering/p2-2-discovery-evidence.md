@@ -24,11 +24,12 @@ operation has a safely extracted authoritative `spec` schema. Actions are
 validated against discovery before dispatch, and every dispatched mutation
 returns the canonical O3K operation.
 
-Discovery payloads are bounded (64 KiB), identifiers are validated, pagination
-is cursor-bounded (100 pages), repeated cursors fail closed, and path
-segments are encoded. Upstream errors remain structured; production adapters
-never activate fixture descriptors as a fallback. Fixture data remains behind
-the explicit fixture adapter for tests/development.
+Discovery payloads are bounded (64 KiB), identifiers are validated, schema
+objects are bounded to 32 levels and 256 children per node, pagination is
+cursor-bounded (100 pages), repeated cursors fail closed, and path segments
+are encoded. Upstream errors remain structured; production adapters never
+activate fixture descriptors as a fallback. Fixture data remains behind the
+explicit fixture adapter for tests/development.
 
 The validator accepts the merged O3K reference forms: namespaced action IDs
 (`service:Action`) and bounded HTTPS schema/contract URLs (including JSON
