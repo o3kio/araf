@@ -1912,8 +1912,8 @@ impl Upstream for O3kAdapter {
         // SPEC-0046 requires hour-aligned UTC boundaries. Do not silently
         // round a user-selected range: a malformed range is a truthful 400.
         let hour_ms = 3_600_000_i128;
-        if i128::from(since.unix_timestamp_nanos()) % (hour_ms * 1_000_000) != 0
-            || i128::from(until.unix_timestamp_nanos()) % (hour_ms * 1_000_000) != 0
+        if since.unix_timestamp_nanos() % (hour_ms * 1_000_000) != 0
+            || until.unix_timestamp_nanos() % (hour_ms * 1_000_000) != 0
         {
             return Err(ApiError::BadRequest(
                 "usage range must align to whole UTC hours".to_owned(),
