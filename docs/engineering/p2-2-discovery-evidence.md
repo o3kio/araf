@@ -61,6 +61,8 @@ service_ids=identity,image,volume,compute,network
 region_ids=eu-test-7,us-test-3
 ```
 
-The same response showed `volume.lifecycle_state=not_ready`; Araf retained the
-service as an explicitly unavailable capability rather than inventing a Volume
-route. No new O3K API was designed or required.
+The same response showed `volume.lifecycle_state=not_ready` (and its resource
+types were `ready=false`). Araf retained the service and readiness state in the
+discovery/catalog projection for truthful diagnostics, while omitting those
+not-ready resource types from tenant descriptors so no production Volume route
+is invented. No new O3K API was designed or required.

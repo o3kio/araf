@@ -51,6 +51,54 @@ async fn mount_compute_discovery(server: &MockServer, actions: serde_json::Value
 }
 
 #[tokio::test]
+async fn tenant_service_descriptors_exclude_not_ready_resource_types() {
+    let server = MockServer::start().await;
+    let adapter = adapter_for(&server);
+
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/services"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "services": [{
+                "id": "compute", "namespace": "compute", "service_version": "v1",
+                "lifecycle_state": "ready"
+            }], "count": 1
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/resource-types"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "resource_types": [
+                {
+                    "namespace": "compute", "name": "server", "service": "compute",
+                    "schema_version": "v1", "collection": "servers", "scope": "project",
+                    "ready": true, "lifecycle_actions": {"show": "compute:ShowServer"}
+                },
+                {
+                    "namespace": "compute", "name": "gpu", "service": "compute",
+                    "schema_version": "v1", "collection": "gpus", "scope": "project",
+                    "ready": false, "lifecycle_actions": {"show": "compute:ShowGpu"}
+                }
+            ], "count": 2
+        })))
+        .mount(&server)
+        .await;
+
+    let services = adapter
+        .services(&test_context())
+        .await
+        .expect("service descriptors should be returned");
+    let compute = services
+        .iter()
+        .find(|service| service.id == "compute")
+        .expect("compute service should be present");
+
+    assert_eq!(compute.resource_types.len(), 1);
+    assert_eq!(compute.resource_types[0].id, "compute.server");
+}
+
+#[tokio::test]
 async fn maps_native_compute_server_envelope_to_resource() {
     let server = MockServer::start().await;
     let adapter = adapter_for(&server);
