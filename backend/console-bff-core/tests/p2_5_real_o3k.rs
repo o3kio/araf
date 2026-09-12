@@ -58,6 +58,25 @@ async fn tenant_bff_reads_real_o3k_quota_and_audit() {
         .as_array()
         .is_some_and(|items| !items.is_empty()));
 
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/resources/network.network")
+                .header("Idempotency-Key", "p2-5-governance-network")
+                .header("Content-Type", "application/json")
+                .body(Body::from(r#"{"name":"p2-5-governance-network"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        create.status().is_success(),
+        "create status {}",
+        create.status()
+    );
+
     let audit = app
         .clone()
         .oneshot(
@@ -70,6 +89,12 @@ async fn tenant_bff_reads_real_o3k_quota_and_audit() {
         .unwrap();
     let (status, audit) = json(audit).await;
     assert!(status.is_success(), "audit status {status}: {audit}");
+    assert!(
+        audit["items"]
+            .as_array()
+            .is_some_and(|items| !items.is_empty()),
+        "audit should contain the mutation: {audit}"
+    );
 
     let foreign = app
         .oneshot(
