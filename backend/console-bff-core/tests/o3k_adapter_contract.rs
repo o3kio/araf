@@ -36,10 +36,75 @@ fn adapter_for(server: &MockServer) -> O3kAdapter {
     )
 }
 
+async fn mount_compute_discovery(server: &MockServer, actions: serde_json::Value) {
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/resource-types"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "resource_types": [{
+                "namespace": "compute", "name": "server", "service": "compute",
+                "schema_version": "v1", "collection": "servers", "scope": "project",
+                "ready": true, "lifecycle_actions": actions
+            }], "count": 1
+        })))
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn tenant_service_descriptors_exclude_not_ready_resource_types() {
+    let server = MockServer::start().await;
+    let adapter = adapter_for(&server);
+
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/services"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "services": [{
+                "id": "compute", "namespace": "compute", "service_version": "v1",
+                "lifecycle_state": "ready"
+            }], "count": 1
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/resource-types"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "resource_types": [
+                {
+                    "namespace": "compute", "name": "server", "service": "compute",
+                    "schema_version": "v1", "collection": "servers", "scope": "project",
+                    "ready": true, "lifecycle_actions": {
+                        "list": "compute:ListServers", "show": "compute:ShowServer"
+                    }
+                },
+                {
+                    "namespace": "compute", "name": "gpu", "service": "compute",
+                    "schema_version": "v1", "collection": "gpus", "scope": "project",
+                    "ready": false, "lifecycle_actions": {"show": "compute:ShowGpu"}
+                }
+            ], "count": 2
+        })))
+        .mount(&server)
+        .await;
+
+    let services = adapter
+        .services(&test_context())
+        .await
+        .expect("service descriptors should be returned");
+    let compute = services
+        .iter()
+        .find(|service| service.id == "compute")
+        .expect("compute service should be present");
+
+    assert_eq!(compute.resource_types.len(), 1);
+    assert_eq!(compute.resource_types[0].id, "compute.server");
+}
+
 #[tokio::test]
 async fn maps_native_compute_server_envelope_to_resource() {
     let server = MockServer::start().await;
     let adapter = adapter_for(&server);
+    mount_compute_discovery(&server, serde_json::json!({"show":"compute:ShowServer"})).await;
 
     Mock::given(method("GET"))
         .and(path("/o3k/v1/identity/me"))
@@ -98,6 +163,11 @@ async fn maps_native_compute_server_envelope_to_resource() {
 async fn maps_o3k_operation_to_araf_operation_including_retryable_and_unknown_outcome() {
     let server = MockServer::start().await;
     let adapter = adapter_for(&server);
+    mount_compute_discovery(
+        &server,
+        serde_json::json!({"create":"compute:CreateServer"}),
+    )
+    .await;
 
     for (state, expected) in [
         ("retryable", OperationState::Retryable),
@@ -146,6 +216,11 @@ async fn maps_o3k_operation_to_araf_operation_including_retryable_and_unknown_ou
 async fn create_compute_server_posts_native_payload_and_returns_operation() {
     let server = MockServer::start().await;
     let adapter = adapter_for(&server);
+    mount_compute_discovery(
+        &server,
+        serde_json::json!({"create":"compute:CreateServer"}),
+    )
+    .await;
 
     Mock::given(method("POST"))
         .and(path("/o3k/v1/compute/servers"))
@@ -202,6 +277,11 @@ async fn create_compute_server_posts_native_payload_and_returns_operation() {
 async fn delete_compute_server_calls_native_delete_and_returns_operation() {
     let server = MockServer::start().await;
     let adapter = adapter_for(&server);
+    mount_compute_discovery(
+        &server,
+        serde_json::json!({"delete":"compute:DeleteServer"}),
+    )
+    .await;
 
     Mock::given(method("DELETE"))
         .and(path("/o3k/v1/compute/servers/server-1"))
@@ -251,9 +331,10 @@ async fn delete_compute_server_calls_native_delete_and_returns_operation() {
 }
 
 #[tokio::test]
-async fn start_and_stop_actions_return_not_implemented() {
+async fn undiscovered_actions_are_rejected_before_dispatch() {
     let server = MockServer::start().await;
     let adapter = adapter_for(&server);
+    mount_compute_discovery(&server, serde_json::json!({"list":"compute:ListServers"})).await;
 
     for action in ["start", "stop"] {
         let result = adapter
@@ -269,8 +350,8 @@ async fn start_and_stop_actions_return_not_implemented() {
             .await;
 
         assert!(
-            matches!(result, Err(console_bff_core::ApiError::NotImplemented(_))),
-            "{action} should be not implemented, got {result:?}"
+            matches!(result, Err(console_bff_core::ApiError::BadRequest(_))),
+            "{action} should be rejected when not advertised, got {result:?}"
         );
     }
 }
@@ -294,6 +375,7 @@ async fn list_operations_returns_not_implemented() {
 async fn adapter_does_not_leak_resources_across_project_scopes() {
     let server = MockServer::start().await;
     let adapter = adapter_for(&server);
+    mount_compute_discovery(&server, serde_json::json!({"list":"compute:ListServers"})).await;
 
     Mock::given(method("GET"))
         .and(path("/o3k/v1/identity/me"))

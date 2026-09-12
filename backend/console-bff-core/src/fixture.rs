@@ -1557,6 +1557,11 @@ impl Upstream for FixtureAdapter {
                     scope: scope.to_string(),
                     ready,
                     lifecycle_actions,
+                    placement: None,
+                    regions: vec![],
+                    availability_domain_selection: None,
+                    schema: None,
+                    actions: vec![],
                 }
             })
             .collect())

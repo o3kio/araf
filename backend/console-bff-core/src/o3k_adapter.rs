@@ -4,18 +4,17 @@
 //! presentation-oriented BFF models. It is stateless: every call goes to O3K,
 //! and the adapter does not retain resources or operations between requests.
 //!
-//! Known upstream gaps handled explicitly:
-//! - M7-O3K-002: no `GET /o3k/v1/operations`; `list_operations` is rejected.
-//! - M7-O3K-003: O3K Operation has no event array; events are derived from
-//!   `created_at`, `started_at`, `finished_at`, and `error`.
-//! - M7-O3K-004: native list endpoints do not filter/sort or return totals;
-//!   Araf filters/sort are ignored and totals are synthetic.
-//! - M7-O3K-005: volume/network concrete routes are read-only; create/delete
-//!   for those types are not supported by this adapter.
-//! - M7-O3K-006: no region enumeration; region falls back to metadata or a
-//!   fixed placeholder.
-//! - M7-O3K-007: `/identity/me` returns no capabilities; a fixed M7
-//!   capability set is used.
+//! Known upstream boundaries handled explicitly:
+//! - O3K does not expose `GET /o3k/v1/operations`; `list_operations` remains
+//!   rejected rather than fabricating an inventory.
+//! - O3K Operation has no event array; events are derived from its canonical
+//!   timestamps and error fields.
+//! - Native list endpoints do not filter/sort or return totals; Araf keeps
+//!   requests bounded and reports only an explicitly synthetic page total.
+//! - Resource mutations and domain actions are executable only when their
+//!   discovered lifecycle/action contract is advertised by O3K.
+//! - `/identity/me` returns identity context, not evaluated capabilities;
+//!   capability truth therefore comes from service/resource discovery.
 
 use std::collections::HashMap;
 
@@ -25,13 +24,13 @@ use time::OffsetDateTime;
 use crate::{
     error::{ApiError, UpstreamError},
     model::{
-        ActionDescriptor, ActionRequest, ActionRiskClass, Capability, CapacitySummary,
-        ColumnDescriptor, CreateResourceRequest, CustomerAccount, DetailsSectionDescriptor,
-        DiscoveredResourceType, FilterDescriptor, FilterKind, Operation, OperationError,
-        OperationEvent, OperationState, OperatorAuditEvent, OperatorProfile, OperatorProject,
-        PaginatedCollection, PlatformOverview, ProviderHealth, Region, Resource, ResourceStatus,
-        ResourceTypeDescriptor, ServiceCatalogEntry, ServiceDescriptor, ServiceHealth,
-        SessionContext,
+        ActionDescriptor, ActionRequest, ActionRiskClass, ActionSchemaMetadata, Capability,
+        CapacitySummary, ColumnDescriptor, CreateResourceRequest, CustomerAccount,
+        DetailsSectionDescriptor, DiscoveredResourceType, FilterDescriptor, FilterKind, JsonSchema,
+        Operation, OperationError, OperationEvent, OperationState, OperatorAuditEvent,
+        OperatorProfile, OperatorProject, PaginatedCollection, PlatformOverview, ProviderHealth,
+        Region, RegionStatus, Resource, ResourceStatus, ResourceTypeDescriptor, SchemaReference,
+        ServiceCatalogEntry, ServiceDescriptor, ServiceHealth, SessionContext,
     },
     o3k_client::{
         MutationResult, NativeOperation, NativeResourceEnvelope, O3kClient, O3kClientConfig,
@@ -52,6 +51,9 @@ pub struct O3kAdapter {
 }
 
 impl O3kAdapter {
+    const MAX_SCHEMA_DEPTH: usize = 32;
+    const MAX_SCHEMA_CHILDREN: usize = 256;
+
     /// Build an adapter for the given surface using configuration from the
     /// environment.
     pub fn from_env(surface: &'static str) -> Result<Self, ApiError> {
@@ -71,11 +73,8 @@ impl O3kAdapter {
     fn map_client_error(err: O3kClientError) -> ApiError {
         match err {
             O3kClientError::NotImplemented(msg) => ApiError::NotImplemented(msg),
-            O3kClientError::Upstream { status: 404, .. }
-            | O3kClientError::Upstream { status: 403, .. } => {
-                // O3K returns 403/404 indistinguishably for foreign resources.
-                ApiError::NotFound
-            }
+            O3kClientError::Upstream { status: 404, .. } => ApiError::NotFound,
+            O3kClientError::Upstream { status: 403, .. } => ApiError::Forbidden,
             O3kClientError::Upstream { status: 401, .. } => ApiError::Unauthorized,
             other => ApiError::Upstream(UpstreamError::Error(other.to_string())),
         }
@@ -111,12 +110,11 @@ impl O3kAdapter {
     }
 
     fn kind_to_resource_type(kind: &str) -> Option<String> {
-        match kind {
-            "compute:server" => Some("compute.server".to_owned()),
-            "volume:volume" => Some("storage.volume".to_owned()),
-            "network:address_realm" => Some("network.vpc".to_owned()),
-            _ => None,
+        let (namespace, name) = kind.split_once(':')?;
+        if namespace.is_empty() || name.is_empty() {
+            return None;
         }
+        Some(format!("{namespace}.{name}"))
     }
 
     fn map_operation_action(action: &str) -> String {
@@ -345,12 +343,75 @@ impl O3kAdapter {
             .unwrap_or_else(|| self.client.clone())
     }
 
+    async fn collection_for(
+        &self,
+        ctx: &RequestContext,
+        resource_type: &str,
+    ) -> Result<(String, String), ApiError> {
+        let discovered = self
+            .client_for(ctx)
+            .list_resource_types()
+            .await
+            .map_err(Self::map_client_error)?;
+        discovered
+            .into_iter()
+            .find(|rt| format!("{}.{}", rt.namespace, rt.name) == resource_type)
+            .map(|rt| (rt.namespace, rt.collection))
+            .ok_or(ApiError::NotFound)
+    }
+
+    async fn discovered_type_for(
+        &self,
+        ctx: &RequestContext,
+        resource_type: &str,
+    ) -> Result<crate::o3k_client::DiscoveredResourceType, ApiError> {
+        self.client_for(ctx)
+            .list_resource_types()
+            .await
+            .map_err(Self::map_client_error)?
+            .into_iter()
+            .find(|rt| format!("{}.{}", rt.namespace, rt.name) == resource_type)
+            .ok_or(ApiError::NotFound)
+    }
+
     fn valid_discovery_identifier(value: &str) -> bool {
         !value.is_empty()
             && value.len() <= 128
             && value
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+    }
+
+    /// O3K action identifiers are namespaced (`service:Action`) while schema
+    /// and contract references are absolute HTTPS URLs.  Keep both forms
+    /// bounded and structural; discovery metadata is data, never executable
+    /// content.
+    fn valid_action_identifier(value: &str) -> bool {
+        let Some((namespace, action)) = value.split_once(':') else {
+            return Self::valid_discovery_identifier(value);
+        };
+        Self::valid_discovery_identifier(namespace) && Self::valid_discovery_identifier(action)
+    }
+
+    fn valid_contract_reference(value: &str) -> bool {
+        if value.len() > 512 {
+            return false;
+        }
+        let Ok(url) = reqwest::Url::parse(value) else {
+            return false;
+        };
+        url.scheme() == "https"
+            && url.host_str().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.query().is_none()
+            && url.fragment().is_none_or(|fragment| {
+                fragment.len() <= 256
+                    && fragment.bytes().all(|byte| {
+                        byte.is_ascii_alphanumeric()
+                            || matches!(byte, b'/' | b'.' | b'-' | b'_' | b'~')
+                    })
+            })
     }
 
     fn validate_discovered_service(
@@ -390,9 +451,36 @@ impl O3kAdapter {
         .all(Self::valid_discovery_identifier);
         let valid_actions = resource_type
             .lifecycle_actions
-            .keys()
-            .all(|action| Self::valid_discovery_identifier(action) && action.len() <= 64);
-        if !valid_fields || !valid_actions {
+            .iter()
+            .all(|(action, action_id)| {
+                Self::valid_discovery_identifier(action)
+                    && action.len() <= 64
+                    && Self::valid_action_identifier(action_id)
+            });
+        let valid_regions = resource_type
+            .regions
+            .iter()
+            .all(|region| Self::valid_discovery_identifier(region));
+        let valid_schema = resource_type.schema.as_ref().is_none_or(|schema| {
+            Self::valid_contract_reference(&schema.id)
+                && Self::valid_discovery_identifier(&schema.version)
+                && schema.representation.len() <= 128
+        });
+        let valid_metadata = resource_type.actions.len() <= 128
+            && resource_type.actions.iter().all(|action| {
+                Self::valid_discovery_identifier(&action.name)
+                    && Self::valid_action_identifier(&action.action_id)
+                    && action.target.len() <= 32
+                    && action
+                        .input
+                        .as_deref()
+                        .is_none_or(Self::valid_contract_reference)
+                    && action
+                        .output
+                        .as_deref()
+                        .is_none_or(Self::valid_contract_reference)
+            });
+        if !valid_fields || !valid_actions || !valid_regions || !valid_schema || !valid_metadata {
             return Err(ApiError::BadRequest(
                 "O3K returned an invalid resource descriptor".to_owned(),
             ));
@@ -408,9 +496,9 @@ impl O3kAdapter {
             plural_name: "Servers".to_owned(),
             icon_token: "server".to_owned(),
             // Kept only for legacy fixture-unit coverage. Production
-            // discovery never calls this helper and must not use a static
-            // schema; the live descriptor path below returns `None` until O3K
-            // publishes an authoritative schema.
+            // discovery never calls this helper or relies on its static
+            // presentation metadata; the live descriptor path below derives
+            // schema and capabilities from O3K.
             create_schema: None,
             create_capability: Capability {
                 resource_type: "compute.server".to_owned(),
@@ -666,7 +754,10 @@ impl O3kAdapter {
         }
     }
 
-    fn descriptor_for(rt: &crate::o3k_client::DiscoveredResourceType) -> ResourceTypeDescriptor {
+    fn descriptor_for(
+        rt: &crate::o3k_client::DiscoveredResourceType,
+        create_schema: Option<JsonSchema>,
+    ) -> ResourceTypeDescriptor {
         let id = format!("{}.{}", rt.namespace, rt.name);
         let display_name = rt
             .name
@@ -680,29 +771,36 @@ impl O3kAdapter {
             })
             .collect::<Vec<_>>()
             .join(" ");
-        let supported_actions = rt
+        let mut action_names: Vec<String> = rt
             .lifecycle_actions
             .keys()
-            // Discovery is authoritative for what exists upstream, but the
-            // current Araf mutation boundary only has native routes for the
-            // compute-server lifecycle actions below. Do not advertise an
-            // action that the BFF cannot execute; capability hiding is safer
-            // than rendering a descriptor that fails at runtime.
-            .filter(|action| Self::is_supported_action(&id, action))
-            .map(|action| ActionDescriptor {
-                id: action.clone(),
-                name: action[..1].to_uppercase().to_string() + &action[1..],
-                requires_confirmation: matches!(action.as_str(), "delete" | "destroy"),
-                risk_class: if matches!(action.as_str(), "delete" | "destroy") {
-                    ActionRiskClass::Destructive
-                } else {
-                    ActionRiskClass::Normal
-                },
-                required_capability: Capability {
-                    resource_type: id.clone(),
-                    action: action.clone(),
-                },
-                input_schema: None,
+            .filter(|action| Self::is_supported_action(action))
+            .cloned()
+            .collect();
+        action_names.extend(rt.actions.iter().filter_map(|action| {
+            Self::is_supported_action(&action.name).then_some(action.name.clone())
+        }));
+        action_names.sort();
+        action_names.dedup();
+        let supported_actions = action_names
+            .into_iter()
+            .map(|action| {
+                let verb = Self::action_verb(&action);
+                ActionDescriptor {
+                    id: action.clone(),
+                    name: action.clone(),
+                    requires_confirmation: matches!(verb.as_str(), "delete" | "destroy"),
+                    risk_class: if matches!(verb.as_str(), "delete" | "destroy") {
+                        ActionRiskClass::Destructive
+                    } else {
+                        ActionRiskClass::Normal
+                    },
+                    required_capability: Capability {
+                        resource_type: id.clone(),
+                        action,
+                    },
+                    input_schema: None,
+                }
             })
             .collect();
 
@@ -715,13 +813,10 @@ impl O3kAdapter {
             },
             plural_name: format!("{}s", rt.name),
             icon_token: "resource".to_owned(),
-            // O3K's current discovery projection does not publish a create
-            // schema. Never invent one in the BFF; mutations remain hidden
-            // until an authoritative schema is available.
-            create_schema: None,
+            create_schema,
             create_capability: Capability {
                 resource_type: id,
-                action: "list".to_owned(),
+                action: "create".to_owned(),
             },
             supported_actions,
             columns: vec![
@@ -760,8 +855,23 @@ impl O3kAdapter {
         }
     }
 
-    fn is_supported_action(resource_type: &str, action: &str) -> bool {
-        resource_type == "compute.server" && matches!(action, "start" | "stop" | "delete")
+    fn action_verb(action: &str) -> String {
+        action
+            .rsplit_once(':')
+            .map(|(_, verb)| verb)
+            .unwrap_or(action)
+            .trim_end_matches("Server")
+            .trim_end_matches("Instance")
+            .trim_end_matches("Resource")
+            .trim_end_matches("s")
+            .to_ascii_lowercase()
+    }
+
+    fn is_supported_action(action: &str) -> bool {
+        matches!(
+            Self::action_verb(action).as_str(),
+            "start" | "stop" | "reboot" | "delete" | "destroy"
+        )
     }
 
     fn service_name_from_id(id: &str) -> String {
@@ -807,6 +917,61 @@ impl O3kAdapter {
             scope: rt.scope,
             ready: rt.ready,
             lifecycle_actions: rt.lifecycle_actions,
+            placement: rt.placement,
+            regions: rt.regions,
+            availability_domain_selection: rt.availability_domain_selection,
+            schema: rt.schema.map(|schema| SchemaReference {
+                id: schema.id,
+                version: schema.version,
+                representation: schema.representation,
+            }),
+            actions: rt
+                .actions
+                .into_iter()
+                .map(|action| ActionSchemaMetadata {
+                    name: action.name,
+                    action_id: action.action_id,
+                    target: action.target,
+                    input: action.input,
+                    output: action.output,
+                    asynchronous: action.asynchronous,
+                })
+                .collect(),
+        }
+    }
+
+    fn extract_create_schema(value: serde_json::Value) -> Option<JsonSchema> {
+        // The O3K schema projection is an envelope document. The generic
+        // Araf form runtime consumes only the authoritative `spec` schema;
+        // retain it as data and never execute schema-provided content.
+        let schema = value
+            .get("allOf")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|parts| parts.get(1))
+            .and_then(|part| part.get("properties"))
+            .and_then(|properties| properties.get("spec"))
+            .cloned()?;
+        Self::schema_within_bounds(&schema, 0).then_some(JsonSchema(schema))
+    }
+
+    fn schema_within_bounds(value: &serde_json::Value, depth: usize) -> bool {
+        if depth > Self::MAX_SCHEMA_DEPTH {
+            return false;
+        }
+        match value {
+            serde_json::Value::Array(items) => {
+                items.len() <= Self::MAX_SCHEMA_CHILDREN
+                    && items
+                        .iter()
+                        .all(|item| Self::schema_within_bounds(item, depth + 1))
+            }
+            serde_json::Value::Object(properties) => {
+                properties.len() <= Self::MAX_SCHEMA_CHILDREN
+                    && properties
+                        .values()
+                        .all(|item| Self::schema_within_bounds(item, depth + 1))
+            }
+            _ => true,
         }
     }
 }
@@ -841,18 +1006,35 @@ impl Upstream for O3kAdapter {
 
         // Map only resource types actually advertised by O3K. Araf may know how
         // to render a descriptor, but that knowledge is not evidence that the
-        // capability exists in the connected cloud.
+        // capability exists in the connected cloud. Keep not-ready or
+        // read-incomplete types in the raw discovery projection for truthful
+        // diagnostics, but do not turn them into executable tenant routes.
         for rt in resource_types {
             Self::validate_discovered_resource_type(&rt)?;
+            if !rt.ready
+                || !rt.lifecycle_actions.contains_key("list")
+                || !rt.lifecycle_actions.contains_key("show")
+            {
+                continue;
+            }
+            let create_schema = if rt.lifecycle_actions.contains_key("create") {
+                self.client_for(ctx)
+                    .get_resource_schema(&rt.namespace, &rt.collection, &rt.schema_version)
+                    .await
+                    .ok()
+                    .and_then(Self::extract_create_schema)
+            } else {
+                None
+            };
             descriptors_by_service
                 .entry(rt.service.clone())
                 .or_default()
-                .push(Self::descriptor_for(&rt));
+                .push(Self::descriptor_for(&rt, create_schema));
         }
 
         let services: Vec<ServiceDescriptor> = discovered
             .into_iter()
-            .filter_map(|s| {
+            .map(|s| {
                 let service_id = s.id;
                 let (name, category) = match service_id.as_str() {
                     "compute" => ("Compute", "Services"),
@@ -860,15 +1042,14 @@ impl Upstream for O3kAdapter {
                     "volume" => ("Storage", "Services"),
                     _ => ("Other", "Services"),
                 };
-                descriptors_by_service
-                    .get(&service_id)
-                    .cloned()
-                    .map(|types| ServiceDescriptor {
-                        id: service_id,
-                        name: name.to_owned(),
-                        category: category.to_owned(),
-                        resource_types: types,
-                    })
+                ServiceDescriptor {
+                    id: service_id.clone(),
+                    name: name.to_owned(),
+                    category: category.to_owned(),
+                    resource_types: descriptors_by_service
+                        .remove(&service_id)
+                        .unwrap_or_default(),
+                }
             })
             .collect();
 
@@ -891,9 +1072,28 @@ impl Upstream for O3kAdapter {
         for service in &discovered {
             Self::validate_discovered_service(service)?;
         }
+        let resource_types = self
+            .client_for(ctx)
+            .list_resource_types()
+            .await
+            .map_err(Self::map_client_error)?;
+        for resource_type in &resource_types {
+            Self::validate_discovered_resource_type(resource_type)?;
+        }
+        let mut regions_by_service: HashMap<String, Vec<String>> = HashMap::new();
+        for resource_type in resource_types {
+            let regions = regions_by_service.entry(resource_type.service).or_default();
+            regions.extend(resource_type.regions);
+            regions.sort();
+            regions.dedup();
+        }
         Ok(discovered
             .into_iter()
-            .map(Self::map_discovered_service)
+            .map(|service| {
+                let mut entry = Self::map_discovered_service(service.clone());
+                entry.regions = regions_by_service.remove(&service.id).unwrap_or_default();
+                entry
+            })
             .collect())
     }
 
@@ -926,72 +1126,55 @@ impl Upstream for O3kAdapter {
     ) -> Result<PaginatedCollection<Resource>, ApiError> {
         let page_size = params.page_size.clamp(1, 100);
 
-        match resource_type {
-            "compute.server" => {
-                let response = self
-                    .client_for(ctx)
-                    .list_compute_servers(Some(page_size), None)
-                    .await
-                    .map_err(Self::map_client_error)?;
-
-                let items: Vec<Resource> = response
-                    .items
-                    .into_iter()
-                    .map(|value| {
-                        serde_json::from_value::<NativeResourceEnvelope>(value)
-                            .map_err(|e| ApiError::Upstream(UpstreamError::Error(e.to_string())))
-                            .and_then(Self::map_native_resource)
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                let has_more = response.next_cursor.is_some();
-                let total = items.len() as u64 + if has_more { 1 } else { 0 };
-
-                Ok(PaginatedCollection {
-                    items,
-                    total,
+        let (namespace, collection) = self.collection_for(ctx, resource_type).await?;
+        let mut cursor: Option<String> = None;
+        let mut response = None;
+        let target_page = params.page.min(100);
+        for page_index in 0..=target_page {
+            let next = self
+                .client_for(ctx)
+                .list_generic_resources(&namespace, &collection, Some(page_size), cursor.as_deref())
+                .await
+                .map_err(Self::map_client_error)?;
+            let next_cursor = next.next_cursor.clone();
+            response = Some(next);
+            if response.as_ref().is_some_and(|r| r.next_cursor.is_none())
+                && page_index < target_page
+            {
+                return Ok(PaginatedCollection {
+                    items: vec![],
+                    total: 0,
                     page: params.page,
                     page_size,
-                    has_more,
-                })
+                    has_more: false,
+                });
             }
-            // M7-O3K-005: volume and network concrete routes are read-only.
-            // We expose them through the generic native path.
-            "storage.volume" | "network.vpc" => {
-                let (namespace, collection) = match resource_type {
-                    "storage.volume" => ("volume", "volumes"),
-                    "network.vpc" => ("network", "address-realms"),
-                    _ => unreachable!(),
-                };
-                let response = self
-                    .client_for(ctx)
-                    .list_generic_resources(namespace, collection, Some(page_size), None)
-                    .await
-                    .map_err(Self::map_client_error)?;
-
-                let items: Vec<Resource> = response
-                    .items
-                    .into_iter()
-                    .map(|value| {
-                        serde_json::from_value::<NativeResourceEnvelope>(value)
-                            .map_err(|e| ApiError::Upstream(UpstreamError::Error(e.to_string())))
-                            .and_then(Self::map_native_resource)
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                let has_more = response.next_cursor.is_some();
-                let total = items.len() as u64 + if has_more { 1 } else { 0 };
-
-                Ok(PaginatedCollection {
-                    items,
-                    total,
-                    page: params.page,
-                    page_size,
-                    has_more,
-                })
+            if page_index < target_page {
+                if next_cursor.as_deref() == cursor.as_deref() {
+                    return Err(ApiError::Upstream(UpstreamError::Error(
+                        "O3K returned a repeated pagination cursor".to_owned(),
+                    )));
+                }
+                cursor = next_cursor;
             }
-            _ => Err(ApiError::NotFound),
         }
+        let response = response.expect("bounded discovery loop always executes");
+        let items: Vec<Resource> = response
+            .items
+            .into_iter()
+            .map(|value| {
+                serde_json::from_value::<NativeResourceEnvelope>(value)
+                    .map_err(|e| ApiError::Upstream(UpstreamError::Error(e.to_string())))
+                    .and_then(Self::map_native_resource)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(PaginatedCollection {
+            total: items.len() as u64 + u64::from(response.next_cursor.is_some()),
+            has_more: response.next_cursor.is_some(),
+            items,
+            page: params.page,
+            page_size,
+        })
     }
 
     async fn get_resource(
@@ -1000,24 +1183,12 @@ impl Upstream for O3kAdapter {
         resource_type: &str,
         id: &str,
     ) -> Result<Resource, ApiError> {
-        let envelope = match resource_type {
-            "compute.server" => self
-                .client_for(ctx)
-                .get_compute_server(id)
-                .await
-                .map_err(Self::map_client_error)?,
-            "storage.volume" => self
-                .client_for(ctx)
-                .get_generic_resource("volume", "volumes", id)
-                .await
-                .map_err(Self::map_client_error)?,
-            "network.vpc" => self
-                .client_for(ctx)
-                .get_generic_resource("network", "address-realms", id)
-                .await
-                .map_err(Self::map_client_error)?,
-            _ => return Err(ApiError::NotFound),
-        };
+        let (namespace, collection) = self.collection_for(ctx, resource_type).await?;
+        let envelope = self
+            .client_for(ctx)
+            .get_generic_resource(&namespace, &collection, id)
+            .await
+            .map_err(Self::map_client_error)?;
         Self::map_native_resource(envelope)
     }
 
@@ -1028,22 +1199,37 @@ impl Upstream for O3kAdapter {
         id: &str,
         request: ActionRequest,
     ) -> Result<Operation, ApiError> {
-        if resource_type != "compute.server" {
-            return Err(ApiError::BadRequest(
-                "actions are only supported for compute.server in M7".to_owned(),
-            ));
+        let discovered = self.discovered_type_for(ctx, resource_type).await?;
+        let action_advertised = discovered
+            .lifecycle_actions
+            .contains_key(&request.action_id)
+            || discovered.actions.iter().any(|action| {
+                action.name == request.action_id || action.action_id == request.action_id
+            });
+        if !action_advertised {
+            return Err(ApiError::BadRequest(format!(
+                "action {} is not advertised for {}",
+                request.action_id, resource_type
+            )));
         }
-
-        let result = match request.action_id.as_str() {
-            "start" => self.client_for(ctx).start_compute_server(id).await,
-            "stop" => self.client_for(ctx).stop_compute_server(id).await,
-            "delete" => self.client_for(ctx).delete_compute_server(id).await,
-            _ => {
-                return Err(ApiError::BadRequest(format!(
-                    "unsupported action id: {}",
-                    request.action_id
-                )))
-            }
+        let namespace = discovered.namespace;
+        let collection = discovered.collection;
+        let result = if request.action_id == "delete" {
+            self.client_for(ctx)
+                .delete_generic_resource(&namespace, &collection, id)
+                .await
+        } else {
+            self.client_for(ctx)
+                .invoke_generic_action(
+                    &namespace,
+                    &collection,
+                    id,
+                    &request.action_id,
+                    request
+                        .payload
+                        .unwrap_or(serde_json::Value::Object(Default::default())),
+                )
+                .await
         }
         .map_err(Self::map_client_error)?;
 
@@ -1056,15 +1242,22 @@ impl Upstream for O3kAdapter {
         resource_type: &str,
         request: CreateResourceRequest,
     ) -> Result<Operation, ApiError> {
-        if resource_type != "compute.server" {
-            return Err(ApiError::BadRequest(
-                "create is only supported for compute.server in M7".to_owned(),
-            ));
+        let discovered = self.discovered_type_for(ctx, resource_type).await?;
+        if !discovered.lifecycle_actions.contains_key("create") {
+            return Err(ApiError::BadRequest(format!(
+                "create is not advertised for {resource_type}"
+            )));
         }
-
+        let namespace = discovered.namespace;
+        let collection = discovered.collection;
+        let kind = format!(
+            "{}:{}",
+            namespace,
+            resource_type.split('.').next_back().unwrap_or(&collection)
+        );
         let result = self
             .client_for(ctx)
-            .create_compute_server(request.payload)
+            .create_generic_resource(&namespace, &collection, &kind, request.payload)
             .await
             .map_err(Self::map_client_error)?;
 
@@ -1091,20 +1284,45 @@ impl Upstream for O3kAdapter {
         Ok(Self::map_native_operation(op))
     }
 
-    async fn list_regions(&self, _ctx: &RequestContext) -> Result<Vec<Region>, ApiError> {
-        Err(ApiError::NotImplemented(
-            "O3K does not expose a region enumeration endpoint".to_owned(),
-        ))
+    async fn list_regions(&self, ctx: &RequestContext) -> Result<Vec<Region>, ApiError> {
+        let regions = self
+            .client_for(ctx)
+            .list_regions()
+            .await
+            .map_err(Self::map_client_error)?;
+        Ok(regions
+            .into_iter()
+            .map(|region| Region {
+                id: region.id.clone(),
+                name: region.id.clone(),
+                status: RegionStatus::Healthy,
+                azs: region
+                    .availability_domains
+                    .into_iter()
+                    .map(|az| crate::model::AvailabilityZone {
+                        id: az.id.clone(),
+                        name: az.id,
+                        region_id: region.id.clone(),
+                        status: RegionStatus::Healthy,
+                    })
+                    .collect(),
+                updated_at: OffsetDateTime::UNIX_EPOCH,
+            })
+            .collect())
     }
 
     async fn list_availability_zones(
         &self,
-        _ctx: &RequestContext,
-        _region_id: &str,
+        ctx: &RequestContext,
+        region_id: &str,
     ) -> Result<Vec<crate::model::AvailabilityZone>, ApiError> {
-        Err(ApiError::NotImplemented(
-            "O3K does not expose an availability zone enumeration endpoint".to_owned(),
-        ))
+        Ok(self
+            .list_regions(ctx)
+            .await?
+            .into_iter()
+            .find(|region| region.id == region_id)
+            .map(|region| region.azs)
+            .unwrap_or_default())
     }
 
     async fn list_provider_health(
@@ -1262,5 +1480,54 @@ mod resource_mapping_tests {
         let error = O3kAdapter::map_native_resource(envelope(metadata))
             .expect_err("missing timestamps must not become current-time metadata");
         assert!(matches!(error, ApiError::Upstream(_)));
+    }
+}
+
+#[cfg(test)]
+mod discovery_validation_tests {
+    use super::O3kAdapter;
+    use crate::{error::ApiError, o3k_client::O3kClientError};
+
+    #[test]
+    fn accepts_converged_o3k_action_and_schema_references() {
+        assert!(O3kAdapter::valid_action_identifier("compute:CreateServer"));
+        assert!(O3kAdapter::valid_contract_reference(
+            "https://o3k.io/schemas/compute/servers/v1/resource#/allOf/1/properties/spec"
+        ));
+    }
+
+    #[test]
+    fn rejects_unsafe_discovery_references() {
+        assert!(!O3kAdapter::valid_action_identifier(
+            "compute:Create Server"
+        ));
+        assert!(!O3kAdapter::valid_contract_reference(
+            "http://o3k.io/contracts/native-resource-envelope-v1.schema.json"
+        ));
+        assert!(!O3kAdapter::valid_contract_reference(
+            "https://o3k.io/schemas/resource?redirect=https://evil.example"
+        ));
+    }
+
+    #[test]
+    fn preserves_forbidden_discovery_errors() {
+        let error = O3kAdapter::map_client_error(O3kClientError::Upstream {
+            status: 403,
+            title: "Forbidden".to_owned(),
+            detail: "not authorized".to_owned(),
+        });
+        assert!(matches!(error, ApiError::Forbidden));
+    }
+
+    #[test]
+    fn rejects_pathological_schema_depth() {
+        let mut nested = serde_json::json!({"type": "string"});
+        for _ in 0..=O3kAdapter::MAX_SCHEMA_DEPTH {
+            nested = serde_json::json!({"properties": {"nested": nested}});
+        }
+        let envelope = serde_json::json!({
+            "allOf": [{}, {"properties": {"spec": nested}}]
+        });
+        assert!(O3kAdapter::extract_create_schema(envelope).is_none());
     }
 }

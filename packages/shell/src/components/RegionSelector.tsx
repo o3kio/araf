@@ -8,6 +8,7 @@ export interface RegionSelectorProps {
   onSelectRegion: (regionId: RegionId) => void;
   disabled?: boolean;
   globalLabel?: string;
+  includeGlobal?: boolean;
 }
 
 /**
@@ -24,8 +25,11 @@ export function RegionSelector({
   onSelectRegion,
   disabled = false,
   globalLabel = "Global",
+  includeGlobal = true,
 }: RegionSelectorProps) {
-  const options: RegionOption[] = [{ id: "global", name: globalLabel }, ...regions];
+  const options: RegionOption[] = includeGlobal
+    ? [{ id: "global", name: globalLabel }, ...regions]
+    : regions;
 
   return (
     <div className="araf-region-selector">
@@ -35,7 +39,7 @@ export function RegionSelector({
       <select
         id={id}
         name="region"
-        value={selectedRegionId ?? "global"}
+        value={selectedRegionId ?? options[0]?.id ?? ""}
         onChange={(event) => {
           onSelectRegion(event.target.value);
         }}

@@ -139,6 +139,22 @@ export interface DiscoveredResourceType {
   scope: string;
   ready: boolean;
   lifecycleActions: Record<string, string>;
+  placement?: string;
+  regions?: string[];
+  availabilityDomainSelection?: string;
+  schema?: {
+    id: string;
+    version: string;
+    representation: string;
+  };
+  actions?: {
+    name: string;
+    actionId: string;
+    target: string;
+    input?: string;
+    output?: string;
+    asynchronous: boolean;
+  }[];
 }
 
 export interface Resource {
@@ -545,6 +561,9 @@ export interface ArafClient {
   healthz(): Promise<HealthzResponse>;
   getContext(): Promise<SessionContext>;
   listServices(): Promise<ServiceDescriptor[]>;
+  /** Tenant-scoped canonical geography discovery. */
+  listTenantRegions?: () => Promise<Region[]>;
+  listTenantAvailabilityZones?: (regionId: string) => Promise<AvailabilityZone[]>;
   listServiceCatalog(): Promise<ServiceCatalogEntry[]>;
   listInstalledServices(): Promise<InstalledService[]>;
   listDiscoveredResourceTypes(): Promise<DiscoveredResourceType[]>;
@@ -633,6 +652,11 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
     getContext: () => request<SessionContext>("/api/v1/context"),
 
     listServices: () => request<ServiceDescriptor[]>("/api/v1/services"),
+
+    listTenantRegions: () => request<Region[]>("/api/v1/regions"),
+
+    listTenantAvailabilityZones: (regionId) =>
+      request<AvailabilityZone[]>(`/api/v1/regions/${encodeURIComponent(regionId)}/zones`),
 
     listServiceCatalog: () => request<ServiceCatalogEntry[]>("/api/v1/services/catalog"),
 
