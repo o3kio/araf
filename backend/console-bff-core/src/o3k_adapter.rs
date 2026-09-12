@@ -70,11 +70,8 @@ impl O3kAdapter {
     fn map_client_error(err: O3kClientError) -> ApiError {
         match err {
             O3kClientError::NotImplemented(msg) => ApiError::NotImplemented(msg),
-            O3kClientError::Upstream { status: 404, .. }
-            | O3kClientError::Upstream { status: 403, .. } => {
-                // O3K returns 403/404 indistinguishably for foreign resources.
-                ApiError::NotFound
-            }
+            O3kClientError::Upstream { status: 404, .. } => ApiError::NotFound,
+            O3kClientError::Upstream { status: 403, .. } => ApiError::Forbidden,
             O3kClientError::Upstream { status: 401, .. } => ApiError::Unauthorized,
             other => ApiError::Upstream(UpstreamError::Error(other.to_string())),
         }
@@ -1465,6 +1462,7 @@ mod resource_mapping_tests {
 #[cfg(test)]
 mod discovery_validation_tests {
     use super::O3kAdapter;
+    use crate::{error::ApiError, o3k_client::O3kClientError};
 
     #[test]
     fn accepts_converged_o3k_action_and_schema_references() {
@@ -1485,5 +1483,15 @@ mod discovery_validation_tests {
         assert!(!O3kAdapter::valid_contract_reference(
             "https://o3k.io/schemas/resource?redirect=https://evil.example"
         ));
+    }
+
+    #[test]
+    fn preserves_forbidden_discovery_errors() {
+        let error = O3kAdapter::map_client_error(O3kClientError::Upstream {
+            status: 403,
+            title: "Forbidden".to_owned(),
+            detail: "not authorized".to_owned(),
+        });
+        assert!(matches!(error, ApiError::Forbidden));
     }
 }
