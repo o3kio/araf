@@ -505,6 +505,71 @@ pub struct UsageSummary {
     pub records: Vec<UsageRecord>,
     pub since: OffsetDateTime,
     pub until: OffsetDateTime,
+    /// Authoritative O3K meter definitions used for this response. Fixture
+    /// responses leave this empty; production responses populate it from the
+    /// native definitions contract.
+    #[serde(default)]
+    pub definitions: Vec<MeterDefinition>,
+    /// Authoritative O3K usage series. Quantities remain decimal strings at
+    /// this boundary; legacy `records` are retained for fixture compatibility.
+    #[serde(default)]
+    pub meters: Vec<MeterUsage>,
+}
+
+/// Secret-free definition projected by O3K's native metering catalog.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterDefinition {
+    pub key: String,
+    pub owning_service: String,
+    pub unit: String,
+    pub aggregation: String,
+    pub resource_type: String,
+    pub supported_granularities: Vec<String>,
+    pub tenant_visible: bool,
+    pub operator_visible: bool,
+    pub description: String,
+    pub version: u32,
+}
+
+/// Completeness of a bounded O3K usage response. Unknown future values are
+/// preserved as `unknown` rather than crashing the governance surface.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum MeteringStatus {
+    Complete,
+    Partial,
+    Unavailable,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterUsageBucket {
+    pub bucket_start: OffsetDateTime,
+    pub bucket_width_ms: i64,
+    /// Exact decimal quantity supplied by O3K; do not parse into binary
+    /// floating point for authority or billing decisions.
+    pub quantity: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterUsage {
+    pub scope: String,
+    pub meter_key: String,
+    pub unit: String,
+    pub aggregation: String,
+    pub granularity: String,
+    pub start: OffsetDateTime,
+    pub end: OffsetDateTime,
+    pub observed_through: OffsetDateTime,
+    pub authority_started_at: Option<OffsetDateTime>,
+    pub last_observed_at: Option<OffsetDateTime>,
+    pub status: MeteringStatus,
+    pub buckets: Vec<MeterUsageBucket>,
+    pub total: String,
 }
 
 /// Audit event describing who invoked or changed something.

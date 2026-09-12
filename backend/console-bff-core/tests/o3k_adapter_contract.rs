@@ -5,9 +5,10 @@
 //! correctly. They do not require a running O3K control plane.
 
 use std::sync::Arc;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use console_bff_core::{
-    model::{ActionRequest, OperationState, ResourceStatus},
+    model::{ActionRequest, OperationState, ResourceStatus, UsageQuery},
     o3k_adapter::O3kAdapter,
     o3k_client::O3kClientConfig,
     request::{RequestContext, SessionState},
@@ -34,6 +35,95 @@ fn adapter_for(server: &MockServer) -> O3kAdapter {
             token: "test-token".to_owned(),
         },
     )
+}
+
+#[tokio::test]
+async fn maps_native_metering_and_preserves_scope_and_decimal_authority() {
+    let server = MockServer::start().await;
+    let adapter = adapter_for(&server);
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/identity/me"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "authenticated": true, "principal_id": "user-1", "principal_kind": "user",
+            "principal_name": "Tenant User", "effective_scope_id": "project-1", "effective_scope_kind": "project"
+        })))
+        .mount(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/metering/definitions"))
+        .and(query_param("limit", "200"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "definitions": [{
+                "key": "compute:instance_seconds", "owning_service": "compute", "unit": "instance_seconds",
+                "aggregation": "sum", "resource_type": "compute.server", "supported_granularities": ["hour", "day"],
+                "tenant_visible": true, "operator_visible": true, "description": "Compute runtime", "version": 1
+            }], "has_more": false, "next_cursor": null
+        })))
+        .mount(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/metering/usage"))
+        .and(query_param("meter", "compute:instance_seconds"))
+        .and(query_param("scope", "project-1"))
+        .and(query_param("granularity", "hour"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([{
+            "scope": "project-1", "meter_key": "compute:instance_seconds", "unit": "instance_seconds",
+            "aggregation": "sum", "granularity": "hour", "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-01T02:00:00Z", "observed_through": "2024-01-01T02:00:00Z",
+            "authority_started_at": null, "last_observed_at": "2024-01-01T02:00:00Z", "status": "partial",
+            "buckets": [{"bucket_start":"2024-01-01T00:00:00Z","bucket_width_ms":3600000,"quantity":"1.125"}], "total": "1.125"
+        }])))
+        .mount(&server).await;
+
+    let result = adapter
+        .list_usage(
+            &test_context(),
+            UsageQuery {
+                project_id: Some("project-1".to_owned()),
+                resource_type: Some("compute.server".to_owned()),
+                since: Some(OffsetDateTime::parse("2024-01-01T00:00:00Z", &Rfc3339).unwrap()),
+                until: Some(OffsetDateTime::parse("2024-01-01T02:00:00Z", &Rfc3339).unwrap()),
+            },
+        )
+        .await
+        .expect("metering response");
+    assert_eq!(result.project_id, "project-1");
+    assert_eq!(result.definitions.len(), 1);
+    assert_eq!(result.meters.len(), 1);
+    assert_eq!(result.meters[0].total, "1.125");
+    assert_eq!(
+        result.meters[0].status,
+        console_bff_core::model::MeteringStatus::Partial
+    );
+    assert_eq!(
+        result.records.len(),
+        0,
+        "native responses must not fabricate legacy records"
+    );
+}
+
+#[tokio::test]
+async fn metering_rejects_scope_mismatch_without_calling_usage() {
+    let server = MockServer::start().await;
+    let adapter = adapter_for(&server);
+    Mock::given(method("GET"))
+        .and(path("/o3k/v1/identity/me"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "authenticated": true, "principal_id": "user-1", "principal_kind": "user",
+            "principal_name": "Tenant User", "effective_scope_id": "project-1", "effective_scope_kind": "project"
+        })))
+        .mount(&server).await;
+    let error = adapter
+        .list_usage(
+            &test_context(),
+            UsageQuery {
+                project_id: Some("project-2".to_owned()),
+                resource_type: None,
+                since: None,
+                until: None,
+            },
+        )
+        .await
+        .expect_err("cross-scope query must be rejected");
+    assert_eq!(error.status(), axum::http::StatusCode::FORBIDDEN);
 }
 
 async fn mount_compute_discovery(server: &MockServer, actions: serde_json::Value) {

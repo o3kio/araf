@@ -1681,7 +1681,7 @@ async fn usage_date_range_is_bounded() {
 }
 
 #[tokio::test]
-async fn o3k_adapter_governance_methods_return_501() {
+async fn o3k_adapter_governance_methods_preserve_native_boundaries() {
     let adapter = O3kAdapter::new(
         "tenant-bff",
         O3kClientConfig {
@@ -1712,19 +1712,19 @@ async fn o3k_adapter_governance_methods_return_501() {
         .await
         .expect_err("expected upstream quota failure");
     assert_ne!(quota_err.status(), StatusCode::NOT_IMPLEMENTED);
-    assert_not_implemented!(
-        adapter
-            .list_usage(
-                &ctx,
-                UsageQuery {
-                    project_id: None,
-                    resource_type: None,
-                    since: None,
-                    until: None,
-                },
-            )
-            .await
-    );
+    let usage_err = adapter
+        .list_usage(
+            &ctx,
+            UsageQuery {
+                project_id: None,
+                resource_type: None,
+                since: None,
+                until: None,
+            },
+        )
+        .await
+        .expect_err("expected upstream metering failure");
+    assert_ne!(usage_err.status(), StatusCode::NOT_IMPLEMENTED);
     let audit_err = adapter
         .list_audit_events(&ctx, Default::default())
         .await
