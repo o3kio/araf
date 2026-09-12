@@ -553,8 +553,25 @@ pub async fn list_quotas(
 pub struct ListUsageQuery {
     pub project_id: Option<String>,
     pub resource_type: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_rfc3339", default)]
     pub since: Option<time::OffsetDateTime>,
+    #[serde(deserialize_with = "deserialize_optional_rfc3339", default)]
     pub until: Option<time::OffsetDateTime>,
+}
+
+fn deserialize_optional_rfc3339<'de, D>(
+    deserializer: D,
+) -> Result<Option<time::OffsetDateTime>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<String>::deserialize(deserializer)?;
+    value
+        .map(|value| {
+            time::OffsetDateTime::parse(&value, &time::format_description::well_known::Rfc3339)
+                .map_err(serde::de::Error::custom)
+        })
+        .transpose()
 }
 
 pub async fn list_usage(
