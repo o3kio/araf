@@ -51,6 +51,9 @@ pub struct O3kAdapter {
 }
 
 impl O3kAdapter {
+    const MAX_SCHEMA_DEPTH: usize = 32;
+    const MAX_SCHEMA_CHILDREN: usize = 256;
+
     /// Build an adapter for the given surface using configuration from the
     /// environment.
     pub fn from_env(surface: &'static str) -> Result<Self, ApiError> {
@@ -493,9 +496,9 @@ impl O3kAdapter {
             plural_name: "Servers".to_owned(),
             icon_token: "server".to_owned(),
             // Kept only for legacy fixture-unit coverage. Production
-            // discovery never calls this helper and must not use a static
-            // schema; the live descriptor path below returns `None` until O3K
-            // publishes an authoritative schema.
+            // discovery never calls this helper or relies on its static
+            // presentation metadata; the live descriptor path below derives
+            // schema and capabilities from O3K.
             create_schema: None,
             create_capability: Capability {
                 resource_type: "compute.server".to_owned(),
@@ -941,14 +944,35 @@ impl O3kAdapter {
         // The O3K schema projection is an envelope document. The generic
         // Araf form runtime consumes only the authoritative `spec` schema;
         // retain it as data and never execute schema-provided content.
-        value
+        let schema = value
             .get("allOf")
             .and_then(serde_json::Value::as_array)
             .and_then(|parts| parts.get(1))
             .and_then(|part| part.get("properties"))
             .and_then(|properties| properties.get("spec"))
-            .cloned()
-            .map(JsonSchema)
+            .cloned()?;
+        Self::schema_within_bounds(&schema, 0).then_some(JsonSchema(schema))
+    }
+
+    fn schema_within_bounds(value: &serde_json::Value, depth: usize) -> bool {
+        if depth > Self::MAX_SCHEMA_DEPTH {
+            return false;
+        }
+        match value {
+            serde_json::Value::Array(items) => {
+                items.len() <= Self::MAX_SCHEMA_CHILDREN
+                    && items
+                        .iter()
+                        .all(|item| Self::schema_within_bounds(item, depth + 1))
+            }
+            serde_json::Value::Object(properties) => {
+                properties.len() <= Self::MAX_SCHEMA_CHILDREN
+                    && properties
+                        .values()
+                        .all(|item| Self::schema_within_bounds(item, depth + 1))
+            }
+            _ => true,
+        }
     }
 }
 
@@ -1493,5 +1517,17 @@ mod discovery_validation_tests {
             detail: "not authorized".to_owned(),
         });
         assert!(matches!(error, ApiError::Forbidden));
+    }
+
+    #[test]
+    fn rejects_pathological_schema_depth() {
+        let mut nested = serde_json::json!({"type": "string"});
+        for _ in 0..=O3kAdapter::MAX_SCHEMA_DEPTH {
+            nested = serde_json::json!({"properties": {"nested": nested}});
+        }
+        let envelope = serde_json::json!({
+            "allOf": [{}, {"properties": {"spec": nested}}]
+        });
+        assert!(O3kAdapter::extract_create_schema(envelope).is_none());
     }
 }
