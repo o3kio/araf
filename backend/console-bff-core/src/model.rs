@@ -322,6 +322,7 @@ pub enum OperationState {
     Succeeded,
     Failed,
     Retryable,
+    #[serde(rename = "unknownOutcome", alias = "unknown_outcome")]
     UnknownOutcome,
 }
 

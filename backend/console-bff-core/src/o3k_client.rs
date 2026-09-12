@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 
 use futures_util::StreamExt;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use uuid::Uuid;
 
 const DISCOVERY_RESPONSE_MAX_BYTES: usize = 64 * 1024;
@@ -112,10 +112,13 @@ pub struct NativeMetadata {
 pub struct NativeOperation {
     pub id: String,
     pub service: String,
+    #[serde(deserialize_with = "deserialize_action_id")]
     pub action: String,
     pub actor: String,
+    #[serde(deserialize_with = "deserialize_scope_id")]
     #[serde(rename = "owner_scope")]
     pub owner_scope: String,
+    #[serde(deserialize_with = "deserialize_resource_type")]
     #[serde(rename = "resource_type")]
     pub resource_type: String,
     #[serde(rename = "resource_id")]
@@ -128,6 +131,70 @@ pub struct NativeOperation {
     pub error: Option<String>,
     #[serde(rename = "request_id")]
     pub request_id: Option<String>,
+}
+
+fn deserialize_action_id<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::String(value) => Ok(value),
+        serde_json::Value::Object(value) => {
+            let namespace = value.get("namespace").and_then(|v| v.as_str());
+            let action = value.get("action").and_then(|v| v.as_str());
+            match (namespace, action) {
+                (Some(namespace), Some(action)) => Ok(format!("{namespace}:{action}")),
+                _ => Err(serde::de::Error::custom("invalid O3K action identifier")),
+            }
+        }
+        _ => Err(serde::de::Error::custom("invalid O3K action identifier")),
+    }
+}
+
+fn deserialize_scope_id<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::String(value) => Ok(value),
+        serde_json::Value::Object(value) => value
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| serde::de::Error::custom("invalid O3K owner scope")),
+        _ => Err(serde::de::Error::custom("invalid O3K owner scope")),
+    }
+}
+
+fn deserialize_resource_type<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::String(value) => Ok(value),
+        serde_json::Value::Object(value) => {
+            let namespace = value.get("namespace").and_then(|v| v.as_str());
+            let name = value.get("name").and_then(|v| v.as_str());
+            match (namespace, name) {
+                (Some(namespace), Some(name)) => Ok(format!("{namespace}:{name}")),
+                _ => Err(serde::de::Error::custom("invalid O3K resource type")),
+            }
+        }
+        _ => Err(serde::de::Error::custom("invalid O3K resource type")),
+    }
+}
+
+/// Bounded response returned by O3K `GET /o3k/v1/operations`.
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeOperationListResponse {
+    pub items: Vec<NativeOperation>,
+    #[serde(default)]
+    pub next_cursor: Option<String>,
+    #[serde(default)]
+    pub has_more: bool,
 }
 
 /// Result returned by a native resource mutation.
@@ -606,6 +673,28 @@ impl O3kClient {
     pub async fn get_operation(&self, id: &str) -> Result<NativeOperation, O3kClientError> {
         self.get_json(&self.url(&format!("/o3k/v1/operations/{}", Self::path_segment(id))))
             .await
+    }
+
+    /// GET /o3k/v1/operations with O3K's signed, scope-bound cursor.
+    pub async fn list_operations(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<NativeOperationListResponse, O3kClientError> {
+        let mut url = self.url("/o3k/v1/operations");
+        let mut params = vec![("limit", limit.to_string())];
+        if let Some(cursor) = cursor {
+            params.push(("cursor", cursor.to_owned()));
+        }
+        url.push('?');
+        url.push_str(
+            &params
+                .iter()
+                .map(|(key, value)| format!("{key}={}", Self::path_segment(value)))
+                .collect::<Vec<_>>()
+                .join("&"),
+        );
+        self.get_json(&url).await
     }
 
     /// GET /o3k/v1/identity/me

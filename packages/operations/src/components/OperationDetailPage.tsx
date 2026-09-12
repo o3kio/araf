@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Header, LoadingState, ErrorState, SpaceBetween } from "@araf/ui";
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import { useOperation } from "../hooks/useOperation";
 import { useOperationTransport } from "../hooks/useOperationTransport";
 import { OperationStatus } from "./OperationStatus";
@@ -55,9 +55,15 @@ export function OperationDetailPage() {
               <DetailItem
                 label="Resource"
                 value={
-                  operation.resourceType && operation.resourceId
-                    ? `${operation.resourceType}/${operation.resourceId}`
-                    : "—"
+                  operation.resourceType && operation.resourceId ? (
+                    <Link
+                      to={`/resources/${encodeURIComponent(operation.resourceType)}/${encodeURIComponent(operation.resourceId)}`}
+                    >
+                      {operation.resourceType}/{operation.resourceId}
+                    </Link>
+                  ) : (
+                    "—"
+                  )
                 }
               />
               <DetailItem label="Project" value={operation.projectId ?? "—"} />
