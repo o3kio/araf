@@ -155,6 +155,11 @@ async fn operator_diagnostics_are_normalized_without_fabricated_health() {
     assert_eq!(services[0].reason.as_deref(), Some("never_observed"));
     let capacity = adapter.get_capacity_summary(&ctx).await.expect("capacity");
     assert_eq!(capacity[0].used, 5);
+    assert_eq!(
+        capacity[0].status,
+        console_bff_core::model::RegionStatus::Unknown
+    );
+    assert_eq!(capacity[0].reason.as_deref(), Some("never_observed"));
     assert_eq!(capacity[0].updated_at, None);
     let overview = adapter.get_platform_overview(&ctx).await.expect("overview");
     assert_eq!(overview.active_operations_count, None);
