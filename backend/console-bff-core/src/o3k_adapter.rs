@@ -1508,6 +1508,7 @@ impl Upstream for O3kAdapter {
         let mut all_matching = Vec::new();
         let mut page_items = Vec::new();
         let mut has_more = false;
+        let mut observed_items = 0u64;
 
         for page_index in 0..scan_limit {
             let response = self
@@ -1516,6 +1517,7 @@ impl Upstream for O3kAdapter {
                 .await
                 .map_err(Self::map_client_error)?;
             let next_cursor = response.next_cursor.clone();
+            let native_item_count = response.items.len() as u64;
             let mapped: Vec<Operation> = response
                 .items
                 .into_iter()
@@ -1527,6 +1529,9 @@ impl Upstream for O3kAdapter {
                 all_matching.extend(mapped);
             } else if page_index == target_page {
                 page_items = mapped;
+            }
+            if !has_filters {
+                observed_items = observed_items.saturating_add(native_item_count);
             }
 
             has_more = response.has_more || next_cursor.is_some();
@@ -1573,9 +1578,7 @@ impl Upstream for O3kAdapter {
         Ok(PaginatedCollection {
             // O3K intentionally exposes continuation, not an expensive total.
             // Report a lower bound that keeps the page control truthful.
-            total: (target_page as u64 * page_size as u64)
-                .saturating_add(page_items.len() as u64)
-                .saturating_add(u64::from(has_more)),
+            total: observed_items.saturating_add(u64::from(has_more)),
             page: params.page,
             page_size,
             has_more,
