@@ -174,15 +174,6 @@ pub async fn list_installed_services(
     State(state): State<AppState>,
     ctx: RequestContext,
 ) -> Result<Json<Vec<InstalledService>>, BffError> {
-    let session = state
-        .upstream
-        .context(&ctx)
-        .await
-        .map_err(|e| with_ctx(e, &ctx))?;
-    if !session.has_capability("operator.service", "list") {
-        return Err(with_ctx(ApiError::Forbidden, &ctx));
-    }
-
     let catalog = state
         .upstream
         .list_discovered_services(&ctx)
@@ -231,15 +222,6 @@ pub async fn list_discovered_resource_types(
     State(state): State<AppState>,
     ctx: RequestContext,
 ) -> Result<Json<Vec<DiscoveredResourceType>>, BffError> {
-    let session = state
-        .upstream
-        .context(&ctx)
-        .await
-        .map_err(|e| with_ctx(e, &ctx))?;
-    if !session.has_capability("operator.service", "read") {
-        return Err(with_ctx(ApiError::Forbidden, &ctx));
-    }
-
     let resource_types = state
         .upstream
         .list_discovered_resource_types(&ctx)
