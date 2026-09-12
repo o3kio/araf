@@ -22,6 +22,7 @@ export interface TenantShellProps {
   activeHref?: string;
   projects: ProjectOption[];
   regions: RegionOption[];
+  includeGlobalRegion?: boolean;
   operationsHref?: string;
 }
 
@@ -85,6 +86,7 @@ export function TenantShell({
   activeHref,
   projects,
   regions,
+  includeGlobalRegion = true,
   operationsHref = "/operations",
 }: TenantShellProps) {
   const { scope, setScope } = useScope();
@@ -151,6 +153,7 @@ export function TenantShell({
           id="tenant-region-selector"
           label="Region"
           regions={regions}
+          includeGlobal={includeGlobalRegion}
           selectedRegionId={scope.regionId ?? "global"}
           onSelectRegion={(regionId) => {
             const selected = regions.find((r) => r.id === regionId);

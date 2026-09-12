@@ -10,7 +10,8 @@ import type { ServiceCatalogEntry } from "@araf/api-client";
 import { useServiceCatalog } from "../hooks/useServiceCatalog";
 import { errorMessage, errorCorrelationId } from "../errors";
 
-function formatRegions(regions: string[]): string {
+function formatRegions(regions: string[] | undefined): string {
+  regions ??= [];
   if (regions.length === 0) return "Global";
   return regions.join(", ");
 }

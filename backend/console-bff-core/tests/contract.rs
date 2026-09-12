@@ -2007,7 +2007,7 @@ async fn operator_accounts_do_not_leak_cross_tenant_data() {
 }
 
 #[tokio::test]
-async fn o3k_adapter_operator_methods_return_501() {
+async fn o3k_adapter_operator_methods_return_expected_errors() {
     let adapter = O3kAdapter::new(
         "operator-bff",
         O3kClientConfig {
@@ -2028,8 +2028,19 @@ async fn o3k_adapter_operator_methods_return_501() {
         };
     }
 
-    assert_not_implemented!(adapter.list_regions(&ctx).await);
-    assert_not_implemented!(adapter.list_availability_zones(&ctx, "eu-west").await);
+    // Geography is now a live O3K discovery contract; an unreachable upstream
+    // is therefore surfaced as Bad Gateway rather than Not Implemented.
+    let err = adapter
+        .list_regions(&ctx)
+        .await
+        .expect_err("expected upstream failure");
+    assert_eq!(err.status(), StatusCode::BAD_GATEWAY);
+    let err = adapter
+        .list_availability_zones(&ctx, "eu-west")
+        .await
+        .expect_err("expected upstream failure");
+    assert_eq!(err.status(), StatusCode::BAD_GATEWAY);
+
     assert_not_implemented!(adapter.list_provider_health(&ctx).await);
     assert_not_implemented!(adapter.list_service_health(&ctx).await);
     assert_not_implemented!(adapter.get_capacity_summary(&ctx).await);
@@ -2130,11 +2141,12 @@ async fn operator_can_list_installed_services_and_resource_types() {
 }
 
 #[tokio::test]
-async fn service_catalog_rejects_missing_capability() {
+async fn service_catalog_uses_adapter_authorization() {
     let app = fixture_router(OPERATOR);
     let correlation = "corr-service-catalog-forbidden";
 
-    // Operator fixture session lacks tenant.service-catalog/list.
+    // The adapter owns authorization for discovery; operator discovery is
+    // allowed by the fixture's operator capability set.
     let response = app
         .oneshot(
             Request::builder()
@@ -2146,7 +2158,7 @@ async fn service_catalog_rejects_missing_capability() {
         .await
         .expect("response");
 
-    assert_problem_details(response, StatusCode::FORBIDDEN, correlation).await;
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]

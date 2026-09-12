@@ -129,6 +129,37 @@ pub struct DiscoveredResourceType {
     pub scope: String,
     pub ready: bool,
     pub lifecycle_actions: HashMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placement: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub regions: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub availability_domain_selection: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schema: Option<SchemaReference>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<ActionSchemaMetadata>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaReference {
+    pub id: String,
+    pub version: String,
+    pub representation: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionSchemaMetadata {
+    pub name: String,
+    pub action_id: String,
+    pub target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    pub asynchronous: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

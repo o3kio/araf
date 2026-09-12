@@ -58,6 +58,14 @@ fn base_routes(router: Router<AppState>) -> Router<AppState> {
             "/api/v1/services/catalog",
             get(handlers::list_service_catalog),
         )
+        // Region/AZ identity is discovered through the same authenticated
+        // upstream boundary for both consoles. Operator-prefixed aliases are
+        // retained for the operator platform surface below.
+        .route("/api/v1/regions", get(handlers::list_regions))
+        .route(
+            "/api/v1/regions/{region_id}/zones",
+            get(handlers::list_availability_zones),
+        )
         .route(
             "/api/v1/resources/{resource_type}",
             get(handlers::list_resources).post(handlers::create_resource),

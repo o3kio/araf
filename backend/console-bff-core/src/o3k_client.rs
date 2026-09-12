@@ -12,6 +12,7 @@ use std::collections::HashMap;
 
 use futures_util::StreamExt;
 use serde::Deserialize;
+use uuid::Uuid;
 
 const DISCOVERY_RESPONSE_MAX_BYTES: usize = 64 * 1024;
 const JSON_RESPONSE_MAX_BYTES: usize = 4 * 1024 * 1024;
@@ -183,6 +184,36 @@ pub struct DiscoveredResourceType {
     pub ready: bool,
     #[serde(rename = "lifecycle_actions")]
     pub lifecycle_actions: HashMap<String, String>,
+    #[serde(default)]
+    pub placement: Option<String>,
+    #[serde(default)]
+    pub regions: Vec<String>,
+    #[serde(default, rename = "availability_domain_selection")]
+    pub availability_domain_selection: Option<String>,
+    #[serde(default)]
+    pub schema: Option<DiscoveredSchemaReference>,
+    #[serde(default)]
+    pub actions: Vec<DiscoveredActionMetadata>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct DiscoveredSchemaReference {
+    pub id: String,
+    pub version: String,
+    pub representation: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct DiscoveredActionMetadata {
+    pub name: String,
+    pub action_id: String,
+    pub target: String,
+    #[serde(default)]
+    pub input: Option<String>,
+    #[serde(default)]
+    pub output: Option<String>,
+    #[serde(default)]
+    pub asynchronous: bool,
 }
 
 /// Response from `GET /o3k/v1/resource-types`.
@@ -190,6 +221,24 @@ pub struct DiscoveredResourceType {
 pub struct ResourceTypesResponse {
     #[serde(rename = "resource_types")]
     pub resource_types: Vec<DiscoveredResourceType>,
+    pub count: usize,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct DiscoveredAvailabilityDomain {
+    pub id: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct DiscoveredRegion {
+    pub id: String,
+    #[serde(default, rename = "availability_domains")]
+    pub availability_domains: Vec<DiscoveredAvailabilityDomain>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct RegionsResponse {
+    pub regions: Vec<DiscoveredRegion>,
     pub count: usize,
 }
 
@@ -248,6 +297,19 @@ impl O3kClient {
         format!("{}{}", self.base_url, path)
     }
 
+    fn path_segment(value: &str) -> String {
+        value
+            .bytes()
+            .flat_map(|byte| {
+                if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+                    vec![byte as char]
+                } else {
+                    format!("%{byte:02X}").chars().collect()
+                }
+            })
+            .collect()
+    }
+
     async fn get_json<T: for<'de> Deserialize<'de>>(&self, url: &str) -> Result<T, O3kClientError> {
         let response = self
             .http
@@ -286,6 +348,22 @@ impl O3kClient {
         Self::handle_response(response, JSON_RESPONSE_MAX_BYTES).await
     }
 
+    async fn post_mutation_json<T: for<'de> Deserialize<'de>>(
+        &self,
+        url: &str,
+        body: serde_json::Value,
+    ) -> Result<T, O3kClientError> {
+        let response = self
+            .http
+            .post(url)
+            .header("Authorization", self.auth_header())
+            .header("Idempotency-Key", Uuid::new_v4().to_string())
+            .json(&body)
+            .send()
+            .await?;
+        Self::handle_response(response, JSON_RESPONSE_MAX_BYTES).await
+    }
+
     async fn delete_json<T: for<'de> Deserialize<'de>>(
         &self,
         url: &str,
@@ -294,6 +372,7 @@ impl O3kClient {
             .http
             .delete(url)
             .header("Authorization", self.auth_header())
+            .header("Idempotency-Key", Uuid::new_v4().to_string())
             .send()
             .await?;
         Self::handle_response(response, JSON_RESPONSE_MAX_BYTES).await
@@ -391,6 +470,30 @@ impl O3kClient {
         Ok(response.resource_types)
     }
 
+    /// GET /o3k/v1/resource-schemas/{namespace}/{collection}/{version}
+    pub async fn get_resource_schema(
+        &self,
+        namespace: &str,
+        collection: &str,
+        version: &str,
+    ) -> Result<serde_json::Value, O3kClientError> {
+        self.get_discovery_json(&self.url(&format!(
+            "/o3k/v1/resource-schemas/{}/{}/{}",
+            Self::path_segment(namespace),
+            Self::path_segment(collection),
+            Self::path_segment(version)
+        )))
+        .await
+    }
+
+    /// GET /o3k/v1/regions
+    pub async fn list_regions(&self) -> Result<Vec<DiscoveredRegion>, O3kClientError> {
+        let response: RegionsResponse = self
+            .get_discovery_json(&self.url("/o3k/v1/regions"))
+            .await?;
+        Ok(response.regions)
+    }
+
     /// GET /o3k/v1/compute/servers
     pub async fn list_compute_servers(
         &self,
@@ -410,7 +513,7 @@ impl O3kClient {
             url.push_str(
                 &params
                     .iter()
-                    .map(|(k, v)| format!("{k}={v}"))
+                    .map(|(k, v)| format!("{k}={}", Self::path_segment(v)))
                     .collect::<Vec<_>>()
                     .join("&"),
             );
@@ -545,7 +648,11 @@ impl O3kClient {
         limit: Option<u32>,
         cursor: Option<&str>,
     ) -> Result<ServerListResponse, O3kClientError> {
-        let mut url = self.url(&format!("/o3k/v1/{namespace}/{collection}"));
+        let mut url = self.url(&format!(
+            "/o3k/v1/{}/{}",
+            Self::path_segment(namespace),
+            Self::path_segment(collection)
+        ));
         let mut params = Vec::new();
         if let Some(limit) = limit {
             params.push(("limit", limit.to_string()));
@@ -558,7 +665,7 @@ impl O3kClient {
             url.push_str(
                 &params
                     .iter()
-                    .map(|(k, v)| format!("{k}={v}"))
+                    .map(|(k, v)| format!("{k}={}", Self::path_segment(v)))
                     .collect::<Vec<_>>()
                     .join("&"),
             );
@@ -573,8 +680,91 @@ impl O3kClient {
         collection: &str,
         id: &str,
     ) -> Result<NativeResourceEnvelope, O3kClientError> {
-        self.get_json(&self.url(&format!("/o3k/v1/{namespace}/{collection}/{id}")))
-            .await
+        self.get_json(&self.url(&format!(
+            "/o3k/v1/{}/{}/{}",
+            Self::path_segment(namespace),
+            Self::path_segment(collection),
+            Self::path_segment(id)
+        )))
+        .await
+    }
+
+    pub async fn create_generic_resource(
+        &self,
+        namespace: &str,
+        collection: &str,
+        kind: &str,
+        payload: serde_json::Value,
+    ) -> Result<MutationResult, O3kClientError> {
+        self.post_mutation_json(
+            &self.url(&format!(
+                "/o3k/v1/{}/{}",
+                Self::path_segment(namespace),
+                Self::path_segment(collection)
+            )),
+            serde_json::json!({"api_version":"o3k.io/v1", "kind": kind, "spec": payload}),
+        )
+        .await
+    }
+
+    pub async fn update_generic_resource(
+        &self,
+        namespace: &str,
+        collection: &str,
+        id: &str,
+        kind: &str,
+        payload: serde_json::Value,
+    ) -> Result<MutationResult, O3kClientError> {
+        let response = self
+            .http
+            .put(self.url(&format!(
+                "/o3k/v1/{}/{}/{}",
+                Self::path_segment(namespace),
+                Self::path_segment(collection),
+                Self::path_segment(id)
+            )))
+            .header("Authorization", self.auth_header())
+            .header("Idempotency-Key", Uuid::new_v4().to_string())
+            .json(&serde_json::json!({"api_version":"o3k.io/v1", "kind": kind, "spec": payload}))
+            .send()
+            .await?;
+        Self::handle_response(response, JSON_RESPONSE_MAX_BYTES).await
+    }
+
+    pub async fn delete_generic_resource(
+        &self,
+        namespace: &str,
+        collection: &str,
+        id: &str,
+    ) -> Result<MutationResult, O3kClientError> {
+        self.delete_json(&self.url(&format!(
+            "/o3k/v1/{}/{}/{}",
+            Self::path_segment(namespace),
+            Self::path_segment(collection),
+            Self::path_segment(id)
+        )))
+        .await
+    }
+
+    pub async fn invoke_generic_action(
+        &self,
+        namespace: &str,
+        collection: &str,
+        id: &str,
+        action: &str,
+        input: serde_json::Value,
+    ) -> Result<MutationResult, O3kClientError> {
+        self.post_mutation_json(
+            &self.url(&format!(
+                "/o3k/v1/{}/{}/{}/actions/{}",
+                Self::path_segment(namespace),
+                Self::path_segment(collection),
+                Self::path_segment(id),
+                Self::path_segment(action)
+            )),
+            serde_json::json!({"input": input}),
+        )
+        .await
     }
 }
 
@@ -702,5 +892,54 @@ mod tests {
         });
         let error = client.list_services().await.expect_err("invalid JSON");
         assert!(!error.to_string().contains("byte limit"));
+    }
+
+    #[tokio::test]
+    async fn discovery_reads_converged_resource_schema_and_locations() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/o3k/v1/resource-types"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "resource_types": [{
+                    "namespace": "compute", "name": "server", "service": "compute",
+                    "schema_version": "v1", "collection": "servers", "scope": "regional",
+                    "ready": true, "lifecycle_actions": {"list":"compute:ListServers", "create":"compute:CreateServer"},
+                    "placement": "regional", "regions": ["eu-test"],
+                    "availability_domain_selection": "optional",
+                    "schema": {"id":"https://o3k.io/schemas/compute/servers/v1", "version":"v1", "representation":"native-resource-envelope"},
+                    "actions": [{"name":"CreateServer", "action_id":"compute:CreateServer", "target":"collection", "output":"https://o3k.io/contracts/native-mutation-result-v1.schema.json", "asynchronous":true}]
+                }], "count": 1
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/o3k/v1/resource-schemas/compute/servers/v1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "allOf": [{"$ref":"envelope"}, {"type":"object", "properties":{"spec":{"type":"object", "required":["name"]}}}]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/o3k/v1/regions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "regions": [{"id":"eu-test", "availability_domains":[{"id":"eu-test-a"}]}], "count": 1
+            })))
+            .mount(&server)
+            .await;
+
+        let client = O3kClient::new(O3kClientConfig {
+            base_url: server.uri(),
+            token: "unused".into(),
+        });
+        let types = client.list_resource_types().await.expect("resource types");
+        assert_eq!(types[0].regions, ["eu-test"]);
+        assert_eq!(types[0].actions[0].action_id, "compute:CreateServer");
+        let schema = client
+            .get_resource_schema("compute", "servers", "v1")
+            .await
+            .expect("schema");
+        assert_eq!(schema["allOf"][1]["properties"]["spec"]["type"], "object");
+        let regions = client.list_regions().await.expect("regions");
+        assert_eq!(regions[0].availability_domains[0].id, "eu-test-a");
     }
 }

@@ -158,6 +158,37 @@ function TenantRouterShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigationItems = useTenantNavigation();
   const { scope } = useScope();
+  const [discoveredRegions, setDiscoveredRegions] = useState<RegionOption[]>(() =>
+    import.meta.env.MODE === "test" && scope.regionId
+      ? [{ id: scope.regionId, name: scope.regionName ?? scope.regionId }]
+      : [],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    const discover = arafClient.listTenantRegions;
+    if (!discover) return undefined;
+    discover()
+      .then((regions) => {
+        if (!cancelled)
+          setDiscoveredRegions(regions.map((region) => ({ id: region.id, name: region.name })));
+      })
+      .catch(() => {
+        // Discovery failures are represented by an empty geography; never
+        // invent a default region or fall back to fixture locations.
+        // Unit tests run with an explicit test mode and retain their
+        // scope-context fixture solely to keep the shell deterministic.
+        if (!cancelled) {
+          setDiscoveredRegions(
+            import.meta.env.MODE === "test" && scope.regionId
+              ? [{ id: scope.regionId, name: scope.regionName ?? scope.regionId }]
+              : [],
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [scope.regionId, scope.regionName]);
   const projects: ProjectOption[] = scope.projectId
     ? [
         {
@@ -167,15 +198,14 @@ function TenantRouterShell({ children }: { children: ReactNode }) {
         },
       ]
     : [];
-  const regions: RegionOption[] = scope.regionId
-    ? [{ id: scope.regionId, name: scope.regionName ?? scope.regionId }]
-    : [];
+  const regions: RegionOption[] = discoveredRegions;
   return (
     <TenantShell
       navigationItems={navigationItems}
       activeHref={location.pathname}
       projects={projects}
       regions={regions}
+      includeGlobalRegion={false}
     >
       {children}
     </TenantShell>

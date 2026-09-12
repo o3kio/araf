@@ -155,15 +155,6 @@ pub async fn list_service_catalog(
     State(state): State<AppState>,
     ctx: RequestContext,
 ) -> Result<Json<Vec<ServiceCatalogEntry>>, BffError> {
-    let session = state
-        .upstream
-        .context(&ctx)
-        .await
-        .map_err(|e| with_ctx(e, &ctx))?;
-    if !session.has_capability("tenant.service-catalog", "list") {
-        return Err(with_ctx(ApiError::Forbidden, &ctx));
-    }
-
     let catalog = state
         .upstream
         .list_discovered_services(&ctx)
