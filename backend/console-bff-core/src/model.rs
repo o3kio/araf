@@ -255,7 +255,9 @@ pub struct Resource {
     pub name: String,
     pub resource_type: String,
     pub project_id: String,
-    pub region_id: String,
+    /// Canonical O3K region identity when the resource is regional. Global
+    /// resources intentionally omit a region in the native envelope.
+    pub region_id: Option<String>,
     pub status: ResourceStatus,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
