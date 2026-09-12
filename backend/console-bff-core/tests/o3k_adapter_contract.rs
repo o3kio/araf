@@ -318,7 +318,7 @@ async fn maps_native_compute_server_envelope_to_resource() {
     assert_eq!(resource.name, "web-1");
     assert_eq!(resource.resource_type, "compute.server");
     assert_eq!(resource.project_id, "project-1");
-    assert_eq!(resource.region_id, "RegionOne");
+    assert_eq!(resource.region_id.as_deref(), Some("RegionOne"));
     assert_eq!(resource.status, ResourceStatus::Ready);
     assert_eq!(resource.generation, 3);
 }
