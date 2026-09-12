@@ -1,6 +1,6 @@
 # Araf P2.6 operator health and capacity evidence
 
-Base Araf main: `8feb3b32442aba1ae70284aa3781d6950f2596ac`  
+Base Araf main: `8feb3b32442aba1ae70284aa3781d6950f2596ac`
 O3K authority: `21fe687c387a04f107b6e87fac04060b1c28e449`
 
 The operator BFF now consumes the frozen O3K native diagnostics projection:
