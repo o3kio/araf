@@ -30,11 +30,37 @@ segments are encoded. Upstream errors remain structured; production adapters
 never activate fixture descriptors as a fallback. Fixture data remains behind
 the explicit fixture adapter for tests/development.
 
+The validator accepts the merged O3K reference forms: namespaced action IDs
+(`service:Action`) and bounded HTTPS schema/contract URLs (including JSON
+Pointer fragments). This keeps the public O3K descriptors executable without
+loosening schema safety.
+
 Tenant geography is available at `/api/v1/regions` and `/api/v1/regions/:id/zones`;
 the tenant shell renders only discovered regions (the legacy Global option is
 disabled there). Operator aliases remain protected by the Operator BFF.
 
 ## Validation
 
-The final report records exact-head frontend, Rust, browser, and real-O3K
-process validation. No new O3K API was designed or required.
+Real process evidence used the O3K Rust checkout at commit
+`21fe687c387a04f107b6e87fac04060b1c28e449`:
+
+```text
+O3K_LISTEN_ADDR=127.0.0.1:18080 O3K_PROVIDER=fake \
+O3K_BOOTSTRAP_PASSWORD=<runtime-only> O3K_TOKEN_SIGNING_KEY=<runtime-only> \
+O3K_LOCATIONS='[{"id":"eu-test-7","availability_domains":[{"id":"eu-test-7a"},{"id":"eu-test-7b"}]},{"id":"us-test-3","availability_domains":[{"id":"us-test-3a"}]}]' \
+o3kd
+```
+
+The live Araf `O3kAdapter` process test used a server-side native token and
+reported:
+
+```text
+context_project=eba29e2d-53de-461d-ae91-ede7402713cb
+services=5 resource_types=19 descriptors=5 regions=2
+service_ids=identity,image,volume,compute,network
+region_ids=eu-test-7,us-test-3
+```
+
+The same response showed `volume.lifecycle_state=not_ready`; Araf retained the
+service as an explicitly unavailable capability rather than inventing a Volume
+route. No new O3K API was designed or required.

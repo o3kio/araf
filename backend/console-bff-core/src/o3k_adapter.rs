@@ -4,18 +4,17 @@
 //! presentation-oriented BFF models. It is stateless: every call goes to O3K,
 //! and the adapter does not retain resources or operations between requests.
 //!
-//! Known upstream gaps handled explicitly:
-//! - M7-O3K-002: no `GET /o3k/v1/operations`; `list_operations` is rejected.
-//! - M7-O3K-003: O3K Operation has no event array; events are derived from
-//!   `created_at`, `started_at`, `finished_at`, and `error`.
-//! - M7-O3K-004: native list endpoints do not filter/sort or return totals;
-//!   Araf filters/sort are ignored and totals are synthetic.
-//! - M7-O3K-005: volume/network concrete routes are read-only; create/delete
-//!   for those types are not supported by this adapter.
-//! - M7-O3K-006: no region enumeration; region falls back to metadata or a
-//!   fixed placeholder.
-//! - M7-O3K-007: `/identity/me` returns no capabilities; a fixed M7
-//!   capability set is used.
+//! Known upstream boundaries handled explicitly:
+//! - O3K does not expose `GET /o3k/v1/operations`; `list_operations` remains
+//!   rejected rather than fabricating an inventory.
+//! - O3K Operation has no event array; events are derived from its canonical
+//!   timestamps and error fields.
+//! - Native list endpoints do not filter/sort or return totals; Araf keeps
+//!   requests bounded and reports only an explicitly synthetic page total.
+//! - Resource mutations and domain actions are executable only when their
+//!   discovered lifecycle/action contract is advertised by O3K.
+//! - `/identity/me` returns identity context, not evaluated capabilities;
+//!   capability truth therefore comes from service/resource discovery.
 
 use std::collections::HashMap;
 
@@ -383,6 +382,38 @@ impl O3kAdapter {
                 .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
     }
 
+    /// O3K action identifiers are namespaced (`service:Action`) while schema
+    /// and contract references are absolute HTTPS URLs.  Keep both forms
+    /// bounded and structural; discovery metadata is data, never executable
+    /// content.
+    fn valid_action_identifier(value: &str) -> bool {
+        let Some((namespace, action)) = value.split_once(':') else {
+            return Self::valid_discovery_identifier(value);
+        };
+        Self::valid_discovery_identifier(namespace) && Self::valid_discovery_identifier(action)
+    }
+
+    fn valid_contract_reference(value: &str) -> bool {
+        if value.len() > 512 {
+            return false;
+        }
+        let Ok(url) = reqwest::Url::parse(value) else {
+            return false;
+        };
+        url.scheme() == "https"
+            && url.host_str().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.query().is_none()
+            && url.fragment().is_none_or(|fragment| {
+                fragment.len() <= 256
+                    && fragment.bytes().all(|byte| {
+                        byte.is_ascii_alphanumeric()
+                            || matches!(byte, b'/' | b'.' | b'-' | b'_' | b'~')
+                    })
+            })
+    }
+
     fn validate_discovered_service(
         service: &crate::o3k_client::DiscoveredService,
     ) -> Result<(), ApiError> {
@@ -420,22 +451,34 @@ impl O3kAdapter {
         .all(Self::valid_discovery_identifier);
         let valid_actions = resource_type
             .lifecycle_actions
-            .keys()
-            .all(|action| Self::valid_discovery_identifier(action) && action.len() <= 64);
+            .iter()
+            .all(|(action, action_id)| {
+                Self::valid_discovery_identifier(action)
+                    && action.len() <= 64
+                    && Self::valid_action_identifier(action_id)
+            });
         let valid_regions = resource_type
             .regions
             .iter()
             .all(|region| Self::valid_discovery_identifier(region));
         let valid_schema = resource_type.schema.as_ref().is_none_or(|schema| {
-            Self::valid_discovery_identifier(&schema.id)
+            Self::valid_contract_reference(&schema.id)
                 && Self::valid_discovery_identifier(&schema.version)
                 && schema.representation.len() <= 128
         });
         let valid_metadata = resource_type.actions.len() <= 128
             && resource_type.actions.iter().all(|action| {
                 Self::valid_discovery_identifier(&action.name)
-                    && Self::valid_discovery_identifier(&action.action_id)
+                    && Self::valid_action_identifier(&action.action_id)
                     && action.target.len() <= 32
+                    && action
+                        .input
+                        .as_deref()
+                        .is_none_or(Self::valid_contract_reference)
+                    && action
+                        .output
+                        .as_deref()
+                        .is_none_or(Self::valid_contract_reference)
             });
         if !valid_fields || !valid_actions || !valid_regions || !valid_schema || !valid_metadata {
             return Err(ApiError::BadRequest(
