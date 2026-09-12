@@ -125,9 +125,28 @@ async fn tenant_bff_reads_real_o3k_discovery_and_bounded_collection() {
         .expect("network create resource id")
         .to_owned();
 
-    // The converged native network DELETE contract is a synchronous 204 with
-    // no operation body.  Deletion is covered by the contract adapter tests;
-    // this process gate intentionally verifies the operation-bearing create
-    // path without inventing an Araf-local operation for a bodyless 204.
-    assert!(!resource_id.is_empty());
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/api/v1/resources/network.network/{resource_id}"))
+                .header("Idempotency-Key", "p2-3-real-network-delete")
+                .body(Body::empty())
+                .expect("network delete request"),
+        )
+        .await
+        .expect("network delete response");
+    assert!(
+        response.status().is_success(),
+        "network delete status: {}",
+        response.status()
+    );
+    let body = axum::body::to_bytes(response.into_body(), 128 * 1024)
+        .await
+        .expect("network delete body");
+    let delete_operation: serde_json::Value =
+        serde_json::from_slice(&body).expect("delete operation json");
+    assert_eq!(delete_operation["action"], "delete");
+    assert_eq!(delete_operation["state"], "succeeded");
 }

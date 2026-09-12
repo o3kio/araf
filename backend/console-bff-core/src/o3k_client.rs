@@ -774,16 +774,35 @@ impl O3kClient {
         id: &str,
         idempotency_key: Option<&str>,
     ) -> Result<MutationResult, O3kClientError> {
-        self.delete_json(
-            &self.url(&format!(
+        let response = self
+            .http
+            .delete(self.url(&format!(
                 "/o3k/v1/{}/{}/{}",
                 Self::path_segment(namespace),
                 Self::path_segment(collection),
                 Self::path_segment(id)
-            )),
-            idempotency_key,
-        )
-        .await
+            )))
+            .header("Authorization", self.auth_header())
+            .header(
+                "Idempotency-Key",
+                idempotency_key
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(|| Uuid::new_v4().to_string()),
+            )
+            .send()
+            .await?;
+        if response.status() == reqwest::StatusCode::NO_CONTENT {
+            // SPEC-0030 permits completed synchronous deletes to return 204
+            // without an operation body. Preserve a terminal Araf operation
+            // representation without probing a nonexistent poll resource.
+            return Ok(MutationResult {
+                operation_id: format!("sync-delete-{id}"),
+                resource_id: Some(id.to_owned()),
+                complete: true,
+                resource: None,
+            });
+        }
+        Self::handle_response(response, JSON_RESPONSE_MAX_BYTES).await
     }
 
     pub async fn invoke_generic_action(
