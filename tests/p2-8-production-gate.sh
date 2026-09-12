@@ -42,12 +42,24 @@ fail_gate() {
 [[ "${provider}" != '' && "${provider}" != 'fake' && "${provider}" != 'fixture' ]] \
   || fail_gate 'a real supported provider must be named; fake/fixture profiles are not production evidence'
 
+command -v python3 >/dev/null 2>&1 \
+  || fail_gate 'python3 is required for strict endpoint validation'
+
 for endpoint in "${o3k_url}" "${tenant_url}" "${operator_url}" "${idp_discovery}"; do
-  [[ "${endpoint}" == https://* ]] \
-    || fail_gate 'O3K, tenant BFF, operator BFF, and OIDC discovery endpoints must use HTTPS'
+  python3 - "${endpoint}" <<'PY' || fail_gate 'endpoints must be absolute HTTPS URLs without credentials, query, or fragment'
+import sys
+from urllib.parse import urlparse
+
+value = urlparse(sys.argv[1])
+if value.scheme != "https" or not value.hostname or value.username or value.password:
+    raise SystemExit(1)
+if value.query or value.fragment:
+    raise SystemExit(1)
+PY
 done
 
-if ! ARAF_P2_8_PROVIDER="${provider}" \
+if ! env -i PATH="${PATH}" \
+  ARAF_P2_8_PROVIDER="${provider}" \
   ARAF_P2_8_O3K_URL="${o3k_url}" \
   ARAF_P2_8_TENANT_URL="${tenant_url}" \
   ARAF_P2_8_OPERATOR_URL="${operator_url}" \
