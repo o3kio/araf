@@ -74,10 +74,37 @@ impl O3kAdapter {
         match err {
             O3kClientError::NotImplemented(msg) => ApiError::NotImplemented(msg),
             O3kClientError::Upstream { status: 404, .. } => ApiError::NotFound,
+            O3kClientError::Upstream {
+                status: 403,
+                title,
+                detail,
+            } if title.to_ascii_lowercase().contains("quota")
+                || detail.to_ascii_lowercase().contains("quota") =>
+            {
+                ApiError::QuotaExceeded(Self::public_error_detail(&title, &detail))
+            }
             O3kClientError::Upstream { status: 403, .. } => ApiError::Forbidden,
             O3kClientError::Upstream { status: 401, .. } => ApiError::Unauthorized,
+            O3kClientError::Upstream {
+                status: 409,
+                title,
+                detail,
+            } => ApiError::Conflict(Self::public_error_detail(&title, &detail)),
             other => ApiError::Upstream(UpstreamError::Error(other.to_string())),
         }
+    }
+
+    fn public_error_detail(title: &str, detail: &str) -> String {
+        let source = if detail.trim().is_empty() {
+            title
+        } else {
+            detail
+        };
+        source
+            .chars()
+            .filter(|character| !character.is_control())
+            .take(512)
+            .collect()
     }
 
     fn parse_timestamp(value: Option<&str>) -> Option<OffsetDateTime> {
@@ -1697,6 +1724,26 @@ mod discovery_validation_tests {
             detail: "not authorized".to_owned(),
         });
         assert!(matches!(error, ApiError::Forbidden));
+    }
+
+    #[test]
+    fn preserves_quota_and_conflict_mutation_reasons() {
+        let quota = O3kAdapter::map_client_error(O3kClientError::Upstream {
+            status: 403,
+            title: "Forbidden".to_owned(),
+            detail: "Quota exceeded for compute:servers".to_owned(),
+        });
+        assert!(
+            matches!(quota, ApiError::QuotaExceeded(detail) if detail.contains("Quota exceeded"))
+        );
+
+        let conflict = O3kAdapter::map_client_error(O3kClientError::Upstream {
+            status: 409,
+            title: "Conflict".to_owned(),
+            detail: "generation precondition failed".to_owned(),
+        });
+        assert_eq!(conflict.status(), axum::http::StatusCode::CONFLICT);
+        assert!(matches!(conflict, ApiError::Conflict(detail) if detail.contains("generation")));
     }
 
     #[test]

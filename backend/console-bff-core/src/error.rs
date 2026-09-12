@@ -78,6 +78,10 @@ pub enum ApiError {
     NotFound,
     #[error("forbidden")]
     Forbidden,
+    #[error("conflict: {0}")]
+    Conflict(String),
+    #[error("quota exceeded: {0}")]
+    QuotaExceeded(String),
     #[error("unauthorized")]
     Unauthorized,
     #[error("not implemented: {0}")]
@@ -115,6 +119,8 @@ impl ApiError {
             ApiError::BadRequest(_) => StatusCode::BAD_REQUEST,
             ApiError::NotFound => StatusCode::NOT_FOUND,
             ApiError::Forbidden => StatusCode::FORBIDDEN,
+            ApiError::Conflict(_) => StatusCode::CONFLICT,
+            ApiError::QuotaExceeded(_) => StatusCode::FORBIDDEN,
             ApiError::Unauthorized => StatusCode::UNAUTHORIZED,
             ApiError::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
             ApiError::Internal => StatusCode::INTERNAL_SERVER_ERROR,
@@ -130,6 +136,8 @@ impl ApiError {
             ApiError::BadRequest(_) => "Bad request",
             ApiError::NotFound => "Not found",
             ApiError::Forbidden => "Forbidden",
+            ApiError::Conflict(_) => "Conflict",
+            ApiError::QuotaExceeded(_) => "Quota exceeded",
             ApiError::Unauthorized => "Unauthorized",
             ApiError::NotImplemented(_) => "Not implemented",
             ApiError::Internal => "Internal server error",
