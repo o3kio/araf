@@ -1558,13 +1558,11 @@ impl Upstream for O3kAdapter {
             } else {
                 Vec::new()
             };
-            let scan_complete = !has_more || scan_limit == Self::MAX_OPERATION_PAGES;
             return Ok(PaginatedCollection {
-                total: if scan_complete {
-                    all_matching.len() as u64
-                } else {
-                    all_matching.len() as u64 + u64::from(has_more)
-                },
+                // A bounded filter scan cannot know the exact total when the
+                // defensive page ceiling is reached; retain a truthful lower
+                // bound until the native cursor is exhausted.
+                total: all_matching.len() as u64 + u64::from(has_more),
                 page: params.page,
                 page_size,
                 has_more: end < all_matching.len() || has_more,
