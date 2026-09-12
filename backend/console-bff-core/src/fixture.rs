@@ -2153,6 +2153,8 @@ impl Upstream for FixtureAdapter {
             records,
             since,
             until,
+            definitions: Vec::new(),
+            meters: Vec::new(),
         })
     }
 

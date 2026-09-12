@@ -1,10 +1,15 @@
 import { useMemo, useState } from "react";
+import type { MeterUsage } from "@araf/api-client";
 import { EmptyState, ErrorState, LoadingState, Table, type TableColumnDefinition } from "@araf/ui";
 import { useUsage, type UseUsageResult } from "../hooks/useUsage";
 import { useQuotas } from "../hooks/useQuotas";
 
 function dateInputValue(date: Date): string {
-  return date.toISOString().slice(0, 16);
+  // O3K metering v1 requires UTC hour-aligned boundaries. Keep the browser
+  // control explicit about that contract instead of silently rounding a
+  // tenant-selected range in the BFF.
+  const aligned = new Date(Math.floor(date.getTime() / 3_600_000) * 3_600_000);
+  return aligned.toISOString().slice(0, 16);
 }
 
 const NOW = new Date();
@@ -16,6 +21,28 @@ interface UsageContentProps {
 }
 
 function UsageContent({ usage, quotas }: UsageContentProps) {
+  const quotaMap = useMemo(() => {
+    const map = new Map<string, { limit: number | null; unit: string }>();
+    for (const project of quotas.collection?.items ?? []) {
+      for (const entry of project.entries) {
+        map.set(entry.resourceType, { limit: entry.limit, unit: entry.unit });
+      }
+    }
+    return map;
+  }, [quotas.collection]);
+
+  const latestByType = useMemo(() => {
+    const map = new Map<string, { value: number; unit: string; timestamp: string }>();
+    for (const record of usage.summary?.records ?? []) {
+      map.set(record.resourceType, {
+        value: record.value,
+        unit: record.unit,
+        timestamp: record.timestamp,
+      });
+    }
+    return map;
+  }, [usage.summary?.records]);
+
   if (usage.loading) {
     return <LoadingState message="Loading usage data" />;
   }
@@ -31,7 +58,8 @@ function UsageContent({ usage, quotas }: UsageContentProps) {
   }
 
   const summary = usage.summary;
-  if (!summary || summary.records.length === 0) {
+  const meters = summary?.meters ?? [];
+  if (!summary || (summary.records.length === 0 && meters.length === 0)) {
     return (
       <EmptyState
         title="No usage data"
@@ -40,29 +68,41 @@ function UsageContent({ usage, quotas }: UsageContentProps) {
     );
   }
 
-  // Build a map of resource type -> merged entry with quota info.
-  const quotaMap = useMemo(() => {
-    const map = new Map<string, { limit: number | null; unit: string }>();
-    for (const project of quotas.collection?.items ?? []) {
-      for (const entry of project.entries) {
-        map.set(entry.resourceType, { limit: entry.limit, unit: entry.unit });
-      }
-    }
-    return map;
-  }, [quotas.collection]);
-
-  // Latest value per resource type from the records.
-  const latestByType = useMemo(() => {
-    const map = new Map<string, { value: number; unit: string; timestamp: string }>();
-    for (const record of summary.records) {
-      map.set(record.resourceType, {
-        value: record.value,
-        unit: record.unit,
-        timestamp: record.timestamp,
-      });
-    }
-    return map;
-  }, [summary.records]);
+  if (meters.length > 0) {
+    return (
+      <section aria-label="Authoritative usage summary">
+        <p>
+          Usage is reported by O3K in exact meter units. Completeness is shown for each series; cost
+          is unavailable because this O3K profile does not advertise authoritative pricing.
+        </p>
+        <Table<MeterUsage>
+          columnDefinitions={[
+            { id: "meter", header: "Meter", cell: (row) => row.meterKey },
+            { id: "total", header: "Total", cell: (row) => `${row.total} ${row.unit}` },
+            { id: "status", header: "Completeness", cell: (row) => row.status },
+            {
+              id: "period",
+              header: "Period (UTC)",
+              cell: (row) =>
+                `${new Date(row.start).toLocaleString()} – ${new Date(row.end).toLocaleString()}`,
+            },
+            {
+              id: "observed",
+              header: "Observed through",
+              cell: (row) => new Date(row.observedThrough).toLocaleString(),
+            },
+          ]}
+          items={meters}
+          ariaLabels={{ tableLabel: "Authoritative metering usage" }}
+        />
+        {summary.definitions && summary.definitions.length > 0 ? (
+          <p>
+            Advertised meters: {summary.definitions.map((definition) => definition.key).join(", ")}.
+          </p>
+        ) : null}
+      </section>
+    );
+  }
 
   interface UsageRow {
     resourceType: string;
@@ -142,6 +182,7 @@ export function UsagePage() {
           <input
             type="datetime-local"
             value={since}
+            step={3600}
             onChange={(e) => {
               setSince(e.target.value);
             }}
@@ -153,6 +194,7 @@ export function UsagePage() {
           <input
             type="datetime-local"
             value={until}
+            step={3600}
             onChange={(e) => {
               setUntil(e.target.value);
             }}

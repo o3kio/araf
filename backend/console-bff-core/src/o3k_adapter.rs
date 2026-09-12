@@ -27,15 +27,17 @@ use crate::{
         ActionDescriptor, ActionRequest, ActionRiskClass, ActionSchemaMetadata, AlertSeverity,
         Capability, CapacitySummary, ColumnDescriptor, CreateResourceRequest, CustomerAccount,
         DetailsSectionDescriptor, DiscoveredResourceType, FilterDescriptor, FilterKind, JsonSchema,
-        ListAuditEventsParams, Operation, OperationError, OperationEvent, OperationState,
-        OperatorAuditEvent, OperatorProfile, OperatorProject, PaginatedCollection, PlatformAlert,
-        PlatformOverview, ProviderHealth, ProviderKind, Region, RegionStatus, Resource,
-        ResourceStatus, ResourceTypeDescriptor, SchemaReference, ServiceCatalogEntry,
-        ServiceDescriptor, ServiceHealth, SessionContext, StatusCount,
+        ListAuditEventsParams, MeterDefinition, MeterUsage, MeterUsageBucket, MeteringStatus,
+        Operation, OperationError, OperationEvent, OperationState, OperatorAuditEvent,
+        OperatorProfile, OperatorProject, PaginatedCollection, PlatformAlert, PlatformOverview,
+        ProviderHealth, ProviderKind, Region, RegionStatus, Resource, ResourceStatus,
+        ResourceTypeDescriptor, SchemaReference, ServiceCatalogEntry, ServiceDescriptor,
+        ServiceHealth, SessionContext, StatusCount,
     },
     o3k_client::{
-        MutationResult, NativeOperation, NativeProviderDiagnostics, NativeResourceEnvelope,
-        NativeServiceDiagnostics, O3kClient, O3kClientConfig, O3kClientError,
+        MutationResult, NativeMeterDefinition, NativeMeterUsage, NativeOperation,
+        NativeProviderDiagnostics, NativeResourceEnvelope, NativeServiceDiagnostics, O3kClient,
+        O3kClientConfig, O3kClientError,
     },
     request::RequestContext,
     upstream::{
@@ -57,6 +59,9 @@ impl O3kAdapter {
     const MAX_OPERATION_PAGES: u32 = 100;
     const MAX_DIAGNOSTICS_PAGES: u32 = 100;
     const DIAGNOSTICS_PAGE_SIZE: u32 = 200;
+    const MAX_METER_DEFINITION_PAGES: u32 = 100;
+    const METER_DEFINITION_PAGE_SIZE: u32 = 200;
+    const MAX_USAGE_METERS: usize = 8;
 
     /// Build an adapter for the given surface using configuration from the
     /// environment.
@@ -594,6 +599,146 @@ impl O3kAdapter {
             .as_deref()
             .map(|token| self.client.with_token(token))
             .unwrap_or_else(|| self.client.clone())
+    }
+
+    fn parse_meter_timestamp(value: &str, field: &str) -> Result<OffsetDateTime, ApiError> {
+        OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339).map_err(
+            |error| {
+                ApiError::Upstream(UpstreamError::Error(format!(
+                    "O3K metering {field} is not RFC3339: {error}"
+                )))
+            },
+        )
+    }
+
+    fn validate_meter_quantity(value: &str) -> Result<String, ApiError> {
+        let valid = value.len() <= 64
+            && value
+                .strip_prefix('-')
+                .unwrap_or(value)
+                .split_once('.')
+                .is_some_and(|(whole, fraction)| {
+                    !whole.is_empty()
+                        && whole.chars().all(|character| character.is_ascii_digit())
+                        && fraction.len() == 3
+                        && fraction.chars().all(|character| character.is_ascii_digit())
+                });
+        if valid {
+            Ok(value.to_owned())
+        } else {
+            Err(ApiError::Upstream(UpstreamError::Error(
+                "O3K metering quantity is not a bounded decimal".to_owned(),
+            )))
+        }
+    }
+
+    fn map_meter_definition(definition: NativeMeterDefinition) -> MeterDefinition {
+        MeterDefinition {
+            key: definition.key,
+            owning_service: definition.owning_service,
+            unit: definition.unit,
+            aggregation: definition.aggregation,
+            resource_type: definition.resource_type,
+            supported_granularities: definition.supported_granularities,
+            tenant_visible: definition.tenant_visible,
+            operator_visible: definition.operator_visible,
+            description: definition.description,
+            version: definition.version,
+        }
+    }
+
+    async fn meter_definitions(
+        &self,
+        ctx: &RequestContext,
+    ) -> Result<Vec<MeterDefinition>, ApiError> {
+        let mut cursor = None;
+        let mut seen = HashSet::new();
+        let mut definitions = Vec::new();
+        for _ in 0..Self::MAX_METER_DEFINITION_PAGES {
+            let page = self
+                .client_for(ctx)
+                .list_meter_definitions(Self::METER_DEFINITION_PAGE_SIZE, cursor.as_deref())
+                .await
+                .map_err(Self::map_client_error)?;
+            for definition in page.definitions {
+                let mapped = Self::map_meter_definition(definition);
+                if definitions
+                    .iter()
+                    .any(|existing: &MeterDefinition| existing.key == mapped.key)
+                {
+                    return Err(ApiError::Upstream(UpstreamError::Error(
+                        "O3K returned a duplicate meter definition key".to_owned(),
+                    )));
+                }
+                definitions.push(mapped);
+            }
+            if !page.has_more && page.next_cursor.is_none() {
+                return Ok(definitions);
+            }
+            let next = page.next_cursor.ok_or_else(|| {
+                ApiError::Upstream(UpstreamError::Error(
+                    "O3K indicated more meter definitions without a cursor".to_owned(),
+                ))
+            })?;
+            if next.is_empty() || !seen.insert(next.clone()) {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K returned an invalid meter definition cursor".to_owned(),
+                )));
+            }
+            cursor = Some(next);
+        }
+        Err(ApiError::Upstream(UpstreamError::Error(
+            "O3K meter definition pagination exceeded the safety bound".to_owned(),
+        )))
+    }
+
+    fn map_meter_usage(native: NativeMeterUsage) -> Result<MeterUsage, ApiError> {
+        let status = match native.status.as_str() {
+            "complete" => MeteringStatus::Complete,
+            "partial" => MeteringStatus::Partial,
+            "unavailable" => MeteringStatus::Unavailable,
+            _ => MeteringStatus::Unknown,
+        };
+        let buckets = native
+            .buckets
+            .into_iter()
+            .map(|bucket| {
+                Ok(MeterUsageBucket {
+                    bucket_start: Self::parse_meter_timestamp(
+                        &bucket.bucket_start,
+                        "bucket_start",
+                    )?,
+                    bucket_width_ms: bucket.bucket_width_ms,
+                    quantity: Self::validate_meter_quantity(&bucket.quantity)?,
+                })
+            })
+            .collect::<Result<Vec<_>, ApiError>>()?;
+        Ok(MeterUsage {
+            scope: native.scope,
+            meter_key: native.meter_key,
+            unit: native.unit,
+            aggregation: native.aggregation,
+            granularity: native.granularity,
+            start: Self::parse_meter_timestamp(&native.start, "start")?,
+            end: Self::parse_meter_timestamp(&native.end, "end")?,
+            observed_through: Self::parse_meter_timestamp(
+                &native.observed_through,
+                "observed_through",
+            )?,
+            authority_started_at: native
+                .authority_started_at
+                .as_deref()
+                .map(|value| Self::parse_meter_timestamp(value, "authority_started_at"))
+                .transpose()?,
+            last_observed_at: native
+                .last_observed_at
+                .as_deref()
+                .map(|value| Self::parse_meter_timestamp(value, "last_observed_at"))
+                .transpose()?,
+            status,
+            buckets,
+            total: Self::validate_meter_quantity(&native.total)?,
+        })
     }
 
     async fn collection_for(
@@ -1753,6 +1898,123 @@ impl Upstream for O3kAdapter {
                 project_id: effective.to_owned(),
                 entries,
             }],
+        })
+    }
+
+    async fn list_usage(
+        &self,
+        ctx: &RequestContext,
+        query: crate::model::UsageQuery,
+    ) -> Result<crate::model::UsageSummary, ApiError> {
+        let effective = self
+            .client_for(ctx)
+            .get_identity_me()
+            .await
+            .map_err(Self::map_client_error)?
+            .effective_scope_id;
+        if query
+            .project_id
+            .as_deref()
+            .is_some_and(|requested| requested != effective)
+        {
+            return Err(ApiError::Forbidden);
+        }
+        let (since, until) = query.bounded_range()?;
+        // SPEC-0046 requires hour-aligned UTC boundaries. Do not silently
+        // round a user-selected range: a malformed range is a truthful 400.
+        let hour_ms = 3_600_000_i128;
+        if since.unix_timestamp_nanos() % (hour_ms * 1_000_000) != 0
+            || until.unix_timestamp_nanos() % (hour_ms * 1_000_000) != 0
+        {
+            return Err(ApiError::BadRequest(
+                "usage range must align to whole UTC hours".to_owned(),
+            ));
+        }
+
+        let all_definitions = self.meter_definitions(ctx).await?;
+        let definitions: Vec<MeterDefinition> = all_definitions
+            .into_iter()
+            .filter(|definition| definition.tenant_visible)
+            .filter(|definition| {
+                query.resource_type.as_deref().is_none_or(|requested| {
+                    definition.resource_type == requested
+                        || definition.resource_type == requested.replace('.', "_")
+                })
+            })
+            .collect();
+        let meter_keys: Vec<String> = definitions
+            .iter()
+            .map(|definition| definition.key.clone())
+            .collect();
+        if meter_keys.is_empty() || meter_keys.len() > Self::MAX_USAGE_METERS {
+            return Ok(crate::model::UsageSummary {
+                project_id: effective,
+                records: Vec::new(),
+                since,
+                until,
+                definitions,
+                meters: Vec::new(),
+            });
+        }
+        let start = since
+            .format(&time::format_description::well_known::Rfc3339)
+            .map_err(|error| ApiError::BadRequest(error.to_string()))?;
+        let end = until
+            .format(&time::format_description::well_known::Rfc3339)
+            .map_err(|error| ApiError::BadRequest(error.to_string()))?;
+        let native = self
+            .client_for(ctx)
+            .get_meter_usage(
+                &meter_keys,
+                Some(&effective),
+                &start,
+                &end,
+                Some("hour"),
+                None,
+            )
+            .await
+            .map_err(Self::map_client_error)?;
+        if native.len() != meter_keys.len() {
+            return Err(ApiError::Upstream(UpstreamError::Error(
+                "O3K metering response did not contain one result per requested meter".to_owned(),
+            )));
+        }
+        let mut meters = Vec::with_capacity(native.len());
+        let mut seen = HashSet::new();
+        for usage in native {
+            if usage.scope != effective || !meter_keys.iter().any(|key| key == &usage.meter_key) {
+                return Err(ApiError::Forbidden);
+            }
+            if !seen.insert(usage.meter_key.clone()) {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K metering response repeated a meter key".to_owned(),
+                )));
+            }
+            let Some(definition) = definitions
+                .iter()
+                .find(|definition| definition.key == usage.meter_key)
+            else {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K metering response references an unknown definition".to_owned(),
+                )));
+            };
+            if usage.unit != definition.unit
+                || usage.aggregation != definition.aggregation
+                || usage.granularity != "hour"
+            {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K metering response does not match its definition".to_owned(),
+                )));
+            }
+            meters.push(Self::map_meter_usage(usage)?);
+        }
+        Ok(crate::model::UsageSummary {
+            project_id: effective,
+            records: Vec::new(),
+            since,
+            until,
+            definitions,
+            meters,
         })
     }
 

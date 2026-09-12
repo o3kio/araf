@@ -313,6 +313,47 @@ export interface UsageSummary {
   records: UsageRecord[];
   since: string;
   until: string;
+  /** Native O3K meter definitions; empty for explicit fixture mode. */
+  definitions?: MeterDefinition[];
+  /** Native O3K bounded usage series with explicit completeness. */
+  meters?: MeterUsage[];
+}
+
+export interface MeterDefinition {
+  key: string;
+  owningService: string;
+  unit: string;
+  aggregation: string;
+  resourceType: string;
+  supportedGranularities: string[];
+  tenantVisible: boolean;
+  operatorVisible: boolean;
+  description: string;
+  version: number;
+}
+
+export type MeteringStatus = "complete" | "partial" | "unavailable" | "unknown";
+
+export interface MeterUsageBucket {
+  bucketStart: string;
+  bucketWidthMs: number;
+  quantity: string;
+}
+
+export interface MeterUsage {
+  scope: string;
+  meterKey: string;
+  unit: string;
+  aggregation: string;
+  granularity: string;
+  start: string;
+  end: string;
+  observedThrough: string;
+  authorityStartedAt: string | null;
+  lastObservedAt: string | null;
+  status: MeteringStatus;
+  buckets: MeterUsageBucket[];
+  total: string;
 }
 
 export interface ListUsageQuery {

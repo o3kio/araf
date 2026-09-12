@@ -332,6 +332,53 @@ pub struct NativeQuotaResponse {
     pub items: Vec<serde_json::Value>,
 }
 
+/// Native O3K metering definition (SPEC-0046). Kept behind the adapter so
+/// backend-oriented wire fields never become frontend authority.
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeMeterDefinition {
+    pub key: String,
+    pub owning_service: String,
+    pub unit: String,
+    pub aggregation: String,
+    pub resource_type: String,
+    pub supported_granularities: Vec<String>,
+    pub tenant_visible: bool,
+    pub operator_visible: bool,
+    pub description: String,
+    pub version: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeMeterDefinitionsPage {
+    pub definitions: Vec<NativeMeterDefinition>,
+    pub has_more: bool,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeMeterUsageBucket {
+    pub bucket_start: String,
+    pub bucket_width_ms: i64,
+    pub quantity: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeMeterUsage {
+    pub scope: String,
+    pub meter_key: String,
+    pub unit: String,
+    pub aggregation: String,
+    pub granularity: String,
+    pub start: String,
+    pub end: String,
+    pub observed_through: String,
+    pub authority_started_at: Option<String>,
+    pub last_observed_at: Option<String>,
+    pub status: String,
+    pub buckets: Vec<NativeMeterUsageBucket>,
+    pub total: String,
+}
+
 /// Bounded native audit collection response.
 #[derive(Clone, Debug, Deserialize)]
 pub struct NativeAuditListResponse {
@@ -844,6 +891,59 @@ impl O3kClient {
         self.get_json(&self.url("/o3k/v1/quota")).await
     }
 
+    /// GET /o3k/v1/metering/definitions. The catalog is secret-free and
+    /// server-bounded; the cursor remains opaque to Araf.
+    pub async fn list_meter_definitions(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<NativeMeterDefinitionsPage, O3kClientError> {
+        let mut url = reqwest::Url::parse(&self.url("/o3k/v1/metering/definitions"))
+            .map_err(|error| O3kClientError::Configuration(error.to_string()))?;
+        {
+            let mut query = url.query_pairs_mut();
+            query.append_pair("limit", &limit.clamp(1, 200).to_string());
+            if let Some(cursor) = cursor {
+                query.append_pair("cursor", cursor);
+            }
+        }
+        self.get_discovery_json(url.as_str()).await
+    }
+
+    /// GET /o3k/v1/metering/usage. Meter keys are repeatable and all query
+    /// values are encoded by `Url` so opaque IDs and RFC3339 instants cannot
+    /// alter the requested scope or route.
+    pub async fn get_meter_usage(
+        &self,
+        meters: &[String],
+        scope: Option<&str>,
+        start: &str,
+        end: &str,
+        granularity: Option<&str>,
+        resource_id: Option<&str>,
+    ) -> Result<Vec<NativeMeterUsage>, O3kClientError> {
+        let mut url = reqwest::Url::parse(&self.url("/o3k/v1/metering/usage"))
+            .map_err(|error| O3kClientError::Configuration(error.to_string()))?;
+        {
+            let mut query = url.query_pairs_mut();
+            for meter in meters {
+                query.append_pair("meter", meter);
+            }
+            if let Some(scope) = scope {
+                query.append_pair("scope", scope);
+            }
+            query.append_pair("start", start);
+            query.append_pair("end", end);
+            if let Some(granularity) = granularity {
+                query.append_pair("granularity", granularity);
+            }
+            if let Some(resource_id) = resource_id {
+                query.append_pair("resource_id", resource_id);
+            }
+        }
+        self.get_json(url.as_str()).await
+    }
+
     /// GET /o3k/v1/audit with bounded, server-side filters.
     pub async fn list_audit(
         &self,
@@ -1190,7 +1290,7 @@ pub struct IssuedNativeToken {
 mod tests {
     use super::*;
     use wiremock::{
-        matchers::{body_json, method, path},
+        matchers::{body_json, header, method, path, query_param},
         Mock, MockServer, ResponseTemplate,
     };
 
@@ -1406,5 +1506,54 @@ mod tests {
                 .version,
             "v1"
         );
+    }
+
+    #[tokio::test]
+    async fn metering_client_preserves_repeatable_meters_and_bounds_definition_pages() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/o3k/v1/metering/definitions"))
+            .and(header("Authorization", "Bearer test-token"))
+            .and(query_param("limit", "200"))
+            .and(query_param("cursor", "opaque/cursor"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "definitions": [], "has_more": false, "next_cursor": null
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/o3k/v1/metering/usage"))
+            .and(header("Authorization", "Bearer test-token"))
+            .and(query_param("meter", "compute:instance_seconds"))
+            .and(query_param("meter", "volume:allocated_byte_seconds"))
+            .and(query_param("scope", "project-1"))
+            .and(query_param("granularity", "hour"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+            .mount(&server)
+            .await;
+        let client = O3kClient::new(O3kClientConfig {
+            base_url: server.uri(),
+            token: "test-token".to_owned(),
+        });
+        let page = client
+            .list_meter_definitions(500, Some("opaque/cursor"))
+            .await
+            .expect("definitions");
+        assert!(page.definitions.is_empty());
+        let usage = client
+            .get_meter_usage(
+                &[
+                    "compute:instance_seconds".to_owned(),
+                    "volume:allocated_byte_seconds".to_owned(),
+                ],
+                Some("project-1"),
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T01:00:00Z",
+                Some("hour"),
+                None,
+            )
+            .await
+            .expect("usage");
+        assert!(usage.is_empty());
     }
 }
