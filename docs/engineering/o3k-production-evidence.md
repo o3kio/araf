@@ -22,6 +22,9 @@ an executable `ARAF_P2_8_HARNESS`, a provider other than `fake`/`fixture`, and
 HTTPS URLs for O3K, both BFFs, and OIDC discovery. It passes only the
 non-secret endpoint metadata to the harness and records a redacted result
 under `ARAF_P2_8_EVIDENCE_DIR`.
+The harness must also create a non-symlink `harness.success` marker containing
+exactly `P2_8_HARNESS_PASS=1`; without that redacted attestation the wrapper
+cannot emit a successful result.
 
 ## Current host attempt
 
@@ -69,4 +72,3 @@ that contract can be escalated upstream.
 ## Verdict
 
 `NO-GO`
-

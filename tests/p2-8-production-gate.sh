@@ -10,6 +10,7 @@ set -Eeuo pipefail
 araf_root="${ARAF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 evidence_dir="${ARAF_P2_8_EVIDENCE_DIR:-${araf_root}/target/p2-8-production-gate}"
 result_file="${evidence_dir}/result.env"
+harness_result="${evidence_dir}/harness.success"
 harness="${ARAF_P2_8_HARNESS:-}"
 provider="${ARAF_P2_8_PROVIDER:-}"
 o3k_url="${ARAF_P2_8_O3K_URL:-}"
@@ -70,6 +71,11 @@ if ! env -i PATH="${PATH}" \
   echo 'P2.8 production gate: NO-GO — real-environment harness failed' >&2
   exit 1
 fi
+
+[[ -f "${harness_result}" && ! -L "${harness_result}" ]] \
+  || fail_gate 'real-environment harness must create the redacted harness.success marker'
+grep -Fqx 'P2_8_HARNESS_PASS=1' "${harness_result}" \
+  || fail_gate 'real-environment harness success marker is malformed'
 
 write_result 'GO' 'all real-environment assertions passed'
 echo "P2.8 production gate: GO — evidence in ${result_file}"
