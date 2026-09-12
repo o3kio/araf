@@ -321,6 +321,28 @@ pub struct RegionsResponse {
     pub count: usize,
 }
 
+/// Native tenant quota projection.  Quota item fields are intentionally kept
+/// as JSON at this narrow transport boundary because O3K may add limit kinds
+/// while the adapter validates and normalizes them into Araf's public model.
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeQuotaResponse {
+    pub version: String,
+    pub scope: serde_json::Value,
+    #[serde(default)]
+    pub items: Vec<serde_json::Value>,
+}
+
+/// Bounded native audit collection response.
+#[derive(Clone, Debug, Deserialize)]
+pub struct NativeAuditListResponse {
+    #[serde(default)]
+    pub items: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub next_cursor: Option<String>,
+    #[serde(default)]
+    pub has_more: bool,
+}
+
 /// Response from `GET /o3k/v1/identity/me`.
 #[derive(Clone, Debug, Deserialize)]
 pub struct CurrentContext {
@@ -699,6 +721,51 @@ impl O3kClient {
     /// GET /o3k/v1/identity/me
     pub async fn get_identity_me(&self) -> Result<CurrentContext, O3kClientError> {
         self.get_json(&self.url("/o3k/v1/identity/me")).await
+    }
+
+    /// GET /o3k/v1/quota.  The native response is scope-bound to the token.
+    pub async fn get_quota(&self) -> Result<NativeQuotaResponse, O3kClientError> {
+        self.get_json(&self.url("/o3k/v1/quota")).await
+    }
+
+    /// GET /o3k/v1/audit with bounded, server-side filters.
+    pub async fn list_audit(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+        action: Option<&str>,
+        principal_id: Option<&str>,
+        from: Option<&str>,
+        until: Option<&str>,
+    ) -> Result<NativeAuditListResponse, O3kClientError> {
+        let mut url = self.url("/o3k/v1/audit");
+        let mut params = vec![("limit", limit.clamp(1, 200).to_string())];
+        for (key, value) in [
+            ("cursor", cursor),
+            ("action", action),
+            ("principal_id", principal_id),
+            ("from", from),
+            ("until", until),
+        ] {
+            if let Some(value) = value {
+                params.push((key, value.to_owned()));
+            }
+        }
+        url.push('?');
+        url.push_str(
+            &params
+                .iter()
+                .map(|(key, value)| format!("{key}={}", Self::path_segment(value)))
+                .collect::<Vec<_>>()
+                .join("&"),
+        );
+        self.get_json(&url).await
+    }
+
+    /// GET /o3k/v1/audit/{id}.
+    pub async fn get_audit(&self, id: &str) -> Result<serde_json::Value, O3kClientError> {
+        self.get_json(&self.url(&format!("/o3k/v1/audit/{}", Self::path_segment(id))))
+            .await
     }
 
     /// GET /o3k/v1/operator/profile. O3K performs the system/operator check.

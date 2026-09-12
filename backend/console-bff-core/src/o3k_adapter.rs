@@ -27,10 +27,11 @@ use crate::{
         ActionDescriptor, ActionRequest, ActionRiskClass, ActionSchemaMetadata, Capability,
         CapacitySummary, ColumnDescriptor, CreateResourceRequest, CustomerAccount,
         DetailsSectionDescriptor, DiscoveredResourceType, FilterDescriptor, FilterKind, JsonSchema,
-        Operation, OperationError, OperationEvent, OperationState, OperatorAuditEvent,
-        OperatorProfile, OperatorProject, PaginatedCollection, PlatformOverview, ProviderHealth,
-        Region, RegionStatus, Resource, ResourceStatus, ResourceTypeDescriptor, SchemaReference,
-        ServiceCatalogEntry, ServiceDescriptor, ServiceHealth, SessionContext,
+        ListAuditEventsParams, Operation, OperationError, OperationEvent, OperationState,
+        OperatorAuditEvent, OperatorProfile, OperatorProject, PaginatedCollection,
+        PlatformOverview, ProviderHealth, Region, RegionStatus, Resource, ResourceStatus,
+        ResourceTypeDescriptor, SchemaReference, ServiceCatalogEntry, ServiceDescriptor,
+        ServiceHealth, SessionContext,
     },
     o3k_client::{
         MutationResult, NativeOperation, NativeResourceEnvelope, O3kClient, O3kClientConfig,
@@ -165,6 +166,88 @@ impl O3kAdapter {
         } else {
             verb.to_lowercase()
         }
+    }
+
+    fn native_scope_id(value: &serde_json::Value) -> Option<String> {
+        value.as_str().map(ToOwned::to_owned).or_else(|| {
+            value
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned)
+        })
+    }
+
+    fn native_string(value: Option<&serde_json::Value>, field: &str) -> Result<String, ApiError> {
+        value
+            .and_then(serde_json::Value::as_str)
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| {
+                ApiError::Upstream(UpstreamError::Error(format!(
+                    "O3K audit event omitted {field}"
+                )))
+            })
+    }
+
+    fn map_native_audit(value: serde_json::Value) -> Result<crate::model::AuditEvent, ApiError> {
+        let id = Self::native_string(value.get("event_id"), "event_id")?;
+        let actor = Self::native_string(value.get("principal_id"), "principal_id")?;
+        let action = value
+            .get("action")
+            .and_then(|v| {
+                v.as_str()
+                    .or_else(|| v.get("action").and_then(serde_json::Value::as_str))
+            })
+            .ok_or_else(|| {
+                ApiError::Upstream(UpstreamError::Error(
+                    "O3K audit event omitted action".to_owned(),
+                ))
+            })?
+            .to_owned();
+        let resource_type = value.get("resource_type").and_then(|v| {
+            v.as_str().map(ToOwned::to_owned).or_else(|| {
+                Some(format!(
+                    "{}.{}",
+                    v.get("namespace")?.as_str()?,
+                    v.get("name")?.as_str()?
+                ))
+            })
+        });
+        let resource_id = value.get("resource_id").and_then(Self::native_scope_id);
+        let project_id = value
+            .get("effective_scope")
+            .and_then(Self::native_scope_id)
+            .or_else(|| value.get("owner_scope").and_then(Self::native_scope_id));
+        let outcome = Self::native_string(value.get("outcome"), "outcome")?.to_ascii_lowercase();
+        let recorded_at =
+            Self::native_string(value.get("timestamp"), "timestamp").and_then(|timestamp| {
+                OffsetDateTime::parse(&timestamp, &time::format_description::well_known::Rfc3339)
+                    .map_err(|e| {
+                        ApiError::Upstream(UpstreamError::Error(format!(
+                            "invalid O3K audit timestamp: {e}"
+                        )))
+                    })
+            })?;
+        let correlation_id = value
+            .get("request_id")
+            .and_then(serde_json::Value::as_str)
+            .or_else(|| value.get("audit_id").and_then(serde_json::Value::as_str))
+            .ok_or_else(|| {
+                ApiError::Upstream(UpstreamError::Error(
+                    "O3K audit event omitted correlation id".to_owned(),
+                ))
+            })?
+            .to_owned();
+        Ok(crate::model::AuditEvent {
+            id,
+            actor,
+            action,
+            resource_type,
+            resource_id,
+            project_id,
+            outcome,
+            recorded_at,
+            correlation_id,
+        })
     }
 
     fn map_native_resource(envelope: NativeResourceEnvelope) -> Result<Resource, ApiError> {
@@ -389,6 +472,26 @@ impl O3kAdapter {
                 resource_type: resource_id.clone(),
                 action: action.name.clone(),
             }));
+        }
+
+        // Probe canonical tenant readers for governance capability truth.
+        // Operator-only IAM administration is deliberately not exposed here.
+        let client = self.client_for(ctx);
+        if client.get_quota().await.is_ok() {
+            capabilities.push(Capability {
+                resource_type: "tenant.quota".to_owned(),
+                action: "read".to_owned(),
+            });
+        }
+        if client
+            .list_audit(1, None, None, None, None, None)
+            .await
+            .is_ok()
+        {
+            capabilities.push(Capability {
+                resource_type: "tenant.audit".to_owned(),
+                action: "read".to_owned(),
+            });
         }
 
         Ok(SessionContext {
@@ -1476,6 +1579,197 @@ impl Upstream for O3kAdapter {
             .map_err(Self::map_client_error)?;
         self.fetch_or_build_operation(result, ctx, "delete", resource_type)
             .await
+    }
+
+    async fn list_quotas(
+        &self,
+        ctx: &RequestContext,
+        project_id: Option<&str>,
+    ) -> Result<PaginatedCollection<crate::model::ProjectQuota>, ApiError> {
+        let effective = self
+            .client_for(ctx)
+            .get_identity_me()
+            .await
+            .map_err(Self::map_client_error)?
+            .effective_scope_id;
+        if project_id.is_some_and(|requested| requested != effective) {
+            return Err(ApiError::Forbidden);
+        }
+        let native = self
+            .client_for(ctx)
+            .get_quota()
+            .await
+            .map_err(Self::map_client_error)?;
+        if native.version != "v1" {
+            return Err(ApiError::Upstream(UpstreamError::Error(format!(
+                "unsupported O3K quota contract version {}",
+                native.version
+            ))));
+        }
+        let scope = Self::native_scope_id(&native.scope).ok_or_else(|| {
+            ApiError::Upstream(UpstreamError::Error(
+                "O3K quota response omitted scope id".to_owned(),
+            ))
+        })?;
+        if scope != effective {
+            return Err(ApiError::Forbidden);
+        }
+        let entries = native
+            .items
+            .into_iter()
+            .map(|item| {
+                let namespace = Self::native_string(item.get("namespace"), "quota namespace")?;
+                let key = Self::native_string(item.get("key"), "quota key")?;
+                let unit = Self::native_string(item.get("unit"), "quota unit")?;
+                let used = item
+                    .get("usage")
+                    .and_then(serde_json::Value::as_u64)
+                    .ok_or_else(|| {
+                        ApiError::Upstream(UpstreamError::Error(
+                            "O3K quota item omitted usage".to_owned(),
+                        ))
+                    })?;
+                let limit = match item
+                    .get("limit")
+                    .and_then(|v| v.get("kind"))
+                    .and_then(serde_json::Value::as_str)
+                {
+                    Some("unlimited") => None,
+                    Some("maximum") => item
+                        .get("limit")
+                        .and_then(|v| v.get("value"))
+                        .and_then(serde_json::Value::as_u64)
+                        .ok_or_else(|| {
+                            ApiError::Upstream(UpstreamError::Error(
+                                "O3K quota maximum omitted value".to_owned(),
+                            ))
+                        })?
+                        .into(),
+                    Some(other) => {
+                        return Err(ApiError::Upstream(UpstreamError::Error(format!(
+                            "unsupported O3K quota limit kind {other}"
+                        ))))
+                    }
+                    None => {
+                        return Err(ApiError::Upstream(UpstreamError::Error(
+                            "O3K quota item omitted limit kind".to_owned(),
+                        )))
+                    }
+                };
+                Ok(crate::model::QuotaEntry {
+                    resource_type: format!("{namespace}.{key}"),
+                    limit,
+                    used,
+                    unit,
+                })
+            })
+            .collect::<Result<Vec<_>, ApiError>>()?;
+        Ok(PaginatedCollection {
+            total: 1,
+            page: 0,
+            page_size: 1,
+            has_more: false,
+            items: vec![crate::model::ProjectQuota {
+                project_id: effective.to_owned(),
+                entries,
+            }],
+        })
+    }
+
+    async fn list_audit_events(
+        &self,
+        ctx: &RequestContext,
+        params: ListAuditEventsParams,
+    ) -> Result<PaginatedCollection<crate::model::AuditEvent>, ApiError> {
+        let effective = self
+            .client_for(ctx)
+            .get_identity_me()
+            .await
+            .map_err(Self::map_client_error)?
+            .effective_scope_id;
+        if params
+            .project_id
+            .as_deref()
+            .is_some_and(|requested| requested != effective)
+        {
+            return Err(ApiError::Forbidden);
+        }
+        let page_size = params.page_size.clamp(1, 100);
+        let target = params.page.min(Self::MAX_OPERATION_PAGES);
+        let mut cursor = None;
+        let mut seen = HashSet::new();
+        let mut selected = Vec::new();
+        let mut has_more = false;
+        let since = params
+            .since
+            .map(|v| {
+                v.format(&time::format_description::well_known::Rfc3339)
+                    .map_err(|e| ApiError::BadRequest(e.to_string()))
+            })
+            .transpose()?;
+        let until = params
+            .until
+            .map(|v| {
+                v.format(&time::format_description::well_known::Rfc3339)
+                    .map_err(|e| ApiError::BadRequest(e.to_string()))
+            })
+            .transpose()?;
+        for index in 0..=target {
+            let response = self
+                .client_for(ctx)
+                .list_audit(
+                    page_size,
+                    cursor.as_deref(),
+                    params.action.as_deref(),
+                    params.actor.as_deref(),
+                    since.as_deref(),
+                    until.as_deref(),
+                )
+                .await
+                .map_err(Self::map_client_error)?;
+            has_more = response.has_more || response.next_cursor.is_some();
+            if index == target {
+                selected = response
+                    .items
+                    .into_iter()
+                    .map(Self::map_native_audit)
+                    .collect::<Result<Vec<_>, _>>()?;
+            }
+            if !has_more {
+                break;
+            }
+            let next = response.next_cursor.ok_or_else(|| {
+                ApiError::Upstream(UpstreamError::Error(
+                    "O3K indicated more audit events without cursor".to_owned(),
+                ))
+            })?;
+            if next.is_empty() || !seen.insert(next.clone()) {
+                return Err(ApiError::Upstream(UpstreamError::Error(
+                    "O3K returned invalid audit pagination cursor".to_owned(),
+                )));
+            }
+            cursor = Some(next);
+        }
+        Ok(PaginatedCollection {
+            total: selected.len() as u64 + u64::from(has_more),
+            page: params.page,
+            page_size,
+            has_more,
+            items: selected,
+        })
+    }
+
+    async fn get_audit_event(
+        &self,
+        ctx: &RequestContext,
+        id: &str,
+    ) -> Result<crate::model::AuditEvent, ApiError> {
+        Self::map_native_audit(
+            self.client_for(ctx)
+                .get_audit(id)
+                .await
+                .map_err(Self::map_client_error)?,
+        )
     }
 
     async fn list_operations(

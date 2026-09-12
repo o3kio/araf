@@ -42,7 +42,7 @@ function UsageContent({ usage, quotas }: UsageContentProps) {
 
   // Build a map of resource type -> merged entry with quota info.
   const quotaMap = useMemo(() => {
-    const map = new Map<string, { limit: number; unit: string }>();
+    const map = new Map<string, { limit: number | null; unit: string }>();
     for (const project of quotas.collection?.items ?? []) {
       for (const entry of project.entries) {
         map.set(entry.resourceType, { limit: entry.limit, unit: entry.unit });
@@ -69,7 +69,7 @@ function UsageContent({ usage, quotas }: UsageContentProps) {
     value: number;
     unit: string;
     timestamp: string;
-    limit: number | undefined;
+    limit: number | null | undefined;
   }
 
   const columnDefinitions: TableColumnDefinition<UsageRow>[] = [
@@ -78,13 +78,13 @@ function UsageContent({ usage, quotas }: UsageContentProps) {
     {
       id: "limit",
       header: "Limit",
-      cell: (r) => (r.limit !== undefined ? `${r.limit.toLocaleString()} ${r.unit}` : "\u2014"),
+      cell: (r) => (r.limit != null ? `${r.limit.toLocaleString()} ${r.unit}` : "\u2014"),
     },
     {
       id: "usage",
       header: "Usage",
       cell: (r) => {
-        if (r.limit === undefined || r.limit === 0) return "\u2014";
+        if (r.limit == null || r.limit === 0) return "\u2014";
         const pct = Math.round((r.value / r.limit) * 100);
         return `${String(pct)}%`;
       },
@@ -191,13 +191,13 @@ function QuotaOverview({
 }: {
   projects: {
     projectId: string;
-    entries: { resourceType: string; limit: number; used: number; unit: string }[];
+    entries: { resourceType: string; limit: number | null; used: number; unit: string }[];
   }[];
 }) {
   interface QuotaRow {
     projectId: string;
     resourceType: string;
-    limit: number;
+    limit: number | null;
     used: number;
     unit: string;
   }
@@ -206,12 +206,17 @@ function QuotaOverview({
     { id: "project", header: "Project", cell: (r) => r.projectId },
     { id: "resourceType", header: "Resource type", cell: (r) => r.resourceType },
     { id: "used", header: "Used", cell: (r) => `${r.used.toLocaleString()} ${r.unit}` },
-    { id: "limit", header: "Limit", cell: (r) => `${r.limit.toLocaleString()} ${r.unit}` },
+    {
+      id: "limit",
+      header: "Limit",
+      cell: (r) =>
+        r.limit == null ? `Unlimited ${r.unit}` : `${r.limit.toLocaleString()} ${r.unit}`,
+    },
     {
       id: "usagePct",
       header: "Usage",
       cell: (r) => {
-        if (r.limit === 0) return "\u2014";
+        if (r.limit == null || r.limit === 0) return "\u2014";
         const pct = Math.round((r.used / r.limit) * 100);
         return `${String(pct)}%`;
       },

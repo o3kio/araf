@@ -278,7 +278,8 @@ export interface ProjectMember {
 
 export interface QuotaEntry {
   resourceType: string;
-  limit: number;
+  /** null is the native O3K `unlimited` limit kind. */
+  limit: number | null;
   used: number;
   unit: string;
 }
@@ -595,6 +596,7 @@ export interface ArafClient {
   listQuotas(query?: ListQuotasQuery): Promise<PaginatedCollection<ProjectQuota>>;
   listUsage(query?: ListUsageQuery): Promise<UsageSummary>;
   listAuditEvents(query?: ListAuditEventsQuery): Promise<PaginatedCollection<AuditEvent>>;
+  getAuditEvent?(id: string): Promise<AuditEvent>;
   listApiCredentials(query?: ListApiCredentialsQuery): Promise<PaginatedCollection<ApiCredential>>;
   createApiCredential(payload: CreateApiCredentialRequest): Promise<ApiCredential>;
   deleteApiCredential(id: string): Promise<void>;
@@ -809,6 +811,9 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
           until: query?.until,
         },
       }),
+
+    getAuditEvent: (id) =>
+      request<AuditEvent>(`/api/v1/governance/audit/${encodeURIComponent(id)}`),
 
     listApiCredentials: (query) =>
       request<PaginatedCollection<ApiCredential>>("/api/v1/governance/api-credentials", {

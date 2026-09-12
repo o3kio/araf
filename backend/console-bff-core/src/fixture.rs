@@ -579,7 +579,7 @@ impl FixtureAdapter {
             let used = ((seed >> (idx * 4 + 3)) % (limit.max(1))).min(limit);
             QuotaEntry {
                 resource_type: resource_type.to_owned(),
-                limit,
+                limit: Some(limit),
                 used,
                 unit: unit.to_owned(),
             }

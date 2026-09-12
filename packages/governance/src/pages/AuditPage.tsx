@@ -7,7 +7,7 @@ import {
   Button,
   type TableColumnDefinition,
 } from "@araf/ui";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useCapabilities } from "@araf/resources";
 import type { AuditEvent } from "@araf/api-client";
 import { useAuditEvents } from "../hooks/useAuditEvents";
@@ -119,7 +119,15 @@ export function AuditPage() {
     },
     { id: "project", header: "Project", cell: (event) => event.projectId ?? "—" },
     { id: "outcome", header: "Outcome", cell: (event) => event.outcome },
-    { id: "correlation", header: "Correlation ID", cell: (event) => event.correlationId },
+    {
+      id: "correlation",
+      header: "Correlation ID",
+      cell: (event) => (
+        <Link to={`/organization/audit/${encodeURIComponent(event.id)}`}>
+          {event.correlationId}
+        </Link>
+      ),
+    },
   ];
 
   const totalPages = collection ? Math.ceil(collection.total / collection.pageSize) : 0;

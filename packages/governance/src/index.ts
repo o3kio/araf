@@ -43,4 +43,5 @@ export { UserDetailPage } from "./pages/UserDetailPage";
 export { QuotasPage } from "./pages/QuotasPage";
 export { UsagePage } from "./pages/UsagePage";
 export { AuditPage } from "./pages/AuditPage";
+export { AuditDetailPage } from "./pages/AuditDetailPage";
 export { ApiCredentialsPage } from "./pages/ApiCredentialsPage";

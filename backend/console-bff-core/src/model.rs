@@ -430,7 +430,8 @@ pub struct ProjectMember {
 #[serde(rename_all = "camelCase")]
 pub struct QuotaEntry {
     pub resource_type: String,
-    pub limit: u64,
+    /// `None` represents the authoritative O3K `unlimited` limit kind.
+    pub limit: Option<u64>,
     pub used: u64,
     pub unit: String,
 }
