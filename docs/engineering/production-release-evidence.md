@@ -13,7 +13,7 @@
 | Gate | Evidence | Result |
 | --- | --- | --- |
 | P2 native O3K | Post-P3 baseline and existing real O3K gate evidence | PASS (baseline) |
-| P12 IAM/current-process identity | O3K `p12-iam-7-real-idp.sh` with Araf P12-IAM.8 hook | PASS for the current-process external-IdP journey; this is not a production deployment claim |
+| P12 IAM/current-process identity | `p12-iam-real-idp-p4-evidence.md` (O3K `p12-iam-7-real-idp.sh` with Araf P12-IAM.8 hook) | PASS for the current-process external-IdP journey; this is not a production deployment claim |
 | P3 OpenStack core profile | `docs/engineering/openstack-production-evidence.md`, `target/p3-9-openstack-gate/result.env` | PASS at exact commit `92d4013`; current-head rerun blocked by torn-down Kolla services |
 | P4.1 observability | `p4-1-observability-evidence.md`, `/metrics`, `/readyz`, correlation tests | PASS locally; real deployment attachment required |
 | P4.2 performance/scale | `performance-evidence.md`, `tests/performance-bounded.sh` | PASS for bounded fixture; O3K/OpenStack load attachment required |
