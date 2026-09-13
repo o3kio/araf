@@ -1,10 +1,14 @@
 # Araf
 
-**The O3K cloud console — the human interface to a cloud kernel literally born in the cloud.**
+**A next-generation cloud console for O3K and supported OpenStack clouds.**
 
-Araf is the tenant and operator experience for [O3K](https://github.com/o3kio/o3k), a Rust-native cloud kernel designed from first principles for cloud infrastructure. It presents stable O3K-native resources, durable operations, relationships, capabilities, scopes, usage and policy while keeping provider implementation details out of the normal tenant experience.
+Araf is one tenant/operator console product with a shared generic UX and a server-side `CloudBackend` boundary. [O3K](https://github.com/o3kio/o3k) is Araf's native semantic model and richest integration; supported OpenStack clouds are operated through a bounded `OpenStackBackend` without turning Nova, Neutron, Cinder, or Glance into the normal tenant mental model.
 
-This repository is intentionally **not** a Horizon-style UI fork and is not an infrastructure-specific administration panel. OpenStack remains a compatibility and migration surface; Araf presents the O3K-native cloud model.
+Araf is **not** a Horizon fork and does not implement a Horizon compatibility protocol. It is intended as a modern successor to Horizon's role for the supported OpenStack profile while remaining the native console for O3K. Each backend remains authoritative for its own cloud resource state.
+
+![Araf, O3K and OpenStack architecture](docs/architecture/araf-o3k-openstack-architecture.webp)
+
+For the full architecture, authority boundaries, compatibility paths, current support evidence, and claim limits, see [Araf, O3K and OpenStack architecture](docs/architecture/araf-o3k-openstack.md).
 
 ## Strategic position
 
@@ -22,10 +26,10 @@ The product may expose different capabilities per deployment, but it must not fo
 - Shared UI platform with **separate Tenant Console and Operator Console security/deployment surfaces**.
 - React + TypeScript + Vite frontend.
 - O3K-owned design-system API, initially implemented using Cloudscape-compatible primitives.
-- Rust Backend-for-Frontend (BFF) services; browser code does not own O3K bearer/refresh tokens.
-- Native O3K resource model; OpenStack is a compatibility/migration concern, not the native UX vocabulary.
+- Rust Backend-for-Frontend (BFF) services; browser code does not own raw O3K or OpenStack backend credentials/tokens.
+- O3K-native semantics remain the primary model; supported OpenStack clouds sit behind the server-side `CloudBackend` boundary and do not redefine the normal tenant UX vocabulary.
 - Manifest-first, capability-driven generic resource runtime.
-- Durable O3K Operations are first-class UX objects.
+- Durable O3K Operations are first-class UX objects; OpenStack `CompatibilityOperation` state is derived correlation/reconciliation state and never overrides authoritative OpenStack resource truth.
 - Portal/API/CLI/Terraform parity; no privileged console-only cloud semantics.
 - Provider details are visible to operators when required and hidden from ordinary tenants.
 - WCAG 2.2 AA target for production-critical workflows.
@@ -86,8 +90,12 @@ See:
 - `docs/product/mvp-prototype.md`
 - `docs/product/strategic-alignment.md`
 - `docs/product/screen-inventory.md`
+- `docs/architecture/araf-o3k-openstack.md`
 - `docs/architecture/overview.md`
+- `docs/architecture/backend-abstraction.md`
 - `docs/architecture/o3k-integration-contract.md`
+- `docs/production/openstack-support.md`
+- `docs/engineering/openstack-production-evidence.md`
 - `docs/security/threat-model.md`
 - `docs/engineering/quality-gates.md`
 - `docs/roadmap.md`
