@@ -213,3 +213,55 @@ async fn uses_server_sorting_and_neutron_marker_pagination() {
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.items[0].id, "net-3");
 }
+
+#[tokio::test]
+async fn neutron_short_page_returns_empty_for_later_page() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v2.0/networks"))
+        .and(query_param("limit", "2"))
+        .and(query_param("project_id", "project-1"))
+        .and(query_param_is_missing("marker"))
+        .respond_with(ResponseTemplate::new(StatusCode::OK).set_body_json(
+            serde_json::json!({
+                "networks": [{"id":"net-1","name":"only","status":"ACTIVE","project_id":"project-1"}]
+            }),
+        ))
+        .mount(&server)
+        .await;
+
+    let adapter = OpenStackAdapter::new(
+        "tenant-bff",
+        OpenStackClientConfig {
+            auth_url: server.uri(),
+            token: Some("keystone-token".into()),
+            username: None,
+            password: None,
+            user_domain: "Default".into(),
+            project_name: None,
+            project_id: Some("project-1".into()),
+            region: None,
+            compute_url: None,
+            image_url: None,
+            network_url: Some(server.uri()),
+            volume_url: None,
+            object_storage_url: None,
+        },
+    )
+    .expect("adapter");
+
+    let page = adapter
+        .list_resources(
+            &context(),
+            "network.network",
+            ListResourcesParams {
+                page: 1,
+                page_size: 2,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("list");
+    assert!(page.items.is_empty());
+    assert!(!page.has_more);
+}

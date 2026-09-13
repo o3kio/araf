@@ -31,6 +31,7 @@ use crate::{
 };
 
 const MAX_PAGE_SIZE: u32 = 100;
+const MAX_SCOPE_RESULTS: usize = MAX_PAGE_SIZE as usize;
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Clone, Debug)]
@@ -787,6 +788,59 @@ impl OpenStackAdapter {
 impl CloudBackend for OpenStackAdapter {}
 
 impl OpenStackAdapter {
+    async fn discover_scope_page(
+        &self,
+        ctx: &RequestContext,
+        max_results: usize,
+    ) -> Result<(Vec<crate::upstream::BackendScope>, bool), ApiError> {
+        let _ = self.server_token(ctx).await?;
+        let mut url = self.keystone_url("projects")?;
+        // Request one sentinel item so callers can advertise a continuation
+        // without materialising an unbounded project inventory.
+        url.query_pairs_mut()
+            .append_pair("limit", &(max_results.saturating_add(1)).to_string());
+        let (_, body) = self.request_json(ctx, Method::GET, url, None).await?;
+        let selected = self.selected_project(ctx);
+        let configured_name = self.config.project_name.as_deref();
+        let mut scopes = body
+            .get("projects")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|project| {
+                let id = project.get("id")?.as_str()?.to_owned();
+                if self.surface != "operator-bff" {
+                    if let Some(selected) = selected {
+                        if selected != id {
+                            return None;
+                        }
+                    } else if self.config.project_id.as_deref() != Some(id.as_str())
+                        && project.get("name").and_then(Value::as_str) != configured_name
+                    {
+                        return None;
+                    }
+                }
+                Some(crate::upstream::BackendScope {
+                    id,
+                    kind: "project".into(),
+                    name: project
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .map(ToOwned::to_owned),
+                    domain_id: project
+                        .get("domain_id")
+                        .and_then(Value::as_str)
+                        .map(ToOwned::to_owned),
+                    can_request_token: false,
+                })
+            })
+            .take(max_results.saturating_add(1))
+            .collect::<Vec<_>>();
+        let has_more = scopes.len() > max_results;
+        scopes.truncate(max_results);
+        Ok((scopes, has_more))
+    }
+
     async fn persist_failed_operation(
         &self,
         ctx: &RequestContext,
@@ -824,44 +878,9 @@ impl Upstream for OpenStackAdapter {
         &self,
         ctx: &RequestContext,
     ) -> Result<Vec<crate::upstream::BackendScope>, ApiError> {
-        let _ = self.server_token(ctx).await?;
-        let url = self.keystone_url("projects")?;
-        let (_, body) = self.request_json(ctx, Method::GET, url, None).await?;
-        let selected = self.selected_project(ctx);
-        let configured_name = self.config.project_name.as_deref();
-        Ok(body
-            .get("projects")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(|project| {
-                let id = project.get("id")?.as_str()?.to_owned();
-                if self.surface != "operator-bff" {
-                    if let Some(selected) = selected {
-                        if selected != id {
-                            return None;
-                        }
-                    } else if self.config.project_id.as_deref() != Some(id.as_str())
-                        && project.get("name").and_then(Value::as_str) != configured_name
-                    {
-                        return None;
-                    }
-                }
-                Some(crate::upstream::BackendScope {
-                    id,
-                    kind: "project".into(),
-                    name: project
-                        .get("name")
-                        .and_then(Value::as_str)
-                        .map(ToOwned::to_owned),
-                    domain_id: project
-                        .get("domain_id")
-                        .and_then(Value::as_str)
-                        .map(ToOwned::to_owned),
-                    can_request_token: false,
-                })
-            })
-            .collect())
+        self.discover_scope_page(ctx, MAX_SCOPE_RESULTS)
+            .await
+            .map(|(scopes, _)| scopes)
     }
 
     async fn select_scope(&self, ctx: &RequestContext, project_id: &str) -> Result<(), ApiError> {
@@ -1009,7 +1028,7 @@ impl Upstream for OpenStackAdapter {
         &self,
         ctx: &RequestContext,
     ) -> Result<PaginatedCollection<Project>, ApiError> {
-        let scopes = self.discover_scopes(ctx).await?;
+        let (scopes, has_more) = self.discover_scope_page(ctx, MAX_SCOPE_RESULTS).await?;
         let now = OffsetDateTime::now_utc();
         let items = scopes
             .into_iter()
@@ -1025,8 +1044,8 @@ impl Upstream for OpenStackAdapter {
         Ok(PaginatedCollection {
             total: items.len() as u64,
             page: 0,
-            page_size: items.len() as u32,
-            has_more: false,
+            page_size: MAX_SCOPE_RESULTS as u32,
+            has_more,
             items,
         })
     }
@@ -1259,7 +1278,10 @@ impl Upstream for OpenStackAdapter {
                     .cloned()
                     .unwrap_or_default();
                 if page.len() < page_size as usize {
-                    prefetched_values = Some(page);
+                    // A short page proves that the requested page is past the
+                    // provider inventory. Do not return the earlier page as
+                    // the requested one.
+                    prefetched_values = Some(Vec::new());
                     break;
                 }
                 marker = page
@@ -1268,7 +1290,7 @@ impl Upstream for OpenStackAdapter {
                     .and_then(Value::as_str)
                     .map(ToOwned::to_owned);
                 if marker.is_none() {
-                    prefetched_values = Some(page);
+                    prefetched_values = Some(Vec::new());
                     break;
                 }
             }
