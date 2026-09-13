@@ -259,8 +259,11 @@ pub struct Resource {
     /// resources intentionally omit a region in the native envelope.
     pub region_id: Option<String>,
     pub status: ResourceStatus,
-    pub created_at: OffsetDateTime,
-    pub updated_at: OffsetDateTime,
+    /// Native O3K envelopes may omit timestamps for resource classes whose
+    /// authoritative contract does not provide them. Preserve that absence
+    /// through the backend-neutral model instead of fabricating a value.
+    pub created_at: Option<OffsetDateTime>,
+    pub updated_at: Option<OffsetDateTime>,
     /// O3K optimistic-concurrency generation used for update/delete
     /// preconditions. Fixture resources expose generation 1 for parity.
     pub generation: i64,

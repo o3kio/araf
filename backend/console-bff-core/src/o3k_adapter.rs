@@ -118,7 +118,26 @@ impl O3kAdapter {
 
     fn parse_timestamp(value: Option<&str>) -> Option<OffsetDateTime> {
         value.and_then(|s| {
-            time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok()
+            // O3K's public resource envelope carries timestamps as strings. The
+            // deployed SQLite-backed provider emits its persisted UTC values in
+            // SQLite's `YYYY-MM-DD HH:MM:SS` representation (without an
+            // explicit offset), while other providers may return RFC3339. Both
+            // forms describe the same authoritative timestamp; keep the
+            // adaptation at the BFF boundary rather than leaking provider
+            // details into the generic runtime.
+            if let Ok(timestamp) =
+                time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            {
+                return Some(timestamp);
+            }
+
+            let format = time::format_description::parse_borrowed::<2>(
+                "[year]-[month]-[day] [hour]:[minute]:[second]",
+            )
+            .ok()?;
+            time::PrimitiveDateTime::parse(s, &format[..])
+                .ok()
+                .map(time::PrimitiveDateTime::assume_utc)
         })
     }
 
@@ -380,22 +399,12 @@ impl O3kAdapter {
             .metadata
             .created_at
             .as_deref()
-            .and_then(|value| Self::parse_timestamp(Some(value)))
-            .ok_or_else(|| {
-                ApiError::Upstream(UpstreamError::Error(
-                    "O3K resource omitted a valid created timestamp".to_owned(),
-                ))
-            })?;
+            .and_then(|value| Self::parse_timestamp(Some(value)));
         let updated_at = envelope
             .metadata
             .updated_at
             .as_deref()
-            .and_then(|value| Self::parse_timestamp(Some(value)))
-            .ok_or_else(|| {
-                ApiError::Upstream(UpstreamError::Error(
-                    "O3K resource omitted a valid updated timestamp".to_owned(),
-                ))
-            })?;
+            .and_then(|value| Self::parse_timestamp(Some(value)));
 
         Ok(Resource {
             id: envelope.metadata.id,
@@ -2580,7 +2589,24 @@ mod resource_mapping_tests {
     }
 
     #[test]
-    fn resource_mapping_rejects_missing_timestamps() {
+    fn resource_mapping_accepts_sqlite_utc_timestamps() {
+        let metadata = serde_json::json!({
+            "id": "network-1",
+            "owner_scope": "project-1",
+            "generation": 1,
+            "region": "edge-eu-7",
+            "created_at": "2026-09-13 08:43:30",
+            "updated_at": "2026-09-13 08:43:30"
+        });
+
+        let resource = O3kAdapter::map_native_resource(envelope(metadata))
+            .expect("SQLite UTC timestamps are a valid O3K timestamp representation");
+        assert_eq!(resource.created_at.unwrap().unix_timestamp(), 1_789_289_010);
+        assert_eq!(resource.updated_at.unwrap().unix_timestamp(), 1_789_289_010);
+    }
+
+    #[test]
+    fn resource_mapping_preserves_missing_timestamps() {
         let metadata = serde_json::json!({
             "id": "server-1",
             "owner_scope": "project-1",
@@ -2588,9 +2614,10 @@ mod resource_mapping_tests {
             "region": "eu-west"
         });
 
-        let error = O3kAdapter::map_native_resource(envelope(metadata))
-            .expect_err("missing timestamps must not become current-time metadata");
-        assert!(matches!(error, ApiError::Upstream(_)));
+        let resource = O3kAdapter::map_native_resource(envelope(metadata))
+            .expect("optional O3K timestamps must remain absent");
+        assert_eq!(resource.created_at, None);
+        assert_eq!(resource.updated_at, None);
     }
 }
 
