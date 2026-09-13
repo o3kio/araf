@@ -5,7 +5,7 @@
 - Repository: `o3kio/araf`
 - Candidate branch: `codex/p4-1-observability`
 - Candidate source: exact HEAD recorded in `target/p3-9-openstack-gate/result.env`
-- Artifact version: `0.0.0-dev` until a signed release tag is created
+- Artifact version: `0.1.0-rc` (local unsigned candidate; publication remains gated)
 - Date: 2026-09-13
 
 ## Gate matrix
