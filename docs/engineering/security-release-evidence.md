@@ -33,7 +33,7 @@ pnpm build                                        PASS
 ```
 
 Current local artifact evidence (development host, 2026-09-13) was generated
-from Araf `110ab0ae86bf57bee3897b35ca62d68dc0f45c57` with Syft `v1.18.1`
+from Araf `24a8b691a7c447ce001271519713d5b322757eb8` with Syft `v1.18.1`
 (CycloneDX) and Trivy `v0.58.2` using the local OCI registry. Syft reported
 16 BFF, 72 Tenant console and 72 Operator console components. Trivy reported
 zero HIGH/CRITICAL findings for both frontend images and the distroless BFF
@@ -44,3 +44,10 @@ trusted keyless provenance attestation before publication. The tag-triggered
 `.github/workflows/release-images.yml` is the publication path: Buildx emits
 maximum SLSA provenance/SBOM metadata and `actions/attest-build-provenance`
 binds the digest to the GitHub OIDC identity.
+
+The current distroless BFF base also reports two MEDIUM Debian advisories
+(`CVE-2026-5450` and `CVE-2026-5928`) with fixes newer than the pinned base
+layer. They are accepted only for this development candidate while the base
+refresh is pending; publication requires either a refreshed base with zero
+MEDIUM findings or an explicit security-owner risk acceptance. The Alpine
+console images report zero MEDIUM/HIGH/CRITICAL findings.

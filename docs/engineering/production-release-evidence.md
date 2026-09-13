@@ -18,7 +18,7 @@
 | P4.1 observability | `p4-1-observability-evidence.md`, `/metrics`, `/readyz`, correlation tests | PASS locally; real deployment attachment required |
 | P4.2 performance/scale | `performance-evidence.md`, `tests/performance-bounded.sh` | PASS for bounded fixture; O3K/OpenStack load attachment required |
 | P4.3 HA/session | encrypted file-locked store tests and restart/replica topology | PASS for the shared durable primitive and concurrent-writer recovery; multi-host rolling-failure test required |
-| P4.4 security/supply chain | `security-release-evidence.md`, CI gate, pinned Trivy/Syft/cosign artifacts | PASS local scan/SBOM/signature; trusted CI provenance attachment required |
+| P4.4 security/supply chain | `security-release-evidence.md`, CI gate, pinned Trivy/Syft/cosign artifacts | PASS local scan/SBOM/signature; MEDIUM base refresh/risk acceptance and trusted CI provenance required |
 | P4.5 packaging | current-head OCI builds/digests, Helm lint/template, Compose validation | PASS build and packaging checks; clean external install/upgrade attachment required |
 | P4.6 supportability | `docs/operations/operator-runbook.md`, redacted bundle script | PASS documentation gate |
 | P4.7 pilot/soak | `tests/pilot-soak.sh`, `target/p3-9-openstack-gate/redacted-run.txt` | PASS for local HA soak and real OpenStack profile; full RC pilot still required |
