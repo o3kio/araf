@@ -253,6 +253,9 @@ impl SessionStore {
             csrf_token,
         };
 
+        // Refresh before a read-modify-write so a second replica does not
+        // overwrite sessions created by another process since its last read.
+        let _ = self.reload_from_disk().await;
         self.sessions
             .write()
             .await
@@ -356,11 +359,13 @@ impl SessionStore {
 
     /// Number of active sessions (for health monitoring).
     pub async fn active_count(&self) -> usize {
+        let _ = self.reload_from_disk().await;
         self.sessions.read().await.len()
     }
 
     /// Clean up expired sessions.
     pub async fn reap_expired(&self) {
+        let _ = self.reload_from_disk().await;
         let mut sessions = self.sessions.write().await;
         sessions.retain(|_, s| !s.is_expired());
         drop(sessions);
