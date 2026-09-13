@@ -242,6 +242,8 @@ async fn inject_production_session(
                 user_id: Some(data.user_id),
                 user_name: Some(data.user_name),
                 o3k_token: data.o3k_token,
+                openstack_token: data.openstack_token,
+                openstack_project_id: data.openstack_project_id,
                 oidc_access_token: data.oidc_access_token,
                 session_token: cookie,
             })

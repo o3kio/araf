@@ -57,6 +57,17 @@ impl OidcConfig {
         surface: &'static str,
         profile: crate::RuntimeProfile,
     ) -> Result<Self, ApiError> {
+        Self::from_env_for_backend(surface, profile, crate::cloud_backend::BackendKind::O3k)
+    }
+
+    /// Read OIDC configuration while allowing OpenStack deployments to omit
+    /// O3K-only configuration. The field is retained for compatibility with
+    /// the native auth helpers and is never used as an OpenStack endpoint.
+    pub fn from_env_for_backend(
+        surface: &'static str,
+        profile: crate::RuntimeProfile,
+        backend: crate::cloud_backend::BackendKind,
+    ) -> Result<Self, ApiError> {
         let prefix = if surface == "operator-bff" {
             "ARAF_OPERATOR_OIDC"
         } else {
@@ -80,7 +91,12 @@ impl OidcConfig {
         let issuer_url = required_url(&format!("{prefix}_ISSUER_URL"), profile, true)?;
         validate_issuer(&issuer_url, profile)?;
         let redirect_uri = required_url(&format!("{prefix}_REDIRECT_URI"), profile, true)?;
-        let o3k_url = required_url("O3K_URL", profile, false)?;
+        let o3k_url = match backend {
+            crate::cloud_backend::BackendKind::O3k => required_url("O3K_URL", profile, false)?,
+            crate::cloud_backend::BackendKind::OpenStack => {
+                required_url("OPENSTACK_AUTH_URL", profile, false)?
+            }
+        };
         Ok(Self {
             client_id,
             client_secret,
@@ -475,7 +491,9 @@ async fn create_authenticated_session(
             state.oidc.surface,
             Some(external_access_token.clone()),
             token_response.refresh_token,
-            if state.oidc.surface == "operator-bff" {
+            if state.oidc.surface == "operator-bff"
+                && state.upstream.backend_kind() == crate::cloud_backend::BackendKind::O3k
+            {
                 Some(
                     exchange_system_token(&state.oidc.o3k_url, &external_access_token)
                         .await
@@ -547,6 +565,25 @@ pub async fn discover_scopes(
     State(state): State<crate::handlers::AppState>,
     request: RequestContext,
 ) -> Result<Json<Vec<ScopeChoice>>, BffError> {
+    if state.upstream.backend_kind() == crate::cloud_backend::BackendKind::OpenStack {
+        let scopes = state
+            .upstream
+            .discover_scopes(&request)
+            .await
+            .map_err(|e| BffError::new(e, request.correlation_id()))?;
+        return Ok(Json(
+            scopes
+                .into_iter()
+                .map(|scope| ScopeChoice {
+                    id: scope.id,
+                    kind: scope.kind,
+                    name: scope.name,
+                    domain_id: scope.domain_id,
+                    can_request_token: scope.can_request_token,
+                })
+                .collect(),
+        ));
+    }
     let Some(access_token) = request.session.oidc_access_token.as_deref() else {
         return Err(BffError::new(
             ApiError::Unauthorized,
@@ -580,6 +617,36 @@ pub async fn select_scope(
     request: RequestContext,
     Json(body): Json<SelectScopeRequest>,
 ) -> Result<Response, BffError> {
+    if state.upstream.backend_kind() == crate::cloud_backend::BackendKind::OpenStack {
+        if body.project_id.trim().is_empty() || body.project_id.len() > 256 {
+            return Err(BffError::new(
+                ApiError::BadRequest("project_id is invalid".into()),
+                request.correlation_id(),
+            ));
+        }
+        let Some(session_token) = request.session.session_token.as_deref() else {
+            return Err(BffError::new(
+                ApiError::Unauthorized,
+                request.correlation_id(),
+            ));
+        };
+        state
+            .upstream
+            .select_scope(&request, &body.project_id)
+            .await
+            .map_err(|e| BffError::new(e, request.correlation_id()))?;
+        if !state
+            .sessions
+            .set_openstack_project(session_token, body.project_id)
+            .await
+        {
+            return Err(BffError::new(
+                ApiError::Unauthorized,
+                request.correlation_id(),
+            ));
+        }
+        return Ok(Response::new(axum::body::Body::empty()));
+    }
     let Some(access_token) = request.session.oidc_access_token.as_deref() else {
         return Err(BffError::new(
             ApiError::Unauthorized,
