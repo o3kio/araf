@@ -21,6 +21,7 @@ for port in "${ports[@]}"; do
   curl -fsS "http://127.0.0.1:$port/readyz" >/dev/null
 done
 requests=0
+started_at=$(date +%s)
 for cycle in $(seq 1 100); do
   for port in "${ports[@]}"; do
     curl -fsS "http://127.0.0.1:$port/api/v1/resources/compute.server?page=0&pageSize=25" >/dev/null
@@ -40,4 +41,5 @@ restarted=$!
 pids+=" $restarted"
 for _ in $(seq 1 300); do curl -fsS http://127.0.0.1:18081/readyz >/dev/null 2>&1 && break; sleep .2; done
 curl -fsS http://127.0.0.1:18081/api/v1/resources/compute.server?page=0\&pageSize=25 >/dev/null
-printf 'duration_seconds=~%s request_count=%s replicas=2 restart_recovery=pass\n' "$((100 * 2))" "$requests"
+finished_at=$(date +%s)
+printf 'duration_seconds=%s request_count=%s replicas=2 restart_recovery=pass\n' "$((finished_at - started_at))" "$requests"

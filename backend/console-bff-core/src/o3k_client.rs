@@ -581,9 +581,8 @@ impl O3kClient {
             .header("Authorization", self.auth_header())
             .send()
             .await
-            .map_err(|error| {
+            .inspect_err(|_| {
                 crate::metrics::record_backend_call("o3k", 0);
-                error
             })?;
         crate::metrics::record_backend_call("o3k", response.status().as_u16());
         Self::handle_response(response, JSON_RESPONSE_MAX_BYTES).await
@@ -599,9 +598,8 @@ impl O3kClient {
             .header("Authorization", self.auth_header())
             .send()
             .await
-            .map_err(|error| {
+            .inspect_err(|_| {
                 crate::metrics::record_backend_call("o3k", 0);
-                error
             })?;
         crate::metrics::record_backend_call("o3k", response.status().as_u16());
         Self::handle_response(response, DISCOVERY_RESPONSE_MAX_BYTES).await
@@ -619,9 +617,8 @@ impl O3kClient {
             .json(&body)
             .send()
             .await
-            .map_err(|error| {
+            .inspect_err(|_| {
                 crate::metrics::record_backend_call("o3k", 0);
-                error
             })?;
         crate::metrics::record_backend_call("o3k", response.status().as_u16());
         Self::handle_response(response, JSON_RESPONSE_MAX_BYTES).await
@@ -646,9 +643,8 @@ impl O3kClient {
             .json(&body)
             .send()
             .await
-            .map_err(|error| {
+            .inspect_err(|_| {
                 crate::metrics::record_backend_call("o3k", 0);
-                error
             })?;
         crate::metrics::record_backend_call("o3k", response.status().as_u16());
         Self::handle_response(response, JSON_RESPONSE_MAX_BYTES).await
@@ -671,9 +667,8 @@ impl O3kClient {
             )
             .send()
             .await
-            .map_err(|error| {
+            .inspect_err(|_| {
                 crate::metrics::record_backend_call("o3k", 0);
-                error
             })?;
         crate::metrics::record_backend_call("o3k", response.status().as_u16());
         Self::handle_response(response, JSON_RESPONSE_MAX_BYTES).await

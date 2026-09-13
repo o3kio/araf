@@ -154,6 +154,7 @@ impl SessionStore {
         let lock_path = path.with_extension("lock");
         let lock_file = OpenOptions::new()
             .create(true)
+            .truncate(false)
             .read(true)
             .write(true)
             .open(lock_path)?;
