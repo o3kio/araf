@@ -74,11 +74,11 @@ pub fn record_request(surface: &str, status: u16, elapsed_ms: u64) {
     c.requests[index][status_index(status)].fetch_add(1, Ordering::Relaxed);
     c.latency_sum_ms[index].fetch_add(elapsed_ms, Ordering::Relaxed);
     c.latency_count[index].fetch_add(1, Ordering::Relaxed);
-    let bucket = LATENCY_BUCKETS_MS
-        .iter()
-        .position(|limit| elapsed_ms <= *limit)
-        .unwrap_or(LATENCY_BUCKETS_MS.len() - 1);
-    c.latency_buckets[index][bucket].fetch_add(1, Ordering::Relaxed);
+    for (bucket_index, limit) in LATENCY_BUCKETS_MS.iter().enumerate() {
+        if elapsed_ms <= *limit {
+            c.latency_buckets[index][bucket_index].fetch_add(1, Ordering::Relaxed);
+        }
+    }
 }
 
 pub fn record_backend_call(backend: &str, status: u16) {
@@ -134,6 +134,10 @@ pub fn render_prometheus() -> String {
             ));
         }
         output.push_str(&format!(
+            "araf_bff_request_duration_ms_bucket{{surface=\"{surface}\",le=\"+Inf\"}} {}\n",
+            c.latency_count[surface_index].load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
             "araf_bff_auth_failures_total{{surface=\"{surface}\"}} {}\n",
             c.auth_failures[surface_index].load(Ordering::Relaxed)
         ));
@@ -176,5 +180,6 @@ mod tests {
         assert!(output.contains("surface=\"tenant-bff\""));
         assert!(!output.contains("resource-"));
         assert!(!output.contains("request_id"));
+        assert!(output.contains("le=\"+Inf\""));
     }
 }
