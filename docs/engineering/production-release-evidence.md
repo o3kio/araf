@@ -29,6 +29,12 @@ lists and metrics reads, then abruptly kills and restarts one replica. The
 fixture adapter is explicitly labelled development-only and cannot establish
 production cloud or identity claims.
 
+Converged O3K process smoke gates also pass for discovery/collection, native
+operations, governance, and metering (`tests/p2-3` through `tests/p2-5` and
+`tests/p2-7`, with the local O3K process using its fake provider). The operator
+OIDC process and OpenStack/IdP production gates remain unrun because this host
+has no configured external IdP, HTTPS ingress, or OpenStack deployment.
+
 ## Supported profiles and deviations
 
 The advertised OpenStack profile remains Keystone, Nova, Glance, Neutron and

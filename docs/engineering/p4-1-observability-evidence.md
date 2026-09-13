@@ -54,7 +54,7 @@ existing security log-redaction contract tests.
 ```text
 cargo fmt --all -- --check       PASS
 cargo check --workspace --all-targets --all-features  PASS
-cargo test --workspace --all-features  PASS (52 unit, 62 contract, 15 O3K, 5 OpenStack)
+cargo test --workspace --all-features  PASS (54 unit, 62 contract, 15 O3K, 5 OpenStack)
 ```
 
 This evidence covers fixture, O3K and OpenStack adapter code paths; real cloud
