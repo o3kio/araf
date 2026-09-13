@@ -5,7 +5,7 @@
 - Repository: `o3kio/araf`
 - Candidate branch: `codex/p4-1-observability`
 - Candidate source: exact HEAD recorded in `target/p3-9-openstack-gate/result.env`
-- Artifact version: `0.1.0-rc` (local unsigned candidate; publication remains gated)
+- Artifact version: `0.1.0-rc` (locally signed/attested candidate; trusted CI provenance remains gated)
 - Date: 2026-09-13
 
 ## Gate matrix
@@ -17,7 +17,7 @@
 | P4.1 observability | `p4-1-observability-evidence.md`, `/metrics`, `/readyz`, correlation tests | PASS locally; real deployment attachment required |
 | P4.2 performance/scale | `performance-evidence.md`, `tests/performance-bounded.sh` | PASS for bounded fixture; O3K/OpenStack load attachment required |
 | P4.3 HA/session | encrypted file-locked store tests and restart/replica topology | PASS for the shared durable primitive and concurrent-writer recovery; multi-host rolling-failure test required |
-| P4.4 security/supply chain | `security-release-evidence.md`, CI gate, pinned Trivy/Syft artifacts | NO-GO: unresolved HIGH base-image findings remain; signed provenance also required |
+| P4.4 security/supply chain | `security-release-evidence.md`, CI gate, pinned Trivy/Syft/cosign artifacts | PASS local scan/signature; trusted CI provenance attachment required |
 | P4.5 packaging | OCI builds/digests, Helm lint/template, Compose validation | PASS build and packaging checks; clean external install/upgrade attachment required |
 | P4.6 supportability | `docs/operations/operator-runbook.md`, redacted bundle script | PASS documentation gate |
 | P4.7 pilot/soak | `tests/pilot-soak.sh`, `target/p3-9-openstack-gate/redacted-run.txt` | PASS for local HA soak and real OpenStack profile; full RC pilot still required |
@@ -57,6 +57,6 @@ state only.
 
 This candidate must not be called v1.0 yet. The remaining release boundary is
 a current-head O3K production run, multi-host durable-session/rolling-restart
-evidence, signed OCI provenance attestations, and a representative production
+evidence, trusted CI provenance attestations, and a representative production
 pilot/rollback. The real OpenStack evidence is profile-scoped and does not
 waive those gaps or advertise Swift, floating IP, or attachment workflows.

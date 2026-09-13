@@ -15,8 +15,8 @@ Runtime security regression coverage remains in the Rust contract suite:
 - session cookies and server-side token custody; and
 - sensitive log-field redaction.
 
-Container images run as the minimal Debian/nginx runtime users supplied by the
-base images and expose only the BFF/static-console ports. Release publication
+Container images run as non-root users supplied by the distroless/nginx base
+images and expose only the BFF/static-console ports. Release publication
 must attach a digest, the generated SBOM/dependency inventories and CI
 provenance attestation. No BLOCKER/HIGH finding is accepted for the advertised
 O3K or supported OpenStack profile.
@@ -36,7 +36,8 @@ Pinned local artifact evidence (development host, 2026-09-13) was generated
 with Syft `v1.18.1` (CycloneDX) and Trivy `v0.58.2` using the local OCI
 registry. Syft reported 94 BFF, 72 Tenant console and 72 Operator console
 components. Trivy reported zero HIGH/CRITICAL findings for both frontend
-images, but 45 HIGH findings remain in the Debian Trixie BFF image (the
-current database marks these base-package records unresolved). The result is
-retained under `target/security/` and makes P4.4 a release NO-GO until the
-base image/advisories are remediated or explicitly accepted by security.
+images, and zero HIGH/CRITICAL findings for the distroless BFF image. The
+candidate images are also signed and SBOM-attested in the local registry with
+an ephemeral development cosign key; verification is recorded in
+`target/security/cosign-verify.txt`. A release still requires the CI-owned
+trusted keyless provenance attestation before publication.
