@@ -55,6 +55,18 @@ published with the P4.7 release evidence rather than replaced with synthetic
 claims. Adapter tests prove cursor/marker handling and page bounds for both
 profiles.
 
+## Current-head O3K diagnostic
+
+The current-head production-profile Tenant BFF was exercised against a fresh
+HTTPS O3K TestLab (`agent` provider) with 200 bounded network collection reads
+at concurrency 16. All 200 responses were HTTP 200. The run measured p50
+1816.75 ms, p95 2338.71 ms, p99 2390.50 ms, throughput 8.59 requests/s,
+0.55 BFF CPU seconds, and 25.77 -> 26.97 MiB RSS. A serial control run was
+approximately 54 ms p50; the concurrent tail is consistent with the disposable
+agent lab's serialized upstream path and is not a production OpenStack budget
+claim. It is retained as a real upstream-load observation; supported
+OpenStack load and an agreed O3K production latency budget remain release gates.
+
 ## Validation
 
 ```text
