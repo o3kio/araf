@@ -11,7 +11,7 @@ token_pattern='(localStorage|sessionStorage)\.(setItem|getItem).*([Tt]oken|[Ss]e
 if command -v rg >/dev/null 2>&1; then
   token_scan=(rg -n --glob '!docs/**' --glob '!*.map')
 else
-  token_scan=(grep -RInE --exclude='*.map' --exclude-dir=docs)
+  token_scan=(grep -RInE --exclude='*.map' --exclude-dir=docs --exclude-dir=node_modules --exclude-dir=target)
 fi
 if "${token_scan[@]}" "$token_pattern" "$root_dir/apps" "$root_dir/packages"; then
   echo "security gate: browser token persistence or embedded bearer token found" >&2
@@ -21,7 +21,7 @@ key_pattern='-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----|AKIA[0-9A-Z]{16}'
 if command -v rg >/dev/null 2>&1; then
   key_scan=(rg -n --glob '!docs/**' --glob '!*.md' --)
 else
-  key_scan=(grep -RInE --exclude='*.md' --exclude-dir=docs)
+  key_scan=(grep -RInE --exclude='*.md' --exclude-dir=docs --exclude-dir=node_modules --exclude-dir=target --exclude-dir=.git --exclude-dir=.o3k-rust --)
 fi
 if "${key_scan[@]}" "$key_pattern" "$root_dir"; then
   echo "security gate: private key or AWS access-key pattern found" >&2
