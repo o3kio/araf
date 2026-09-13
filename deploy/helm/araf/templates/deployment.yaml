@@ -27,6 +27,59 @@ spec:
               value: {{ $.Values.gitSha | quote }}
             - name: ARAF_SESSION_STORE_PATH
               value: /var/lib/araf/sessions.json
+            - name: O3K_URL
+              value: {{ $.Values.backend.o3kUrl | quote }}
+            - name: O3K_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.secrets.name }}
+                  key: {{ $.Values.secrets.o3kTokenKey }}
+                  optional: true
+            - name: OPENSTACK_AUTH_URL
+              value: {{ $.Values.backend.openstackAuthUrl | quote }}
+            - name: OPENSTACK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.secrets.name }}
+                  key: {{ $.Values.secrets.openstackTokenKey }}
+                  optional: true
+            - name: OPENSTACK_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.secrets.name }}
+                  key: {{ $.Values.secrets.openstackUsernameKey }}
+                  optional: true
+            - name: OPENSTACK_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.secrets.name }}
+                  key: {{ $.Values.secrets.openstackPasswordKey }}
+                  optional: true
+            {{- if eq $surface "tenant" }}
+            - name: ARAF_TENANT_OIDC_CLIENT_ID
+              value: {{ $.Values.oidc.tenantClientId | quote }}
+            - name: ARAF_TENANT_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.secrets.name }}
+                  key: {{ $.Values.secrets.tenantOidcClientSecretKey }}
+            - name: ARAF_TENANT_OIDC_ISSUER_URL
+              value: {{ $.Values.oidc.tenantIssuerUrl | quote }}
+            - name: ARAF_TENANT_OIDC_REDIRECT_URI
+              value: {{ $.Values.oidc.tenantRedirectUri | quote }}
+            {{- else }}
+            - name: ARAF_OPERATOR_OIDC_CLIENT_ID
+              value: {{ $.Values.oidc.operatorClientId | quote }}
+            - name: ARAF_OPERATOR_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.secrets.name }}
+                  key: {{ $.Values.secrets.operatorOidcClientSecretKey }}
+            - name: ARAF_OPERATOR_OIDC_ISSUER_URL
+              value: {{ $.Values.oidc.operatorIssuerUrl | quote }}
+            - name: ARAF_OPERATOR_OIDC_REDIRECT_URI
+              value: {{ $.Values.oidc.operatorRedirectUri | quote }}
+            {{- end }}
           ports: [{ name: http, containerPort: {{ if eq $surface "tenant" }}8080{{ else }}8081{{ end }} }]
           readinessProbe: { httpGet: { path: /readyz, port: http } }
           livenessProbe: { httpGet: { path: /healthz, port: http } }

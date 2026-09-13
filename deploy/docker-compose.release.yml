@@ -11,6 +11,16 @@ services:
       ARAF_PUBLIC_URL: ${ARAF_TENANT_PUBLIC_URL:?set tenant URL}
       ARAF_TRUSTED_ORIGINS: ${ARAF_TENANT_PUBLIC_URL:?set tenant URL}
       ARAF_SESSION_STORE_PATH: /var/lib/araf/sessions.json
+      O3K_URL: ${O3K_URL:-}
+      O3K_TOKEN: ${O3K_TOKEN:-}
+      OPENSTACK_AUTH_URL: ${OPENSTACK_AUTH_URL:-}
+      OPENSTACK_TOKEN: ${OPENSTACK_TOKEN:-}
+      OPENSTACK_USERNAME: ${OPENSTACK_USERNAME:-}
+      OPENSTACK_PASSWORD: ${OPENSTACK_PASSWORD:-}
+      ARAF_TENANT_OIDC_CLIENT_ID: ${ARAF_TENANT_OIDC_CLIENT_ID:?set tenant OIDC client id}
+      ARAF_TENANT_OIDC_CLIENT_SECRET: ${ARAF_TENANT_OIDC_CLIENT_SECRET:?set tenant OIDC client secret}
+      ARAF_TENANT_OIDC_ISSUER_URL: ${ARAF_TENANT_OIDC_ISSUER_URL:?set tenant OIDC issuer}
+      ARAF_TENANT_OIDC_REDIRECT_URI: ${ARAF_TENANT_OIDC_REDIRECT_URI:?set tenant OIDC redirect}
     volumes:
       - tenant-session:/var/lib/araf
     read_only: true
@@ -27,6 +37,16 @@ services:
       ARAF_PUBLIC_URL: ${ARAF_OPERATOR_PUBLIC_URL:?set operator URL}
       ARAF_TRUSTED_ORIGINS: ${ARAF_OPERATOR_PUBLIC_URL:?set operator URL}
       ARAF_SESSION_STORE_PATH: /var/lib/araf/sessions.json
+      O3K_URL: ${O3K_URL:-}
+      O3K_TOKEN: ${O3K_TOKEN:-}
+      OPENSTACK_AUTH_URL: ${OPENSTACK_AUTH_URL:-}
+      OPENSTACK_TOKEN: ${OPENSTACK_TOKEN:-}
+      OPENSTACK_USERNAME: ${OPENSTACK_USERNAME:-}
+      OPENSTACK_PASSWORD: ${OPENSTACK_PASSWORD:-}
+      ARAF_OPERATOR_OIDC_CLIENT_ID: ${ARAF_OPERATOR_OIDC_CLIENT_ID:?set operator OIDC client id}
+      ARAF_OPERATOR_OIDC_CLIENT_SECRET: ${ARAF_OPERATOR_OIDC_CLIENT_SECRET:?set operator OIDC client secret}
+      ARAF_OPERATOR_OIDC_ISSUER_URL: ${ARAF_OPERATOR_OIDC_ISSUER_URL:?set operator OIDC issuer}
+      ARAF_OPERATOR_OIDC_REDIRECT_URI: ${ARAF_OPERATOR_OIDC_REDIRECT_URI:?set operator OIDC redirect}
     volumes:
       - operator-session:/var/lib/araf
     read_only: true

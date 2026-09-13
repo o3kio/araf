@@ -21,6 +21,11 @@ if rg -n --glob '!docs/**' --glob '!*.md' \
 fi
 
 (cd "$root_dir/backend" && cargo metadata --locked --format-version 1 >"$out_dir/cargo-sbom.json")
+(cd "$root_dir/backend" && cargo audit)
+# cargo-deny performs the deterministic license/source/ban policy checks. The
+# advisory database is checked by cargo-audit above; keeping these checks
+# separate also lets CI report database-format incompatibilities explicitly.
+(cd "$root_dir/backend" && cargo deny check licenses bans sources --disable-fetch)
 (cd "$root_dir" && pnpm list --json --depth Infinity >"$out_dir/frontend-dependencies.json")
 cat >"$out_dir/policy.txt" <<'EOF'
 ARAF release security policy v1

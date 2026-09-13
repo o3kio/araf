@@ -11,7 +11,8 @@ the inventory or filters it in the browser.
 Observed run on the development host (2026-09-13):
 
 ```text
-requests=200 p50_ms=12.06 p95_ms=16.75 p99_ms=18.90
+requests=200 p50_ms=12.41 p95_ms=19.16 p99_ms=20.93
+throughput_rps=563.89 peak_rss_mib=28.44 cpu_seconds=1.67
 ```
 
 The BFF's 256-per-process concurrency gate provides backpressure and returns
@@ -57,7 +58,7 @@ profiles.
 ## Validation
 
 ```text
-./tests/performance-bounded.sh                                  PASS (p50 12.06 ms, p95 16.75 ms, p99 18.90 ms)
+./tests/performance-bounded.sh                                  PASS (p50 12.41 ms, p95 19.16 ms, p99 20.93 ms; 563.89 rps, peak RSS 28.44 MiB, CPU 1.67 s)
 ./tests/pilot-soak.sh                                           PASS (800 requests, 2 Tenant + 2 Operator replicas)
 pnpm build                                                       PASS
 pnpm typecheck                                                   PASS

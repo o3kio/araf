@@ -13,3 +13,21 @@ operator:
   trustedOrigins: https://operator.example.invalid
 sessionStore:
   storageClass: ""
+backend:
+  o3kUrl: ""
+  openstackAuthUrl: ""
+oidc:
+  tenantIssuerUrl: ""
+  tenantClientId: ""
+  tenantRedirectUri: ""
+  operatorIssuerUrl: ""
+  operatorClientId: ""
+  operatorRedirectUri: ""
+secrets:
+  name: araf-runtime-secrets
+  o3kTokenKey: o3k-token
+  tenantOidcClientSecretKey: tenant-oidc-client-secret
+  operatorOidcClientSecretKey: operator-oidc-client-secret
+  openstackTokenKey: openstack-token
+  openstackUsernameKey: openstack-username
+  openstackPasswordKey: openstack-password
