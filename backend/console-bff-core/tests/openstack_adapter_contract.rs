@@ -2,11 +2,55 @@ use std::sync::Arc;
 
 use axum::http::StatusCode;
 use console_bff_core::{
-    model::ResourceStatus,
+    model::{CreateResourceRequest, ResourceStatus},
     openstack::{OpenStackAdapter, OpenStackClientConfig},
     request::{RequestContext, SessionState},
     upstream::{ListResourcesParams, Upstream},
 };
+
+#[tokio::test]
+async fn scopes_cinder_v3_catalog_endpoint_to_project() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v3/project-1/volumes"))
+        .and(header("X-Auth-Token", "keystone-token"))
+        .respond_with(ResponseTemplate::new(StatusCode::ACCEPTED).set_body_json(
+            serde_json::json!({"volume": {"id": "vol-1", "name": "test", "size": 1, "status": "creating", "project_id": "project-1"}}),
+        ))
+        .mount(&server)
+        .await;
+    let adapter = OpenStackAdapter::new(
+        "tenant-bff",
+        OpenStackClientConfig {
+            auth_url: server.uri(),
+            token: None,
+            username: None,
+            password: None,
+            user_domain: "Default".into(),
+            project_name: None,
+            project_id: Some("project-1".into()),
+            region: None,
+            compute_url: None,
+            image_url: None,
+            network_url: None,
+            volume_url: Some(format!("{}/v3", server.uri())),
+            object_storage_url: None,
+        },
+    )
+    .expect("adapter");
+
+    let operation = adapter
+        .create_resource(
+            &context(),
+            "block.volume",
+            CreateResourceRequest {
+                payload: serde_json::json!({"name": "test", "size": 1}),
+            },
+        )
+        .await
+        .expect("create");
+    assert_eq!(operation.resource_id.as_deref(), Some("vol-1"));
+}
 use wiremock::{
     matchers::{header, method, path, query_param, query_param_is_missing},
     Mock, MockServer, ResponseTemplate,
