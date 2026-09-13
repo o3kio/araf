@@ -11,7 +11,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    fs,
+    fs::{self, OpenOptions},
     io::ErrorKind,
     path::PathBuf,
     sync::Arc,
@@ -151,6 +151,13 @@ impl SessionStore {
             return Ok(());
         };
         let _guard = self.file_lock.lock().await;
+        let lock_path = path.with_extension("lock");
+        let lock_file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(lock_path)?;
+        fs2::FileExt::lock_exclusive(&lock_file)?;
         let sessions = self.sessions.read().await;
         let persisted: HashMap<_, _> = sessions
             .iter()
@@ -177,7 +184,7 @@ impl SessionStore {
             })
             .collect();
         drop(sessions);
-        let temporary = path.with_extension("tmp");
+        let temporary = PathBuf::from(format!("{}.tmp-{}", path.display(), std::process::id()));
         fs::write(
             &temporary,
             serde_json::to_vec(&persisted)
@@ -290,11 +297,13 @@ impl SessionStore {
 
     /// Destroy a session (logout).
     pub async fn destroy(&self, session_token: &str) {
+        let _ = self.reload_from_disk().await;
         self.sessions.write().await.remove(session_token);
         let _ = self.persist_to_disk().await;
     }
 
     pub async fn set_o3k_token(&self, session_token: &str, token: String) -> bool {
+        let _ = self.reload_from_disk().await;
         let mut sessions = self.sessions.write().await;
         let Some(session) = sessions.get_mut(session_token) else {
             return false;
@@ -306,6 +315,7 @@ impl SessionStore {
     }
 
     pub async fn set_openstack_project(&self, session_token: &str, project_id: String) -> bool {
+        let _ = self.reload_from_disk().await;
         let mut sessions = self.sessions.write().await;
         let Some(session) = sessions.get_mut(session_token) else {
             return false;
@@ -317,6 +327,7 @@ impl SessionStore {
     }
 
     pub async fn set_openstack_token(&self, session_token: &str, token: String) -> bool {
+        let _ = self.reload_from_disk().await;
         let mut sessions = self.sessions.write().await;
         let Some(session) = sessions.get_mut(session_token) else {
             return false;

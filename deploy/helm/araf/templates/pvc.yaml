@@ -4,7 +4,10 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ include "araf.fullname" $ }}-{{ $surface }}-sessions
 spec:
-  accessModes: [ReadWriteOnce]
+  # A shared RWX volume is required when two replicas use the file-backed
+  # durable session contract. Production installations may substitute an
+  # encrypted Redis/database implementation instead.
+  accessModes: [ReadWriteMany]
   resources: { requests: { storage: 1Gi } }
   {{- with $.Values.sessionStore.storageClass }}
   storageClassName: {{ . | quote }}

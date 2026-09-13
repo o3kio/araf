@@ -11,6 +11,7 @@ async-trait.workspace = true
 axum.workspace = true
 base64.workspace = true
 futures-util.workspace = true
+fs2.workspace = true
 http.workspace = true
 jsonschema.workspace = true
 reqwest.workspace = true
