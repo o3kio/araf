@@ -5,10 +5,15 @@
 //! deployments should use a shared session store such as Redis).
 //!
 //! Session expiry, rotation on privilege escalation, and explicit logout are
-//! enforced here.
+//! enforced here. Production may use the durable file-backed implementation;
+//! deployments spanning hosts should provide an encrypted shared store.
 
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    fs,
+    io::ErrorKind,
+    path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -38,25 +43,153 @@ pub struct SessionData {
     pub csrf_token: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct PersistedSession {
+    user_id: String,
+    user_name: String,
+    surface: String,
+    oidc_access_token: Option<String>,
+    oidc_refresh_token: Option<String>,
+    o3k_token: Option<String>,
+    openstack_token: Option<String>,
+    openstack_project_id: Option<String>,
+    ttl_seconds: u64,
+    csrf_token: String,
+}
+
 impl SessionData {
     pub fn is_expired(&self) -> bool {
         Instant::now() >= self.expires_at
     }
 }
 
-/// In-memory session store.
-///
-/// For MVP this is a shared HashMap behind a RwLock. Production deployments
-/// should replace this with a Redis-backed store for HA and session persistence.
-#[derive(Debug, Default)]
+/// Session store. Development/test use an in-memory HashMap; production
+/// startup requires the durable path configured by `ARAF_SESSION_STORE_PATH`.
+#[derive(Debug)]
 pub struct SessionStore {
     sessions: RwLock<HashMap<String, SessionData>>,
     auth_states: RwLock<HashMap<String, (Instant, String)>>,
+    durable_path: Option<Arc<PathBuf>>,
+    file_lock: Arc<tokio::sync::Mutex<()>>,
+}
+
+impl Default for SessionStore {
+    fn default() -> Self {
+        Self {
+            sessions: RwLock::new(HashMap::new()),
+            auth_states: RwLock::new(HashMap::new()),
+            durable_path: None,
+            file_lock: Arc::new(tokio::sync::Mutex::new(())),
+        }
+    }
 }
 
 impl SessionStore {
     pub fn new() -> Arc<Self> {
         Arc::new(Self::default())
+    }
+
+    pub fn new_durable(path: impl Into<PathBuf>) -> Result<Arc<Self>, std::io::Error> {
+        let path = path.into();
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            fs::create_dir_all(parent)?;
+        }
+        let store = Arc::new(Self {
+            durable_path: Some(Arc::new(path)),
+            ..Self::default()
+        });
+        Ok(store)
+    }
+
+    async fn reload_from_disk(&self) -> Result<(), std::io::Error> {
+        let Some(path) = self.durable_path.as_deref() else {
+            return Ok(());
+        };
+        let bytes = match fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let persisted: HashMap<String, PersistedSession> = serde_json::from_slice(&bytes)
+            .map_err(|error| std::io::Error::new(ErrorKind::InvalidData, error))?;
+        let now = Instant::now();
+        let sessions = persisted
+            .into_iter()
+            .filter_map(|(token, session)| {
+                let ttl = Duration::from_secs(session.ttl_seconds);
+                (session.ttl_seconds > 0).then_some((
+                    token,
+                    SessionData {
+                        user_id: session.user_id,
+                        user_name: session.user_name,
+                        surface: if session.surface == "operator-bff" {
+                            "operator-bff"
+                        } else {
+                            "tenant-bff"
+                        },
+                        oidc_access_token: session.oidc_access_token,
+                        oidc_refresh_token: session.oidc_refresh_token,
+                        o3k_token: session.o3k_token,
+                        openstack_token: session.openstack_token,
+                        openstack_project_id: session.openstack_project_id,
+                        created_at: now,
+                        expires_at: now + ttl,
+                        csrf_token: session.csrf_token,
+                    },
+                ))
+            })
+            .collect();
+        *self.sessions.write().await = sessions;
+        Ok(())
+    }
+
+    async fn persist_to_disk(&self) -> Result<(), std::io::Error> {
+        let Some(path) = self.durable_path.as_deref() else {
+            return Ok(());
+        };
+        let _guard = self.file_lock.lock().await;
+        let sessions = self.sessions.read().await;
+        let persisted: HashMap<_, _> = sessions
+            .iter()
+            .filter(|(_, session)| !session.is_expired())
+            .map(|(token, session)| {
+                (
+                    token.clone(),
+                    PersistedSession {
+                        user_id: session.user_id.clone(),
+                        user_name: session.user_name.clone(),
+                        surface: session.surface.to_owned(),
+                        oidc_access_token: session.oidc_access_token.clone(),
+                        oidc_refresh_token: session.oidc_refresh_token.clone(),
+                        o3k_token: session.o3k_token.clone(),
+                        openstack_token: session.openstack_token.clone(),
+                        openstack_project_id: session.openstack_project_id.clone(),
+                        ttl_seconds: session
+                            .expires_at
+                            .saturating_duration_since(Instant::now())
+                            .as_secs(),
+                        csrf_token: session.csrf_token.clone(),
+                    },
+                )
+            })
+            .collect();
+        drop(sessions);
+        let temporary = path.with_extension("tmp");
+        fs::write(
+            &temporary,
+            serde_json::to_vec(&persisted)
+                .map_err(|error| std::io::Error::new(ErrorKind::InvalidData, error))?,
+        )?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600))?;
+        }
+        fs::rename(&temporary, path)?;
+        Ok(())
     }
 
     /// Create a new session and return the opaque session token.
@@ -116,6 +249,7 @@ impl SessionStore {
             .write()
             .await
             .insert(session_token.clone(), session);
+        let _ = self.persist_to_disk().await;
         session_token
     }
 
@@ -139,6 +273,7 @@ impl SessionStore {
 
     /// Look up a session by its opaque token.
     pub async fn get(&self, session_token: &str) -> Option<SessionData> {
+        let _ = self.reload_from_disk().await;
         let sessions = self.sessions.read().await;
         sessions.get(session_token).cloned()
     }
@@ -156,6 +291,7 @@ impl SessionStore {
     /// Destroy a session (logout).
     pub async fn destroy(&self, session_token: &str) {
         self.sessions.write().await.remove(session_token);
+        let _ = self.persist_to_disk().await;
     }
 
     pub async fn set_o3k_token(&self, session_token: &str, token: String) -> bool {
@@ -164,6 +300,8 @@ impl SessionStore {
             return false;
         };
         session.o3k_token = Some(token);
+        drop(sessions);
+        let _ = self.persist_to_disk().await;
         true
     }
 
@@ -173,6 +311,8 @@ impl SessionStore {
             return false;
         };
         session.openstack_project_id = Some(project_id);
+        drop(sessions);
+        let _ = self.persist_to_disk().await;
         true
     }
 
@@ -182,6 +322,8 @@ impl SessionStore {
             return false;
         };
         session.openstack_token = Some(token);
+        drop(sessions);
+        let _ = self.persist_to_disk().await;
         true
     }
 
@@ -194,6 +336,8 @@ impl SessionStore {
         let mut sessions = self.sessions.write().await;
         sessions.remove(old_token);
         sessions.insert(new_token.clone(), session);
+        drop(sessions);
+        let _ = self.persist_to_disk().await;
 
         Some(new_token)
     }
@@ -207,6 +351,8 @@ impl SessionStore {
     pub async fn reap_expired(&self) {
         let mut sessions = self.sessions.write().await;
         sessions.retain(|_, s| !s.is_expired());
+        drop(sessions);
+        let _ = self.persist_to_disk().await;
     }
 }
 
@@ -297,5 +443,36 @@ mod tests {
         assert!(store.validate(&old).await.is_none());
         // New token is valid
         assert!(store.validate(&new).await.is_some());
+    }
+
+    #[tokio::test]
+    async fn durable_store_survives_reopen_and_revocation() {
+        let path = std::env::temp_dir().join(format!("araf-session-{}.json", Uuid::new_v4()));
+        let first = SessionStore::new_durable(&path).expect("durable store");
+        let token = first
+            .create(
+                "user-1".into(),
+                "User".into(),
+                "tenant-bff",
+                Some("secret".into()),
+                None,
+                None,
+            )
+            .await;
+        let second = SessionStore::new_durable(&path).expect("second replica");
+        assert_eq!(
+            second
+                .validate(&token)
+                .await
+                .expect("session replicated")
+                .user_id,
+            "user-1"
+        );
+        second.destroy(&token).await;
+        assert!(
+            first.validate(&token).await.is_none(),
+            "revocation must cross replicas"
+        );
+        let _ = std::fs::remove_file(path);
     }
 }

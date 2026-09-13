@@ -53,6 +53,7 @@ fn base_routes(router: Router<AppState>) -> Router<AppState> {
         .route("/healthz", get(handlers::healthz))
         .route("/readyz", get(handlers::readyz))
         .route("/metrics", get(handlers::metrics))
+        .route("/version", get(handlers::version))
         .route("/api/v1/auth/login", get(auth::login))
         .route("/api/v1/auth/callback", get(auth::auth_callback))
         .route("/api/v1/auth/logout", post(auth::logout))
@@ -383,7 +384,20 @@ pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
         UpstreamAdapter::O3k => Arc::new(O3kAdapter::from_env(config.surface)?),
         UpstreamAdapter::OpenStack => Arc::new(OpenStackAdapter::from_env(config.surface)?),
     };
-    let sessions = session::SessionStore::new();
+    let sessions = match std::env::var("ARAF_SESSION_STORE_PATH")
+        .ok()
+        .filter(|path| !path.trim().is_empty())
+    {
+        Some(path) => session::SessionStore::new_durable(path).map_err(|error| {
+            config_error(format!("failed to open durable session store: {error}"))
+        })?,
+        None if config.profile == RuntimeProfile::Production => {
+            return Err(config_error(
+                "ARAF_SESSION_STORE_PATH is required in production; in-memory sessions are not HA-safe",
+            ));
+        }
+        None => session::SessionStore::new(),
+    };
     let oidc = if config.adapter == UpstreamAdapter::Fixture {
         auth::OidcConfig::fixture(config.surface)
     } else if config.adapter == UpstreamAdapter::OpenStack {
