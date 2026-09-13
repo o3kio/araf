@@ -52,6 +52,7 @@ existing security log-redaction contract tests.
 ## Validation
 
 ```text
+./tests/prometheus-observability.sh          PASS (Prometheus 2.55.1 pinned digest; scrape series present)
 cargo fmt --all -- --check       PASS
 cargo check --workspace --all-targets --all-features  PASS
 cargo test --workspace --all-features  PASS (54 unit, 62 contract, 15 O3K, 5 OpenStack)
