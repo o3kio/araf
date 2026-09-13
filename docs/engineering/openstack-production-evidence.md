@@ -9,6 +9,11 @@ but no representative real OpenStack deployment was available in this
 execution environment. A production support claim therefore remains blocked by
 evidence, not by a fixture result.
 
+The fail-closed gate is [`tests/p3-9-openstack-production-gate.sh`](../../tests/p3-9-openstack-production-gate.sh).
+It was executed without a real-environment harness and returned the exact
+`NO-GO` verdict, writing a redacted result artifact under
+`target/p3-9-openstack-gate/result.env`.
+
 ## Implemented boundary
 
 | Area | Adapter behavior | Evidence |

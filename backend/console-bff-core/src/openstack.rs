@@ -608,21 +608,41 @@ impl OpenStackAdapter {
             },
             input_schema: None,
         };
+        let supported_action_ids: &[(&str, ActionRiskClass)] = match resource_type {
+            "compute.server" => &[
+                ("delete", ActionRiskClass::Destructive),
+                ("start", ActionRiskClass::Disruptive),
+                ("stop", ActionRiskClass::Disruptive),
+            ],
+            "image.image"
+            | "network.network"
+            | "network.subnet"
+            | "network.port"
+            | "network.security-group"
+            | "block.volume" => &[("delete", ActionRiskClass::Destructive)],
+            "object.storage.bucket" => &[("delete", ActionRiskClass::Destructive)],
+            _ => &[],
+        };
+        let supports_create = Self::supports_create(resource_type);
         Some(ResourceTypeDescriptor {
             id: resource_type.into(),
             name: name.into(),
             plural_name: plural.into(),
             icon_token: "resource".into(),
-            create_schema: Some(JsonSchema(json!({"type":"object"}))),
+            create_schema: supports_create.then(|| JsonSchema(json!({"type":"object"}))),
             create_capability: Capability {
                 resource_type: capability.into(),
-                action: "create".into(),
+                action: if supports_create {
+                    "create"
+                } else {
+                    "unavailable"
+                }
+                .into(),
             },
-            supported_actions: vec![
-                action("delete", ActionRiskClass::Destructive),
-                action("start", ActionRiskClass::Disruptive),
-                action("stop", ActionRiskClass::Disruptive),
-            ],
+            supported_actions: supported_action_ids
+                .iter()
+                .map(|(id, risk)| action(id, *risk))
+                .collect(),
             columns: columns
                 .into_iter()
                 .map(|(field, header)| ColumnDescriptor {
@@ -652,6 +672,18 @@ impl OpenStackAdapter {
                 direction: RelationshipDirection::ToOne,
             }],
         })
+    }
+
+    fn supports_create(resource_type: &str) -> bool {
+        matches!(
+            resource_type,
+            "compute.server"
+                | "network.network"
+                | "network.subnet"
+                | "network.port"
+                | "network.security-group"
+                | "block.volume"
+        )
     }
 
     fn map_resource(
@@ -786,16 +818,21 @@ impl Upstream for OpenStackAdapter {
             "block.volume",
         ] {
             if self.endpoint(resource_type).is_some() {
-                for action in ["list", "read", "create", "delete"] {
+                let actions = if Self::supports_create(resource_type) {
+                    ["list", "read", "create", "delete"].as_slice()
+                } else {
+                    ["list", "read", "delete"].as_slice()
+                };
+                for action in actions {
                     capabilities.push(Capability {
                         resource_type: resource_type.into(),
-                        action: action.into(),
+                        action: (*action).into(),
                     });
                 }
             }
         }
         if self.endpoint("object.storage.bucket").is_some() {
-            for action in ["list", "read", "create", "delete"] {
+            for action in ["list", "read", "delete"] {
                 capabilities.push(Capability {
                     resource_type: "object.storage.bucket".into(),
                     action: action.into(),
@@ -1120,6 +1157,11 @@ impl Upstream for OpenStackAdapter {
         resource_type: &str,
         request: CreateResourceRequest,
     ) -> Result<Operation, ApiError> {
+        if !Self::supports_create(resource_type) {
+            return Err(ApiError::NotImplemented(
+                "OpenStack create is not supported by the configured profile".into(),
+            ));
+        }
         let (base, path) = self.endpoint(resource_type).ok_or_else(|| {
             ApiError::NotImplemented(format!(
                 "OpenStack capability is unavailable for {resource_type}"
@@ -1361,6 +1403,11 @@ mod tests {
         let descriptor = OpenStackAdapter::descriptor("object.storage.bucket").expect("descriptor");
         assert_eq!(descriptor.name, "Object Storage Bucket");
         assert!(!descriptor.id.contains("swift"));
+        assert!(descriptor.create_schema.is_none());
+        assert!(descriptor
+            .supported_actions
+            .iter()
+            .all(|action| action.id == "delete"));
     }
 
     #[test]
@@ -1372,5 +1419,42 @@ mod tests {
         let result = OpenStackClientConfig::from_env();
         std::env::remove_var("OPENSTACK_AUTH_URL");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn catalog_endpoint_selection_is_region_aware_and_keystone_v3_is_not_duplicated() {
+        let adapter = OpenStackAdapter::new(
+            "tenant-bff",
+            OpenStackClientConfig {
+                auth_url: "https://keystone.example/v3".into(),
+                token: Some("token".into()),
+                username: None,
+                password: None,
+                user_domain: "Default".into(),
+                project_name: None,
+                project_id: None,
+                region: Some("RegionOne".into()),
+                compute_url: None,
+                image_url: None,
+                network_url: None,
+                volume_url: None,
+                object_storage_url: None,
+            },
+        )
+        .expect("adapter");
+        adapter.update_catalog(&json!({
+            "catalog": [{"type":"compute","endpoints":[
+                {"interface":"public","region":"Other","url":"https://other.example"},
+                {"interface":"public","region":"RegionOne","url":"https://compute.example/v2.1"}
+            ]}]
+        }));
+        assert_eq!(
+            adapter.endpoint("compute.server").map(|(url, _)| url),
+            Some("https://compute.example/v2.1".into())
+        );
+        assert_eq!(
+            adapter.keystone_url("projects").expect("url").as_str(),
+            "https://keystone.example/v3/auth/projects"
+        );
     }
 }
