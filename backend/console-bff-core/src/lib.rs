@@ -15,6 +15,7 @@ pub mod descriptor_validation;
 pub mod error;
 pub mod fixture;
 pub mod handlers;
+pub mod metrics;
 pub mod middleware;
 pub mod model;
 pub mod o3k_adapter;
@@ -30,6 +31,7 @@ use axum::{
     routing::{delete, get, post},
     Router,
 };
+use base64::Engine;
 pub use descriptor_validation::validate_descriptor_json;
 pub use error::{ApiError, BffError, ProblemDetails, UpstreamError};
 pub use fixture::{FixtureAdapter, FIXTURE_RESOURCE_TOTAL};
@@ -50,6 +52,9 @@ pub struct BffSurface {
 fn base_routes(router: Router<AppState>) -> Router<AppState> {
     router
         .route("/healthz", get(handlers::healthz))
+        .route("/readyz", get(handlers::readyz))
+        .route("/metrics", get(handlers::metrics))
+        .route("/version", get(handlers::version))
         .route("/api/v1/auth/login", get(auth::login))
         .route("/api/v1/auth/callback", get(auth::auth_callback))
         .route("/api/v1/auth/logout", post(auth::logout))
@@ -380,7 +385,40 @@ pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
         UpstreamAdapter::O3k => Arc::new(O3kAdapter::from_env(config.surface)?),
         UpstreamAdapter::OpenStack => Arc::new(OpenStackAdapter::from_env(config.surface)?),
     };
-    let sessions = session::SessionStore::new();
+    let session_key = if config.profile == RuntimeProfile::Production {
+        let encoded = std::env::var("ARAF_SESSION_STORE_KEY").map_err(|_| {
+            config_error(
+                "ARAF_SESSION_STORE_KEY is required in production and must be a base64 AES-256 key",
+            )
+        })?;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(encoded.trim())
+            .map_err(|_| config_error("ARAF_SESSION_STORE_KEY must be valid base64"))?;
+        decoded
+            .try_into()
+            .map_err(|_| config_error("ARAF_SESSION_STORE_KEY must decode to exactly 32 bytes"))?
+    } else {
+        [0u8; 32]
+    };
+    let sessions = match std::env::var("ARAF_SESSION_STORE_PATH")
+        .ok()
+        .filter(|path| !path.trim().is_empty())
+    {
+        Some(path) if config.profile == RuntimeProfile::Production => {
+            session::SessionStore::new_durable_encrypted(path, session_key).map_err(|error| {
+                config_error(format!("failed to open durable session store: {error}"))
+            })?
+        }
+        Some(path) => session::SessionStore::new_durable(path).map_err(|error| {
+            config_error(format!("failed to open durable session store: {error}"))
+        })?,
+        None if config.profile == RuntimeProfile::Production => {
+            return Err(config_error(
+                "ARAF_SESSION_STORE_PATH is required in production; in-memory sessions are not HA-safe",
+            ));
+        }
+        None => session::SessionStore::new(),
+    };
     let oidc = if config.adapter == UpstreamAdapter::Fixture {
         auth::OidcConfig::fixture(config.surface)
     } else if config.adapter == UpstreamAdapter::OpenStack {
@@ -497,6 +535,41 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
         assert_eq!(json["status"], "ok");
         assert_eq!(json["service"], "tenant-bff");
+    }
+
+    #[tokio::test]
+    async fn readiness_and_metrics_are_scrapeable_without_a_session() {
+        let app = fixture_router("tenant-bff");
+        let readiness = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/readyz")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(readiness.status(), axum::http::StatusCode::OK);
+        let body = to_bytes(readiness.into_body(), 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "ready");
+        assert_eq!(json["dependencies"]["upstream"], "configured");
+
+        let metrics = app
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(metrics.status(), axum::http::StatusCode::OK);
+        let body = to_bytes(metrics.into_body(), 16 * 1024).await.unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.contains("araf_bff_requests_total"));
+        assert!(!text.contains("x-correlation-id"));
     }
 
     #[tokio::test]

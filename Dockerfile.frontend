@@ -27,6 +27,13 @@ RUN npm install -g pnpm && pnpm install --frozen-lockfile && pnpm -F @araf/$APP 
 
 FROM nginx:stable-alpine AS runtime
 ARG APP
+ARG ARAF_VERSION=0.0.0-dev
+ARG ARAF_GIT_SHA=unknown
+LABEL org.opencontainers.image.title="Araf ${APP} console" \
+      org.opencontainers.image.version="$ARAF_VERSION" \
+      org.opencontainers.image.revision="$ARAF_GIT_SHA" \
+      org.opencontainers.image.source="https://github.com/o3kio/araf"
+RUN apk upgrade --no-cache
 COPY --from=builder /build/apps/$APP/dist /usr/share/nginx/html
 COPY deploy/nginx-default.conf.template /etc/nginx/templates/default.conf.template
 ENV BFF_UPSTREAM=http://tenant-bff:8080

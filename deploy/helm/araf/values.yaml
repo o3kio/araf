@@ -1,0 +1,34 @@
+image:
+  repository: ghcr.io/o3kio/araf-bff
+  digest: ""
+  pullPolicy: IfNotPresent
+version: "0.0.0"
+gitSha: unknown
+upstreamAdapter: o3k
+tenant:
+  publicUrl: https://tenant.example.invalid
+  trustedOrigins: https://tenant.example.invalid
+operator:
+  publicUrl: https://operator.example.invalid
+  trustedOrigins: https://operator.example.invalid
+sessionStore:
+  storageClass: ""
+backend:
+  o3kUrl: ""
+  openstackAuthUrl: ""
+oidc:
+  tenantIssuerUrl: ""
+  tenantClientId: ""
+  tenantRedirectUri: ""
+  operatorIssuerUrl: ""
+  operatorClientId: ""
+  operatorRedirectUri: ""
+secrets:
+  name: araf-runtime-secrets
+  sessionStoreKey: session-store-key
+  o3kTokenKey: o3k-token
+  tenantOidcClientSecretKey: tenant-oidc-client-secret
+  operatorOidcClientSecretKey: operator-oidc-client-secret
+  openstackTokenKey: openstack-token
+  openstackUsernameKey: openstack-username
+  openstackPasswordKey: openstack-password

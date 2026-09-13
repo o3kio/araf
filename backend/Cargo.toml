@@ -9,10 +9,12 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 async-trait = "0.1"
+aes-gcm = "0.10"
 axum = "0.8"
 base64 = "0.22"
 console-bff-core = { path = "console-bff-core" }
 futures-util = "0.3"
+fs2 = "0.4"
 http = "1"
 jsonschema = "0.28"
 serde = { version = "1", features = ["derive"] }

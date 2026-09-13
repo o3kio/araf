@@ -25,6 +25,7 @@ Production target:
 
 - OIDC authorization-code flow through a confidential Rust BFF client,
 - BFF retains OAuth/O3K tokens server-side,
+- production replicas use authenticated encryption for durable session state,
 - browser receives an opaque secure session cookie,
 - cookie is `Secure`, `HttpOnly` and appropriately `SameSite`/host-scoped,
 - explicit CSRF defense for state-changing browser requests,
@@ -112,6 +113,12 @@ Never log:
 - authorization headers.
 
 Structured logs should include safe correlation, route, status, scope identifiers when policy permits.
+
+For both the native O3K and OpenStack compatibility profiles, telemetry uses
+fixed surface/backend/status-class dimensions. Resource, project, operation,
+request and raw URL values are correlation data, never metric labels. The
+release gate generates dependency inventories/SBOM inputs and rejects browser
+token persistence, committed private keys and embedded bearer-token patterns.
 
 ## 11. CSP/security headers
 

@@ -2,7 +2,8 @@
 .git/
 .gitignore
 
-# Rust
+# Rust and local evidence/build output
+target/
 backend/target/
 
 # Node

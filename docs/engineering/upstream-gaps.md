@@ -314,9 +314,14 @@ Implementation phases must add new gaps here instead of inventing production O3K
 - **Gap id:** `M12-O3K-001`
 - **Required O3K contract:** A shared session store (e.g. Redis) contract for HA deployments where multiple BFF instances must validate sessions issued by other instances.
 - **Why Araf M12 needs it:** The in-memory `SessionStore` is single-process only. Restarting the BFF invalidates all active sessions, and scaling to multiple instances requires a shared session backend.
-- **Current status:** Not implemented — MVP uses an in-memory store.
-- **Blocked Araf feature:** Session persistence across BFF restarts and multi-instance HA deployments.
-- **Acceptable fallback:** In-memory store is sufficient for single-instance development and small-scale deployment. Document the requirement for production HA deployments.
+- **Current status:** Resolved in the Araf production release branch with an
+  encrypted, file-locked durable store. Production requires a shared storage
+  path and external AES-256 key; a transactional Redis/SQL adapter remains an
+  optional future replacement for deployments without shared filesystems.
+- **Blocked Araf feature:** None for deployments that provide the documented
+  encrypted shared store.
+- **Acceptable fallback:** In-memory store remains available only for explicit
+  development/test profiles.
 
 ## M12-O3K-002: Production OIDC/OAuth provider endpoint
 

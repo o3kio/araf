@@ -144,6 +144,43 @@ pub async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
     )
 }
 
+/// Liveness/readiness are deliberately separate.  Construction of the
+/// configured upstream adapter is fail-closed at process startup; readiness
+/// therefore reports that configuration and the selected dependency boundary
+/// are present without pretending that a cloud operation succeeded.
+pub async fn readyz(State(state): State<AppState>) -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": "ready",
+            "service": state.upstream.surface(),
+            "dependencies": { "upstream": "configured" },
+        })),
+    )
+}
+
+/// Prometheus exposition endpoint.  Telemetry is process-local and contains
+/// only fixed dimensions; correlation/resource identifiers remain in logs.
+pub async fn metrics() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4",
+        )],
+        crate::metrics::render_prometheus(),
+    )
+}
+
+pub async fn version(State(state): State<AppState>) -> impl IntoResponse {
+    Json(serde_json::json!({
+        "version": std::env::var("ARAF_VERSION").unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_owned()),
+        "gitSha": std::env::var("ARAF_GIT_SHA").ok(),
+        "service": state.upstream.surface(),
+        "backend": state.upstream.backend_kind(),
+    }))
+}
+
 pub async fn get_context(
     State(state): State<AppState>,
     ctx: RequestContext,

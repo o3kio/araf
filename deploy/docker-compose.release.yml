@@ -1,0 +1,61 @@
+# Reference deployment using pre-built, digest-pinned release artifacts.
+# Set ARAF_VERSION and image digests in an external .env file; this file never
+# contains OIDC or provider credentials.
+services:
+  tenant-bff:
+    image: ${ARAF_BFF_IMAGE:?set ARAF_BFF_IMAGE}@${ARAF_BFF_DIGEST:?set ARAF_BFF_DIGEST}
+    command: ["tenant-bff"]
+    environment:
+      ARAF_RUNTIME_PROFILE: production
+      ARAF_UPSTREAM_ADAPTER: ${ARAF_UPSTREAM_ADAPTER:?set adapter}
+      ARAF_PUBLIC_URL: ${ARAF_TENANT_PUBLIC_URL:?set tenant URL}
+      ARAF_TRUSTED_ORIGINS: ${ARAF_TENANT_PUBLIC_URL:?set tenant URL}
+      ARAF_SESSION_STORE_PATH: /var/lib/araf/sessions.json
+      ARAF_SESSION_STORE_KEY: ${ARAF_SESSION_STORE_KEY:?set base64 session store key}
+      O3K_URL: ${O3K_URL:-}
+      O3K_TOKEN: ${O3K_TOKEN:-}
+      OPENSTACK_AUTH_URL: ${OPENSTACK_AUTH_URL:-}
+      OPENSTACK_TOKEN: ${OPENSTACK_TOKEN:-}
+      OPENSTACK_USERNAME: ${OPENSTACK_USERNAME:-}
+      OPENSTACK_PASSWORD: ${OPENSTACK_PASSWORD:-}
+      ARAF_TENANT_OIDC_CLIENT_ID: ${ARAF_TENANT_OIDC_CLIENT_ID:?set tenant OIDC client id}
+      ARAF_TENANT_OIDC_CLIENT_SECRET: ${ARAF_TENANT_OIDC_CLIENT_SECRET:?set tenant OIDC client secret}
+      ARAF_TENANT_OIDC_ISSUER_URL: ${ARAF_TENANT_OIDC_ISSUER_URL:?set tenant OIDC issuer}
+      ARAF_TENANT_OIDC_REDIRECT_URI: ${ARAF_TENANT_OIDC_REDIRECT_URI:?set tenant OIDC redirect}
+    volumes:
+      - tenant-session:/var/lib/araf
+    read_only: true
+    tmpfs: [/tmp]
+    ports: ["8080:8080"]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8080/readyz"]
+  operator-bff:
+    image: ${ARAF_BFF_IMAGE:?set ARAF_BFF_IMAGE}@${ARAF_BFF_DIGEST:?set ARAF_BFF_DIGEST}
+    command: ["operator-bff"]
+    environment:
+      ARAF_RUNTIME_PROFILE: production
+      ARAF_UPSTREAM_ADAPTER: ${ARAF_UPSTREAM_ADAPTER:?set adapter}
+      ARAF_PUBLIC_URL: ${ARAF_OPERATOR_PUBLIC_URL:?set operator URL}
+      ARAF_TRUSTED_ORIGINS: ${ARAF_OPERATOR_PUBLIC_URL:?set operator URL}
+      ARAF_SESSION_STORE_PATH: /var/lib/araf/sessions.json
+      ARAF_SESSION_STORE_KEY: ${ARAF_SESSION_STORE_KEY:?set base64 session store key}
+      O3K_URL: ${O3K_URL:-}
+      O3K_TOKEN: ${O3K_TOKEN:-}
+      OPENSTACK_AUTH_URL: ${OPENSTACK_AUTH_URL:-}
+      OPENSTACK_TOKEN: ${OPENSTACK_TOKEN:-}
+      OPENSTACK_USERNAME: ${OPENSTACK_USERNAME:-}
+      OPENSTACK_PASSWORD: ${OPENSTACK_PASSWORD:-}
+      ARAF_OPERATOR_OIDC_CLIENT_ID: ${ARAF_OPERATOR_OIDC_CLIENT_ID:?set operator OIDC client id}
+      ARAF_OPERATOR_OIDC_CLIENT_SECRET: ${ARAF_OPERATOR_OIDC_CLIENT_SECRET:?set operator OIDC client secret}
+      ARAF_OPERATOR_OIDC_ISSUER_URL: ${ARAF_OPERATOR_OIDC_ISSUER_URL:?set operator OIDC issuer}
+      ARAF_OPERATOR_OIDC_REDIRECT_URI: ${ARAF_OPERATOR_OIDC_REDIRECT_URI:?set operator OIDC redirect}
+    volumes:
+      - operator-session:/var/lib/araf
+    read_only: true
+    tmpfs: [/tmp]
+    ports: ["8081:8081"]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8081/readyz"]
+volumes:
+  tenant-session:
+  operator-session:

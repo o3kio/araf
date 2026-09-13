@@ -7,10 +7,12 @@ rust-version.workspace = true
 description = "Shared BFF core for Araf console surfaces (routing, errors, sessions, upstream abstraction, fixtures)"
 
 [dependencies]
+aes-gcm.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 base64.workspace = true
 futures-util.workspace = true
+fs2.workspace = true
 http.workspace = true
 jsonschema.workspace = true
 reqwest.workspace = true
