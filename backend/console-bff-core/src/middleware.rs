@@ -9,7 +9,11 @@ use axum::{
     response::{IntoResponse, Response},
     Router,
 };
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::{Arc, OnceLock},
+    time::Instant,
+};
+use tokio::sync::Semaphore;
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowOrigin, CorsLayer},
@@ -223,6 +227,7 @@ async fn require_authenticated_session(request: Request, next: Next) -> Response
         (&axum::http::Method::GET, "/healthz")
             | (&axum::http::Method::GET, "/readyz")
             | (&axum::http::Method::GET, "/metrics")
+            | (&axum::http::Method::GET, "/version")
             | (&axum::http::Method::GET, "/api/v1/auth/login")
             | (&axum::http::Method::GET, "/api/v1/auth/callback")
             | (&axum::http::Method::GET, "/api/v1/auth/session")
@@ -346,7 +351,22 @@ async fn observe_request(request: Request, next: Next, surface: &'static str) ->
     let request_id = request_id_from_request(&request);
     let correlation_id = correlation_id_from_request(&request);
     let started = Instant::now();
+    static CONCURRENCY: OnceLock<Semaphore> = OnceLock::new();
+    let gate = CONCURRENCY.get_or_init(|| Semaphore::new(256));
+    let permit = match gate.try_acquire() {
+        Ok(permit) => permit,
+        Err(_) => {
+            crate::metrics::record_rate_limited(surface);
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                [(axum::http::header::RETRY_AFTER, "1")],
+                "request concurrency limit reached",
+            )
+                .into_response();
+        }
+    };
     let response = next.run(request).await;
+    drop(permit);
     let status = response.status();
     let elapsed_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
     crate::metrics::record_request(surface, status.as_u16(), elapsed_ms);
