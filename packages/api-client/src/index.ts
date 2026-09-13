@@ -162,7 +162,8 @@ export interface Resource {
   name: string;
   resourceType: string;
   projectId: string;
-  regionId: string;
+  /** O3K omits region identity for global resources. */
+  regionId: string | null;
   status: ResourceStatus;
   createdAt: string;
   updatedAt: string;

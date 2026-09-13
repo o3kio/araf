@@ -371,11 +371,11 @@ impl O3kAdapter {
                 "O3K resource omitted its authoritative owner scope".to_owned(),
             ))
         })?;
-        let region_id = envelope.metadata.region.ok_or_else(|| {
-            ApiError::Upstream(UpstreamError::Error(
-                "O3K resource omitted its authoritative region".to_owned(),
-            ))
-        })?;
+        // O3K native envelopes omit `metadata.region` for resources whose
+        // discovered placement is global. Preserve that absence instead of
+        // fabricating a default geography; the normalized Araf model carries
+        // an optional region for this reason.
+        let region_id = envelope.metadata.region;
         let created_at = envelope
             .metadata
             .created_at
@@ -2565,7 +2565,7 @@ mod resource_mapping_tests {
     }
 
     #[test]
-    fn resource_mapping_rejects_missing_authoritative_metadata() {
+    fn resource_mapping_preserves_missing_region_for_global_resources() {
         let metadata = serde_json::json!({
             "id": "server-1",
             "owner_scope": "project-1",
@@ -2574,9 +2574,9 @@ mod resource_mapping_tests {
             "updated_at": "2026-09-07T00:00:00Z"
         });
 
-        let error = O3kAdapter::map_native_resource(envelope(metadata))
-            .expect_err("missing region must not become a fabricated global resource");
-        assert!(matches!(error, ApiError::Upstream(_)));
+        let resource = O3kAdapter::map_native_resource(envelope(metadata))
+            .expect("global resources may omit region identity");
+        assert_eq!(resource.region_id, None);
     }
 
     #[test]

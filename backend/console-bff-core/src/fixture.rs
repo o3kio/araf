@@ -134,7 +134,7 @@ impl FixtureAdapter {
             name: format!("fixture-server-{id}"),
             resource_type: "compute.server".to_string(),
             project_id,
-            region_id: region.to_string(),
+            region_id: Some(region.to_string()),
             status,
             created_at: OffsetDateTime::UNIX_EPOCH
                 + time::Duration::seconds((seed % 1_000_000) as i64),
@@ -171,7 +171,7 @@ impl FixtureAdapter {
             name: format!("fixture-vpc-{id}"),
             resource_type: "network.vpc".to_string(),
             project_id,
-            region_id: region.to_string(),
+            region_id: Some(region.to_string()),
             status,
             created_at: OffsetDateTime::UNIX_EPOCH
                 + time::Duration::seconds((seed % 1_000_000) as i64),
@@ -216,7 +216,7 @@ impl FixtureAdapter {
             name: format!("fixture-volume-{id}"),
             resource_type: "storage.volume".to_string(),
             project_id,
-            region_id: region.to_string(),
+            region_id: Some(region.to_string()),
             status,
             created_at: OffsetDateTime::UNIX_EPOCH
                 + time::Duration::seconds((seed % 1_000_000) as i64),
@@ -256,7 +256,7 @@ impl FixtureAdapter {
             name: format!("fixture-bucket-{id}"),
             resource_type: "object.storage.bucket".to_string(),
             project_id,
-            region_id: region.to_string(),
+            region_id: Some(region.to_string()),
             status,
             created_at: OffsetDateTime::UNIX_EPOCH
                 + time::Duration::seconds((seed % 1_000_000) as i64),
@@ -283,7 +283,7 @@ impl FixtureAdapter {
             "name" => resource.name.clone(),
             "status" => format!("{:?}", resource.status),
             "projectId" => resource.project_id.clone(),
-            "regionId" => resource.region_id.clone(),
+            "regionId" => resource.region_id.clone().unwrap_or_default(),
             "createdAt" => resource.created_at.to_string(),
             "updatedAt" => resource.updated_at.to_string(),
             _ if field.starts_with("properties.") => {
@@ -1618,7 +1618,7 @@ impl Upstream for FixtureAdapter {
             items.retain(|r| r.project_id == project);
         }
         if let Some(region) = params.region_id {
-            items.retain(|r| r.region_id == region);
+            items.retain(|r| r.region_id.as_deref() == Some(region.as_str()));
         }
 
         // Resource-type-specific filters.
@@ -1706,7 +1706,7 @@ impl Upstream for FixtureAdapter {
         op.resource_id = Some(id.to_string());
         op.resource_type = Some(resource_type.to_string());
         op.project_id = Some(resource.project_id);
-        op.region_id = Some(resource.region_id);
+        op.region_id = resource.region_id.clone();
         op.state = OperationState::Pending;
         op.started_at = Some(now);
         op.updated_at = Some(now);
