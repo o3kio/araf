@@ -21,7 +21,7 @@ RUN cargo build --release --bin tenant-bff --bin operator-bff && \
     cp target/release/operator-bff /usr/local/bin/operator-bff
 
 # Stage 2: Minimal runtime image
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 ARG ARAF_VERSION=0.0.0-dev
 ARG ARAF_GIT_SHA=unknown
 LABEL org.opencontainers.image.title="Araf BFF" \
