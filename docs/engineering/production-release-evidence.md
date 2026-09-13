@@ -35,6 +35,10 @@ operations, governance, and metering (`tests/p2-3` through `tests/p2-5` and
 OIDC process and OpenStack/IdP production gates remain unrun because this host
 has no configured external IdP, HTTPS ingress, or OpenStack deployment.
 
+The browser-critical Playwright suite passes locally (17 tests) against the
+fixture profile, including tenant/operator navigation, resource actions,
+operations, governance, and scope/isolation journeys.
+
 ## Supported profiles and deviations
 
 The advertised OpenStack profile remains Keystone, Nova, Glance, Neutron and
