@@ -4,7 +4,7 @@
 
 - Repository: `o3kio/araf`
 - Candidate branch: `codex/p4-1-observability`
-- Candidate source: `7e7882204b60232d4b027476dad33dd7a8f5986c`
+- Candidate source: exact HEAD recorded in `target/p3-9-openstack-gate/result.env`
 - Artifact version: `0.0.0-dev` until a signed release tag is created
 - Date: 2026-09-13
 
