@@ -4,7 +4,7 @@
 
 - Repository: `o3kio/araf`
 - Candidate branch: `codex/p4-1-observability`
-- Candidate source: exact HEAD recorded in `target/p3-9-openstack-gate/result.env`
+- Candidate source: `fd81b1dfee552302f67e2ea7480abb62265f7944`
 - Artifact version: `0.1.0-rc` (locally signed/attested candidate; trusted CI provenance remains gated)
 - Date: 2026-09-13
 
@@ -13,7 +13,7 @@
 | Gate | Evidence | Result |
 | --- | --- | --- |
 | P2 native O3K | Post-P3 baseline and existing real O3K gate evidence | PASS (baseline) |
-| P3 OpenStack core profile | `docs/engineering/openstack-production-evidence.md`, `target/p3-9-openstack-gate/result.env` | PASS (real Kolla 2024.2 Dalmatian profile) |
+| P3 OpenStack core profile | `docs/engineering/openstack-production-evidence.md`, `target/p3-9-openstack-gate/result.env` | PASS at exact commit `92d4013`; current-head rerun blocked by torn-down Kolla services |
 | P4.1 observability | `p4-1-observability-evidence.md`, `/metrics`, `/readyz`, correlation tests | PASS locally; real deployment attachment required |
 | P4.2 performance/scale | `performance-evidence.md`, `tests/performance-bounded.sh` | PASS for bounded fixture; O3K/OpenStack load attachment required |
 | P4.3 HA/session | encrypted file-locked store tests and restart/replica topology | PASS for the shared durable primitive and concurrent-writer recovery; multi-host rolling-failure test required |
@@ -33,10 +33,12 @@ development-only and cannot establish production cloud or identity claims.
 Converged O3K process smoke gates also pass for discovery/collection, native
 operations, governance, and metering (`tests/p2-3` through `tests/p2-5` and
 `tests/p2-7`, with the local O3K process using its fake provider). The real
-P3.9 harness passed against the development host's Kolla-Ansible OpenStack
-2024.2 (Dalmatian), Keystone-backed Keycloak ingress and two Araf surfaces,
-and was rerun successfully at current HEAD after the encrypted session-store
-change. Its artifacts are redacted and record only IDs, capability count,
+P3.9 harness passed at exact Araf commit `92d4013` against the development
+host's Kolla-Ansible OpenStack 2024.2 (Dalmatian), Keystone-backed Keycloak
+ingress and two Araf surfaces. A later current-head rerun returned `NO-GO`
+because the Kolla services had been torn down and the Keystone proxy returned
+502; no cloud capability claim is inferred from that failed rerun. Its
+successful artifacts are redacted and record only IDs, capability count,
 operation count and the selected profile.
 
 The browser-critical Playwright suite passes locally (17 tests) against the

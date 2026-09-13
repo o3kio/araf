@@ -34,7 +34,7 @@ pnpm build                                        PASS
 
 Pinned local artifact evidence (development host, 2026-09-13) was generated
 with Syft `v1.18.1` (CycloneDX) and Trivy `v0.58.2` using the local OCI
-registry. Syft reported 94 BFF, 72 Tenant console and 72 Operator console
+registry. Syft reported 16 BFF, 72 Tenant console and 72 Operator console
 components. Trivy reported zero HIGH/CRITICAL findings for both frontend
 images, and zero HIGH/CRITICAL findings for the distroless BFF image. The
 candidate images are also signed and SBOM-attested in the local registry with

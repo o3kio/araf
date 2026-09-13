@@ -21,12 +21,14 @@ configuration remains fail-closed: production requires an explicit adapter,
 HTTPS public/trusted origins, upstream credentials/endpoints and
 `ARAF_SESSION_STORE_PATH` and `ARAF_SESSION_STORE_KEY`.
 
-Development-host OCI evidence for RC `0.1.0-rc` (revision
-`92d4013fc4f779178375fa00830e89b8c4b462ba`) is available in the local registry:
+Development-host OCI evidence for RC `0.1.0-rc` is available in the local
+registry. The image labels record the source revisions below; these locally
+built images predate the current release-publication workflow commit and are
+therefore evidence only, not publishable release artifacts:
 
-- BFF: `sha256:3c06cb7c3458a53f4154bee31a24785d3f64c5dc136c890c70b3574814fb0574`
-- Tenant console: `sha256:ab8bc01ad0cf0266dfc463cfc72c4795059ea82988f578409791d9fc0d63435`
-- Operator console: `sha256:11538ef1fe6c7f3a8f6eb05582d4a9cef1f5087cfbe839f3a103c9aa2d182c2c`
+- BFF (`c980583c31528be67b06c32080259c28585a2c37`): `sha256:3c06cb7c3458a53f4154bee31a24785d3f64c5dc136c890c70b3574814fb0574`
+- Tenant console (`d61fb7bed189e1ba6c009e6caddb74c58d399e6d`): `sha256:ab8bc01ad0cf0266dfc463cfc72c4795059ea82988f578409791d9fc0d63435`
+- Operator console (`d61fb7bed189e1ba6c009e6caddb74c58d399e6d`): `sha256:11538ef1fe6c7f3a8f6eb05582d4a9cef1f5087cfbe839f3a103c9aa2d182c2c`
 
 The images build with bounded contexts and include OCI labels. Local cosign
 signatures and CycloneDX SBOM attestations verify against the development
