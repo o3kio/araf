@@ -31,6 +31,8 @@ pub struct SessionData {
     pub oidc_access_token: Option<String>,
     pub oidc_refresh_token: Option<String>,
     pub o3k_token: Option<String>,
+    pub openstack_token: Option<String>,
+    pub openstack_project_id: Option<String>,
     pub created_at: Instant,
     pub expires_at: Instant,
     pub csrf_token: String,
@@ -103,6 +105,8 @@ impl SessionStore {
             oidc_access_token,
             oidc_refresh_token,
             o3k_token,
+            openstack_token: None,
+            openstack_project_id: None,
             created_at: now,
             expires_at: now + ttl,
             csrf_token,
@@ -160,6 +164,24 @@ impl SessionStore {
             return false;
         };
         session.o3k_token = Some(token);
+        true
+    }
+
+    pub async fn set_openstack_project(&self, session_token: &str, project_id: String) -> bool {
+        let mut sessions = self.sessions.write().await;
+        let Some(session) = sessions.get_mut(session_token) else {
+            return false;
+        };
+        session.openstack_project_id = Some(project_id);
+        true
+    }
+
+    pub async fn set_openstack_token(&self, session_token: &str, token: String) -> bool {
+        let mut sessions = self.sessions.write().await;
+        let Some(session) = sessions.get_mut(session_token) else {
+            return false;
+        };
+        session.openstack_token = Some(token);
         true
     }
 

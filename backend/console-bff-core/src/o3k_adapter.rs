@@ -22,6 +22,7 @@ use async_trait::async_trait;
 use time::OffsetDateTime;
 
 use crate::{
+    cloud_backend::CloudBackend,
     error::{ApiError, UpstreamError},
     model::{
         ActionDescriptor, ActionRequest, ActionRiskClass, ActionSchemaMetadata, AlertSeverity,
@@ -41,8 +42,8 @@ use crate::{
     },
     request::RequestContext,
     upstream::{
-        ListOperationsParams, ListOperatorAuditEventsParams, ListOperatorOperationsParams,
-        ListResourcesParams, Upstream,
+        BackendScope, ListOperationsParams, ListOperatorAuditEventsParams,
+        ListOperatorOperationsParams, ListResourcesParams, Upstream,
     },
 };
 
@@ -1426,10 +1427,50 @@ impl O3kAdapter {
     }
 }
 
+impl CloudBackend for O3kAdapter {}
+
 #[async_trait]
 impl Upstream for O3kAdapter {
     fn surface(&self) -> &'static str {
         self.surface
+    }
+
+    async fn discover_scopes(&self, ctx: &RequestContext) -> Result<Vec<BackendScope>, ApiError> {
+        let token = ctx
+            .session
+            .oidc_access_token
+            .as_deref()
+            .ok_or(ApiError::Unauthorized)?;
+        self.client_for(ctx)
+            .discover_federated_scopes(token)
+            .await
+            .map(|response| {
+                response
+                    .scopes
+                    .into_iter()
+                    .map(|scope| BackendScope {
+                        id: scope.id,
+                        kind: scope.kind,
+                        name: scope.name,
+                        domain_id: scope.domain_id,
+                        can_request_token: scope.can_request_token,
+                    })
+                    .collect()
+            })
+            .map_err(Self::map_client_error)
+    }
+
+    async fn select_scope(&self, ctx: &RequestContext, project_id: &str) -> Result<(), ApiError> {
+        let token = ctx
+            .session
+            .oidc_access_token
+            .as_deref()
+            .ok_or(ApiError::Unauthorized)?;
+        self.client_for(ctx)
+            .exchange_federated_token(token, project_id)
+            .await
+            .map(|_| ())
+            .map_err(Self::map_client_error)
     }
 
     async fn context(&self, ctx: &RequestContext) -> Result<SessionContext, ApiError> {

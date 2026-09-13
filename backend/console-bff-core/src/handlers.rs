@@ -61,6 +61,8 @@ fn with_ctx<E: Into<ApiError>>(err: E, ctx: &RequestContext) -> BffError {
 /// Application state shared by handlers.
 #[derive(Clone)]
 pub struct AppState {
+    /// Backend-neutral upstream boundary. Provider adapters never reach the
+    /// browser directly.
     pub upstream: Arc<dyn Upstream>,
     pub oidc: crate::auth::OidcConfig,
     pub sessions: Arc<crate::session::SessionStore>,

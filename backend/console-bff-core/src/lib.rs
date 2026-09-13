@@ -8,6 +8,8 @@
 //! The BFF must never become a generic upstream proxy (ADR 0002).
 
 pub mod auth;
+pub mod cloud_backend;
+pub mod compatibility;
 pub mod csrf;
 pub mod descriptor_validation;
 pub mod error;
@@ -17,6 +19,7 @@ pub mod middleware;
 pub mod model;
 pub mod o3k_adapter;
 pub mod o3k_client;
+pub mod openstack;
 pub mod request;
 pub mod session;
 pub mod upstream;
@@ -33,6 +36,7 @@ pub use fixture::{FixtureAdapter, FIXTURE_RESOURCE_TOTAL};
 pub use handlers::AppState;
 pub use o3k_adapter::O3kAdapter;
 pub use o3k_client::{O3kClient, O3kClientConfig};
+pub use openstack::{OpenStackAdapter, OpenStackClientConfig};
 pub use request::{RequestContext, SessionState};
 pub use upstream::Upstream;
 
@@ -209,6 +213,9 @@ pub enum UpstreamAdapter {
     Fixture,
     /// Real O3K native API adapter.
     O3k,
+    /// OpenStack compatibility backend.  It is selected explicitly and never
+    /// silently used as an O3K fallback.
+    OpenStack,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -262,6 +269,7 @@ impl BffConfig {
         })?;
         let adapter = match raw_adapter.trim().to_ascii_lowercase().as_str() {
             "o3k" => UpstreamAdapter::O3k,
+            "openstack" => UpstreamAdapter::OpenStack,
             "fixture" if profile != RuntimeProfile::Production => UpstreamAdapter::Fixture,
             "fixture" => return Err(config_error("fixture adapter is forbidden in production")),
             value => {
@@ -270,11 +278,12 @@ impl BffConfig {
                 )))
             }
         };
-        if profile == RuntimeProfile::Production && adapter != UpstreamAdapter::O3k {
-            return Err(config_error("production requires the o3k upstream adapter"));
-        }
-        if profile == RuntimeProfile::Production && adapter == UpstreamAdapter::O3k {
-            validate_production_o3k_url()?;
+        if profile == RuntimeProfile::Production {
+            match adapter {
+                UpstreamAdapter::O3k => validate_production_o3k_url()?,
+                UpstreamAdapter::OpenStack => validate_production_openstack_url()?,
+                UpstreamAdapter::Fixture => unreachable!("fixture rejected above"),
+            }
         }
         let public_url = std::env::var("ARAF_PUBLIC_URL").ok();
         let trusted_origins: Vec<String> = std::env::var("ARAF_TRUSTED_ORIGINS")
@@ -369,10 +378,17 @@ pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
     let upstream: Arc<dyn Upstream> = match config.adapter {
         UpstreamAdapter::Fixture => Arc::new(FixtureAdapter::new(config.surface)),
         UpstreamAdapter::O3k => Arc::new(O3kAdapter::from_env(config.surface)?),
+        UpstreamAdapter::OpenStack => Arc::new(OpenStackAdapter::from_env(config.surface)?),
     };
     let sessions = session::SessionStore::new();
     let oidc = if config.adapter == UpstreamAdapter::Fixture {
         auth::OidcConfig::fixture(config.surface)
+    } else if config.adapter == UpstreamAdapter::OpenStack {
+        auth::OidcConfig::from_env_for_backend(
+            config.surface,
+            config.profile,
+            cloud_backend::BackendKind::OpenStack,
+        )?
     } else {
         auth::OidcConfig::from_env(config.surface, config.profile)?
     };
@@ -396,6 +412,46 @@ pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
             config.trusted_origins,
         )
     })
+}
+
+fn validate_production_openstack_url() -> Result<(), ApiError> {
+    let value = std::env::var("OPENSTACK_AUTH_URL").map_err(|_| {
+        config_error("OPENSTACK_AUTH_URL is required for the production openstack adapter")
+    })?;
+    let url = reqwest::Url::parse(value.trim())
+        .map_err(|_| config_error("OPENSTACK_AUTH_URL must be a valid absolute URL"))?;
+    if url.scheme() != "https"
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(config_error("production OPENSTACK_AUTH_URL must be HTTPS, host-qualified, and contain no credentials, query, or fragment"));
+    }
+    let has_token = std::env::var("OPENSTACK_TOKEN")
+        .ok()
+        .is_some_and(|value| !value.trim().is_empty());
+    let has_password_credentials = std::env::var("OPENSTACK_USERNAME")
+        .ok()
+        .is_some_and(|value| !value.trim().is_empty())
+        && std::env::var("OPENSTACK_PASSWORD")
+            .ok()
+            .is_some_and(|value| !value.trim().is_empty());
+    if !has_token && !has_password_credentials {
+        return Err(config_error(
+            "production OpenStack requires OPENSTACK_TOKEN or OPENSTACK_USERNAME and OPENSTACK_PASSWORD",
+        ));
+    }
+    let journal = std::env::var("ARAF_OPENSTACK_COMPATIBILITY_JOURNAL")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    if journal.is_none() {
+        return Err(config_error(
+            "ARAF_OPENSTACK_COMPATIBILITY_JOURNAL is required in production",
+        ));
+    }
+    Ok(())
 }
 
 fn tenant_api_router_with_state(state: handlers::AppState) -> Router {

@@ -15,6 +15,7 @@ use async_trait::async_trait;
 use time::OffsetDateTime;
 
 use crate::{
+    cloud_backend::CloudBackend,
     error::ApiError,
     model::{
         ActionDescriptor, ActionRequest, ActionRiskClass, AlertSeverity, ApiCredential, AuditEvent,
@@ -2701,6 +2702,8 @@ impl SessionContext {
         }
     }
 }
+
+impl CloudBackend for FixtureAdapter {}
 
 #[cfg(test)]
 mod tests {

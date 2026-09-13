@@ -83,6 +83,15 @@ pub struct ListOperationsParams {
     pub until: Option<OffsetDateTime>,
 }
 
+#[derive(Clone, Debug)]
+pub struct BackendScope {
+    pub id: String,
+    pub kind: String,
+    pub name: Option<String>,
+    pub domain_id: Option<String>,
+    pub can_request_token: bool,
+}
+
 /// Abstract upstream dependency for BFF handlers.
 ///
 /// Production implementations call the O3K native API. Fixture implementations
@@ -92,6 +101,24 @@ pub struct ListOperationsParams {
 pub trait Upstream: Send + Sync + 'static {
     /// Surface this adapter serves (e.g. `tenant-bff`, `operator-bff`).
     fn surface(&self) -> &'static str;
+
+    /// Stable backend provenance.  This is intentionally server-side metadata;
+    /// frontend resource models remain provider-neutral.
+    fn backend_kind(&self) -> crate::cloud_backend::BackendKind {
+        crate::cloud_backend::BackendKind::O3k
+    }
+
+    async fn discover_scopes(&self, _ctx: &RequestContext) -> Result<Vec<BackendScope>, ApiError> {
+        Err(ApiError::NotImplemented(
+            "scope discovery is not implemented by this backend".into(),
+        ))
+    }
+
+    async fn select_scope(&self, _ctx: &RequestContext, _project_id: &str) -> Result<(), ApiError> {
+        Err(ApiError::NotImplemented(
+            "scope selection is not implemented by this backend".into(),
+        ))
+    }
 
     /// Current session context and capabilities.
     async fn context(&self, ctx: &RequestContext) -> Result<SessionContext, ApiError>;

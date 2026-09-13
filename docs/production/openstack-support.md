@@ -28,6 +28,16 @@ Optional services must not be assumed to exist.
 
 Human credentials must remain behind the BFF. Prefer federated/OIDC-compatible Keystone deployments where available. If legacy username/password login is supported for broad compatibility, it must be an explicit deployment mode, never persist the raw password, and remain subject to the same secure-session boundary.
 
+## Deployment configuration
+
+Production startup requires an HTTPS `OPENSTACK_AUTH_URL`, either a
+server-side `OPENSTACK_TOKEN` or explicit `OPENSTACK_USERNAME` plus
+`OPENSTACK_PASSWORD` credentials, and a durable
+`ARAF_OPENSTACK_COMPATIBILITY_JOURNAL` path. Service URLs may be pinned with
+`OPENSTACK_*_URL`; when omitted, Keystone's public service catalog is used.
+Tokens and passwords are never sent to the browser or persisted in browser
+storage.
+
 ## Native UX mapping
 
 Araf presents generic terms such as Virtual Machine, Network, Volume, Image, Project and Object Storage. Nova/Neutron/Cinder/Glance/Keystone names belong to adapter/operator diagnostics, not normal tenant navigation.

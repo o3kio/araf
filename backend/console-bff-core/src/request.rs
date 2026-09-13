@@ -49,6 +49,12 @@ pub struct SessionState {
     pub user_id: Option<String>,
     pub user_name: Option<String>,
     pub o3k_token: Option<String>,
+    /// Keystone token for the OpenStack compatibility backend. Kept distinct
+    /// from the native O3K token so backend credentials cannot cross boundaries.
+    pub openstack_token: Option<String>,
+    /// Keystone token/project context for the OpenStack compatibility backend.
+    /// Tokens remain server-side and are never serialized to the browser.
+    pub openstack_project_id: Option<String>,
     pub oidc_access_token: Option<String>,
     pub session_token: Option<String>,
 }
@@ -61,6 +67,8 @@ impl SessionState {
             user_id: Some("fixture-user".to_string()),
             user_name: Some("Fixture User".to_owned()),
             o3k_token: None,
+            openstack_token: None,
+            openstack_project_id: None,
             oidc_access_token: None,
             session_token: None,
         }
