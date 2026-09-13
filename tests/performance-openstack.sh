@@ -15,6 +15,10 @@ concurrency=${ARAF_PERF_CONCURRENCY:-16}
 resource_type=${ARAF_PERF_RESOURCE_TYPE:-network.network}
 page_size=${ARAF_PERF_PAGE_SIZE:-100}
 (( requests > 0 && concurrency > 0 && page_size > 0 && page_size <= 100 ))
+case "$ARAF_PERF_BASE" in
+  https://*) ;;
+  *) echo 'ARAF_PERF_BASE must use HTTPS' >&2; exit 2 ;;
+esac
 work=$(mktemp -d)
 cookie="$work/cookies"
 headers="$work/headers"
@@ -52,6 +56,10 @@ curl_json -X POST -H 'Content-Type: application/json' \
   -H "X-CSRF-Token: $csrf" -b "$cookie" \
   --data "{\"project_id\":\"$project\"}" \
   "$ARAF_PERF_BASE/api/v1/auth/scope" >/dev/null
+sample=$(curl_json -b "$cookie" \
+  "$ARAF_PERF_BASE/api/v1/resources/$resource_type?page=0&pageSize=$page_size")
+jq -e --argjson limit "$page_size" \
+  '(.items | type == "array") and (.items | length <= $limit)' <<<"$sample" >/dev/null
 
 while kill -0 "$ARAF_PERF_BFF_PID" 2>/dev/null; do
   rss_kib=$(awk '/^VmRSS:/ {print $2}' \
