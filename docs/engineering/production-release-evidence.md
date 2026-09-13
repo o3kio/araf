@@ -3,11 +3,11 @@
 ## Candidate
 
 - Repository: `o3kio/araf`
-- Candidate branch: `codex/p4-1-observability`
+- Candidate branch: `codex/target-openstack-2026-1`
 - Candidate source (implementation): `24a8b691a7c447ce001271519713d5b322757eb8`
 - Artifact version: `0.1.0-rc` (locally signed/attested candidate; trusted CI provenance remains gated)
-- Target OpenStack profile: **2026.1 or later**, using matching
-  `stable/2026.1` Kolla-Ansible tooling and service images
+- Target OpenStack profile: **2025.1 or later**, using matching Kolla-Ansible
+  tooling and service images
 - Date: 2026-09-13
 
 ## Gate matrix
@@ -16,7 +16,7 @@
 | --- | --- | --- |
 | P2 native O3K | Post-P3 baseline and existing real O3K gate evidence | PASS (baseline) |
 | P12 IAM/current-process identity | `p12-iam-real-idp-p4-evidence.md` (O3K `p12-iam-7-real-idp.sh` with Araf P12-IAM.8 hook) | PASS for the current-process external-IdP journey; this is not a production deployment claim |
-| P3 OpenStack core profile | `docs/engineering/openstack-production-evidence.md`, `target/p3-9-openstack-gate/result.env` | Historical PASS at exact commit `92d4013` against 2024.2; current target 2026.1 certification remains open |
+| P3 OpenStack core profile | `docs/engineering/openstack-production-evidence.md`, disposable Kolla 2025.1 harness artifact | PASS for the current supported profile on a clean single-host Kolla 2025.1 deployment; multi-host and external-environment evidence remain open |
 | P4.1 observability | `p4-1-observability-evidence.md`, `/metrics`, `/readyz`, correlation tests | PASS locally; real deployment attachment required |
 | P4.2 performance/scale | `performance-evidence.md`, `tests/performance-bounded.sh` | PASS for bounded fixture; O3K/OpenStack load attachment required |
 | P4.3 HA/session | encrypted file-locked store tests, restart/replica topology, and current-head O3K replica smoke | PASS for the shared durable primitive, concurrent-writer recovery, and same-host O3K replica continuity; multi-host rolling-failure test required |
@@ -45,13 +45,17 @@ the harness uses a disposable development HTTP topology and fake provider;
 it is not evidence of a production O3K deployment, HTTPS termination, or
 multi-host failover.
 
-The real P3.9 harness passed at exact Araf commit `92d4013` against the development
-host's Kolla-Ansible OpenStack 2024.2 (Dalmatian), Keystone-backed Keycloak
-ingress and two Araf surfaces. A later current-head rerun returned `NO-GO`
-because the Kolla services had been torn down and the Keystone proxy returned
-502; no cloud capability claim is inferred from that failed rerun. Its
-successful artifacts are redacted and record only IDs, capability count,
-operation count and the selected profile.
+The real P3.9 harness passed at the current candidate implementation source
+(`24a8b691a7c447ce001271519713d5b322757eb8`) against a clean disposable
+Kolla-Ansible OpenStack **2025.1** deployment, a Keystone-backed Keycloak
+ingress, and both Araf surfaces. The run exercised real image/flavor/network/
+subnet/volume/server resources, asynchronous Nova lifecycle actions, invalid
+input, quotas, deletion, project-scoped direct-ID isolation, and persisted
+compatibility operations. Its redacted result is retained at
+`/tmp/araf-p4-openstack-2025/evidence5/redacted-run.txt` and records only
+opaque IDs, capability count, operation count, and the selected profile. This
+is a single-host support-profile result; it does not certify multi-host
+failover, external installation, or a production pilot.
 
 On current head `22a93894b89a659a5eb62decccf6e3f90852a6c3`, a fresh disposable
 O3K TestLab (`agent` provider, O3K source `157fde108c5e0a9c6567f596d88a6abbb55b2aaf`)
@@ -69,9 +73,8 @@ This is not a production-readiness pass: the agent lab has no region, image or
 compute inventory, so those capabilities were recorded as upstream gaps. The
 deployment-owned legacy harness also assumes a reserved bootstrap project ID;
 the original unmodified run therefore stopped at `native_token_exchange`
-without treating that mismatch as a product success. A supported OpenStack
-current-head rerun, multi-host failover and external clean-install evidence
-remain required.
+without treating that mismatch as a product success. Multi-host failover,
+external clean-install, and production-pilot evidence remain required.
 
 The same current-head O3K topology also ran two Tenant BFF replicas sharing
 the encrypted durable session file. Login and scope/CSRF selection on replica A

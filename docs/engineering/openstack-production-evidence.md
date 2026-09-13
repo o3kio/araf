@@ -2,18 +2,21 @@
 
 ## Target reference
 
-The target OpenStack release for the supported Kolla deployment is **2026.1 or
-later**, using matching `stable/2026.1` Kolla-Ansible tooling and service
-images. This document records the historical P3.9 baseline run against
-OpenStack 2024.2; that result does not certify the 2026.1 target. A new
-target-version run must publish a separate redacted artifact and result before
-2026.1 can be advertised as certified.
+The target OpenStack release for the supported Kolla deployment is **2025.1 or
+later**, using matching Kolla-Ansible tooling and service images. This document
+records a current-candidate P3.9 run against OpenStack 2025.1 and retains the
+older 2024.2 result as historical context. The profile is certified only for
+the capabilities and topology described below.
 
 ## Verdict
 
-`GO — OPENSTACK PROFILE SUPPORTED`
+`GO — OPENSTACK PROFILE SUPPORTED (SINGLE-HOST 2025.1 PROFILE)`
 
-The unchanged fail-closed gate (`tests/p3-9-openstack-production-gate.sh`) passed against a real Kolla-Ansible all-in-one deployment and production Tenant and Operator BFFs. The deployment harness created and destroyed real Nova, Glance, Neutron and Cinder resources and wrote the redacted artifact at `target/p3-9-openstack-gate/redacted-run.txt`.
+The unchanged fail-closed gate passed against a real Kolla-Ansible 2025.1
+all-in-one deployment and production-profile Tenant and Operator BFFs. The
+deployment harness created and destroyed real Nova, Glance, Neutron and
+Cinder resources and wrote the redacted artifact at
+`/tmp/araf-p4-openstack-2025/evidence5/redacted-run.txt`.
 
 The recorded run had 30 tenant capabilities, real image/flavor/network/subnet/volume/server IDs, authoritative ACTIVE/SHUTOFF transitions, stop/start/reboot, invalid server input, quota reads, deletion, and 25 persisted compatibility operations.
 
@@ -22,17 +25,19 @@ The recorded run had 30 tenant capabilities, real image/flavor/network/subnet/vo
 | Item | Observed value |
 |---|---|
 | Host | Ubuntu 24.04.4 LTS, kernel 6.8.0-139-generic, 16 vCPU, 62 GiB RAM |
-| Araf commit under test | `23d7e38d48b6f82b7eb212fb75058904d2a5ebd8` |
+| Araf implementation source under test | `24a8b691a7c447ce001271519713d5b322757eb8` |
 | Virtualization | `/dev/kvm` present; disposable Nova profile uses KVM/libvirt |
-| Kolla-Ansible | 19.7.0; OpenStack 2024.2 (Dalmatian), Ubuntu Noble images |
+| Kolla-Ansible | 19.7.0; OpenStack 2025.1, Ubuntu Noble images |
 | Core services | Keystone, Nova, Glance, Neutron, Cinder, Placement (plus Heat) |
-| Service images | `quay.io/openstack/kolla/*:2024.2-ubuntu-noble` |
+| Service images | `quay.io/openstack/kolla/*:2025.1-ubuntu-noble` |
 | Araf ingress | Local CA-backed HTTPS: Tenant 8445, Operator 8446, Keystone proxy 9444 |
 | Network topology | Existing management `eth0` preserved; Neutron external `ens19` isolated; no public floating-IP requirement |
 | Storage | Dedicated 15 GiB loopback image and `cinder-volumes` LVM VG; no host disks used |
 | Object Storage | Not deployed and correctly capability-hidden (`OPENSTACK_OBJECT_STORAGE_URL` unset) |
 
-The stable/2024.2 Kolla collection branch was retired upstream; the deployment used the compatible `openstack.kolla` collection from stable/2025.1 while retaining the requested 2024.2 service images. This packaging deviation is recorded and does not alter the API compatibility target.
+The deployment used the compatible `openstack.kolla` collection from the
+Kolla-Ansible 19.7.0 environment with matching 2025.1 service images. No
+cross-version image substitution was used.
 
 ## Security and isolation evidence
 
@@ -51,9 +56,8 @@ Tenant requests are bound to the configured/session project; arbitrary project s
 
 ## Artifacts and reproducibility
 
-- Gate result: `target/p3-9-openstack-gate/result.env`
-- Harness marker: `target/p3-9-openstack-gate/harness.success`
-- Redacted run: `target/p3-9-openstack-gate/redacted-run.txt`
+- Gate result: `/tmp/araf-p4-openstack-2025/evidence5/harness.success`
+- Redacted run: `/tmp/araf-p4-openstack-2025/evidence5/redacted-run.txt`
 - Deployment-owned harness: `/root/p3-9-openstack-run/harness.sh`
 - Durable tenant journal: `/root/p3-9-openstack-run/tenant-journal.jsonl`
 
