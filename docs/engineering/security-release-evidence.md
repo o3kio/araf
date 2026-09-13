@@ -27,6 +27,7 @@ Validation on the development host:
 ./tests/security-release-gate.sh                 PASS
 cargo audit                                      PASS (0 advisories)
 cargo deny check licenses bans sources            PASS (warnings only for duplicate crates/workspace resolver)
+pnpm audit --prod                                PASS (no known vulnerabilities)
 cargo test --workspace --all-features             PASS
 pnpm build                                        PASS
 ```
