@@ -1,0 +1,13 @@
+{{- range $surface := list "tenant" "operator" }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "araf.fullname" $ }}-{{ $surface }}-sessions
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
+  {{- with $.Values.sessionStore.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+---
+{{- end }}

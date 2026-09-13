@@ -1,0 +1,39 @@
+{{- range $surface := list "tenant" "operator" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "araf.fullname" $ }}-{{ $surface }}-bff
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app.kubernetes.io/name: araf, araf.o3k.io/surface: {{ $surface }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: araf, araf.o3k.io/surface: {{ $surface }} }
+    spec:
+      containers:
+        - name: bff
+          image: {{ include "araf.image" $ }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          command: ["{{ $surface }}-bff"]
+          env:
+            - name: ARAF_RUNTIME_PROFILE
+              value: production
+            - name: ARAF_UPSTREAM_ADAPTER
+              value: {{ $.Values.upstreamAdapter | quote }}
+            - name: ARAF_VERSION
+              value: {{ $.Values.version | quote }}
+            - name: ARAF_GIT_SHA
+              value: {{ $.Values.gitSha | quote }}
+            - name: ARAF_SESSION_STORE_PATH
+              value: /var/lib/araf/sessions.json
+          ports: [{ name: http, containerPort: {{ if eq $surface "tenant" }}8080{{ else }}8081{{ end }} }]
+          readinessProbe: { httpGet: { path: /readyz, port: http } }
+          livenessProbe: { httpGet: { path: /healthz, port: http } }
+          securityContext: { readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: session-store, mountPath: /var/lib/araf }]
+      volumes:
+        - name: session-store
+          persistentVolumeClaim: { claimName: {{ include "araf.fullname" $ }}-{{ $surface }}-sessions }
+---
+{{- end }}

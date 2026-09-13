@@ -1,0 +1,15 @@
+image:
+  repository: ghcr.io/o3kio/araf-bff
+  digest: ""
+  pullPolicy: IfNotPresent
+version: "0.0.0"
+gitSha: unknown
+upstreamAdapter: o3k
+tenant:
+  publicUrl: https://tenant.example.invalid
+  trustedOrigins: https://tenant.example.invalid
+operator:
+  publicUrl: https://operator.example.invalid
+  trustedOrigins: https://operator.example.invalid
+sessionStore:
+  storageClass: ""

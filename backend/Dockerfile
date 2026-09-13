@@ -22,11 +22,18 @@ RUN cargo build --release --bin tenant-bff --bin operator-bff && \
 
 # Stage 2: Minimal runtime image
 FROM debian:bookworm-slim
+ARG ARAF_VERSION=0.0.0-dev
+ARG ARAF_GIT_SHA=unknown
+LABEL org.opencontainers.image.title="Araf BFF" \
+      org.opencontainers.image.version="$ARAF_VERSION" \
+      org.opencontainers.image.revision="$ARAF_GIT_SHA" \
+      org.opencontainers.image.source="https://github.com/o3kio/araf"
 
 RUN apt-get update && apt-get install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/bin/tenant-bff /usr/local/bin/tenant-bff
 COPY --from=builder /usr/local/bin/operator-bff /usr/local/bin/operator-bff
+ENV ARAF_VERSION=$ARAF_VERSION ARAF_GIT_SHA=$ARAF_GIT_SHA
 
 EXPOSE 8080 8081
 
