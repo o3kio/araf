@@ -22,13 +22,17 @@ HTTPS public/trusted origins, upstream credentials/endpoints and
 `ARAF_SESSION_STORE_PATH` and `ARAF_SESSION_STORE_KEY`.
 
 Development-host OCI evidence for RC `0.1.0-rc` is available in the local
-registry. The image labels record the source revisions below; these locally
-built images predate the current release-publication workflow commit and are
-therefore evidence only, not publishable release artifacts:
+registry. The current images were rebuilt from Araf
+`110ab0ae86bf57bee3897b35ca62d68dc0f45c57` with bounded contexts and exact
+labels:
 
-- BFF (`c980583c31528be67b06c32080259c28585a2c37`): `sha256:3c06cb7c3458a53f4154bee31a24785d3f64c5dc136c890c70b3574814fb0574`
-- Tenant console (`d61fb7bed189e1ba6c009e6caddb74c58d399e6d`): `sha256:ab8bc01ad0cf0266dfc463cfc72c4795059ea82988f578409791d9fc0d63435`
-- Operator console (`d61fb7bed189e1ba6c009e6caddb74c58d399e6d`): `sha256:11538ef1fe6c7f3a8f6eb05582d4a9cef1f5087cfbe839f3a103c9aa2d182c2c`
+- BFF: `sha256:3e4ebd068cf55720f9b89d55ee9371464357a55696148f2bed8bbbad11b578ff`
+- Tenant console: `sha256:d7528b28809bb6bc817d35fed96b139636c54ab992971e02c774d76373c23fc6`
+- Operator console: `sha256:b29b38fc3036f57ab44d733a946f52eabf008af8410f4da7bb6532c959d76789`
+
+These are development-host artifacts, not the publishable release: trusted
+CI keyless provenance and external install/upgrade/rollback evidence remain
+required.
 
 The images build with bounded contexts and include OCI labels. Local cosign
 signatures and CycloneDX SBOM attestations verify against the development

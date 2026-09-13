@@ -32,12 +32,12 @@ cargo test --workspace --all-features             PASS
 pnpm build                                        PASS
 ```
 
-Pinned local artifact evidence (development host, 2026-09-13) was generated
-with Syft `v1.18.1` (CycloneDX) and Trivy `v0.58.2` using the local OCI
-registry. Syft reported 16 BFF, 72 Tenant console and 72 Operator console
-components. Trivy reported zero HIGH/CRITICAL findings for both frontend
-images, and zero HIGH/CRITICAL findings for the distroless BFF image. The
-candidate images are also signed and SBOM-attested in the local registry with
+Current local artifact evidence (development host, 2026-09-13) was generated
+from Araf `110ab0ae86bf57bee3897b35ca62d68dc0f45c57` with Syft `v1.18.1`
+(CycloneDX) and Trivy `v0.58.2` using the local OCI registry. Syft reported
+16 BFF, 72 Tenant console and 72 Operator console components. Trivy reported
+zero HIGH/CRITICAL findings for both frontend images and the distroless BFF
+image. The candidate images are also signed and SBOM-attested in the local registry with
 an ephemeral development cosign key; verification is recorded in
 `target/security/cosign-verify.txt`. A release still requires the CI-owned
 trusted keyless provenance attestation before publication. The tag-triggered
