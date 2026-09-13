@@ -4,6 +4,23 @@
 
 Allow Araf to be deployed as a production cloud console for a supported OpenStack cloud while keeping one Araf product/runtime and preserving O3K-native architecture.
 
+## Target OpenStack release
+
+The target release for the supported Kolla deployment and production evidence is
+**OpenStack 2026.1 or later**, using the matching `stable/2026.1` Kolla-Ansible
+branch and matching 2026.1 service images. OpenStack 2025.1 remains the minimum
+acceptable version for compatibility, but it is not the target reference for
+new certification evidence.
+
+The Kolla control plane may run inside a KVM/libvirt virtual machine. If that
+deployment also provides Nova compute, `nova_compute_virt_type: kvm` requires
+nested KVM with `/dev/kvm` exposed to the guest; otherwise the disposable
+functional profile must use `qemu` and must not make native-KVM performance
+claims.
+
+Evidence recorded against an older OpenStack release is historical baseline
+evidence and does not certify the 2026.1 target.
+
 ## Core v1 profile
 
 Required:

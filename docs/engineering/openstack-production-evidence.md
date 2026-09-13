@@ -1,5 +1,14 @@
 # OpenStack production support-profile evidence
 
+## Target reference
+
+The target OpenStack release for the supported Kolla deployment is **2026.1 or
+later**, using matching `stable/2026.1` Kolla-Ansible tooling and service
+images. This document records the historical P3.9 baseline run against
+OpenStack 2024.2; that result does not certify the 2026.1 target. A new
+target-version run must publish a separate redacted artifact and result before
+2026.1 can be advertised as certified.
+
 ## Verdict
 
 `GO — OPENSTACK PROFILE SUPPORTED`

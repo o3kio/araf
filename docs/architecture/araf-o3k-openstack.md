@@ -100,7 +100,10 @@ OpenStack remains authoritative for OpenStack-backed resources. Araf must not ma
 As of 2026-09-13:
 
 - the **O3K backend** has passed Araf's P2.8 native production-convergence gate;
-- the bounded **OpenStack backend profile** has passed P3.9 with `GO — OPENSTACK PROFILE SUPPORTED` against a real Kolla-Ansible OpenStack 2024.2 (Dalmatian) environment;
+- the bounded **OpenStack backend profile** has a historical P3.9
+  `GO — OPENSTACK PROFILE SUPPORTED` result against OpenStack 2024.2
+  (Dalmatian); the target reference for new certification is OpenStack 2026.1
+  or later with matching Kolla-Ansible tooling and images;
 - multi-backend aggregation in one running console is **not required** for the first production release;
 - optional OpenStack Object Storage, public floating-IP exposure, volume-attachment UX, and provider-specific React pages remain outside the certified P3.9 profile unless separately proven.
 
