@@ -13,6 +13,7 @@
 | Gate | Evidence | Result |
 | --- | --- | --- |
 | P2 native O3K | Post-P3 baseline and existing real O3K gate evidence | PASS (baseline) |
+| P12 IAM/current-process identity | O3K `p12-iam-7-real-idp.sh` with Araf P12-IAM.8 hook | PASS for the current-process external-IdP journey; this is not a production deployment claim |
 | P3 OpenStack core profile | `docs/engineering/openstack-production-evidence.md`, `target/p3-9-openstack-gate/result.env` | PASS at exact commit `92d4013`; current-head rerun blocked by torn-down Kolla services |
 | P4.1 observability | `p4-1-observability-evidence.md`, `/metrics`, `/readyz`, correlation tests | PASS locally; real deployment attachment required |
 | P4.2 performance/scale | `performance-evidence.md`, `tests/performance-bounded.sh` | PASS for bounded fixture; O3K/OpenStack load attachment required |
@@ -33,7 +34,16 @@ development-only and cannot establish production cloud or identity claims.
 Converged O3K process smoke gates also pass for discovery/collection, native
 operations, governance, and metering (`tests/p2-3` through `tests/p2-5` and
 `tests/p2-7`, with the local O3K process using its fake provider). The real
-P3.9 harness passed at exact Araf commit `92d4013` against the development
+external-IdP boundary was also exercised on 2026-09-13: O3K's
+`p12-iam-7-real-idp.sh` harness passed IAM.7 and IAM.8 with an ephemeral
+Keycloak realm, a current O3K `o3kd` process, Araf's real Tenant BFF process,
+opaque-cookie session custody, scope discovery/selection, a resource request,
+and logout. This closes the process-level identity/session evidence gap, but
+the harness uses a disposable development HTTP topology and fake provider;
+it is not evidence of a production O3K deployment, HTTPS termination, or
+multi-host failover.
+
+The real P3.9 harness passed at exact Araf commit `92d4013` against the development
 host's Kolla-Ansible OpenStack 2024.2 (Dalmatian), Keystone-backed Keycloak
 ingress and two Araf surfaces. A later current-head rerun returned `NO-GO`
 because the Kolla services had been torn down and the Keystone proxy returned
