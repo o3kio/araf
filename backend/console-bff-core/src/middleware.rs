@@ -165,6 +165,7 @@ pub fn apply_production_layers(
             axum::http::header::HeaderName::from_static("referrer-policy"),
             HeaderValue::from_static("strict-origin-when-cross-origin"),
         ))
+        .layer(axum::middleware::from_fn(require_authenticated_session))
         .layer(axum::middleware::from_fn_with_state(
             (sessions, surface),
             inject_production_session,
@@ -205,6 +206,32 @@ pub fn apply_production_layers(
         .layer(axum::middleware::from_fn(propagate_id_headers))
         .layer(trace)
         .layer(axum::middleware::from_fn(redact_sensitive_logs))
+}
+
+/// Reject production API access unless the session middleware established an
+/// authenticated session. Authentication endpoints and health checks remain
+/// reachable so a browser can initiate login and an orchestrator can probe
+/// liveness without credentials.
+async fn require_authenticated_session(request: Request, next: Next) -> Response {
+    let public = matches!(
+        (request.method(), request.uri().path()),
+        (&axum::http::Method::GET, "/healthz")
+            | (&axum::http::Method::GET, "/api/v1/auth/login")
+            | (&axum::http::Method::GET, "/api/v1/auth/callback")
+            | (&axum::http::Method::GET, "/api/v1/auth/session")
+            | (&axum::http::Method::POST, "/api/v1/auth/logout")
+    );
+    if public {
+        return next.run(request).await;
+    }
+    let authenticated = request
+        .extensions()
+        .get::<Arc<SessionState>>()
+        .is_some_and(|session| session.authenticated);
+    if !authenticated {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    next.run(request).await
 }
 
 async fn inject_session(
