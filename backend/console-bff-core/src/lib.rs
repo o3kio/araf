@@ -15,6 +15,7 @@ pub mod descriptor_validation;
 pub mod error;
 pub mod fixture;
 pub mod handlers;
+pub mod metrics;
 pub mod middleware;
 pub mod model;
 pub mod o3k_adapter;
@@ -50,6 +51,8 @@ pub struct BffSurface {
 fn base_routes(router: Router<AppState>) -> Router<AppState> {
     router
         .route("/healthz", get(handlers::healthz))
+        .route("/readyz", get(handlers::readyz))
+        .route("/metrics", get(handlers::metrics))
         .route("/api/v1/auth/login", get(auth::login))
         .route("/api/v1/auth/callback", get(auth::auth_callback))
         .route("/api/v1/auth/logout", post(auth::logout))
@@ -497,6 +500,41 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
         assert_eq!(json["status"], "ok");
         assert_eq!(json["service"], "tenant-bff");
+    }
+
+    #[tokio::test]
+    async fn readiness_and_metrics_are_scrapeable_without_a_session() {
+        let app = fixture_router("tenant-bff");
+        let readiness = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/readyz")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(readiness.status(), axum::http::StatusCode::OK);
+        let body = to_bytes(readiness.into_body(), 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "ready");
+        assert_eq!(json["dependencies"]["upstream"], "configured");
+
+        let metrics = app
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(metrics.status(), axum::http::StatusCode::OK);
+        let body = to_bytes(metrics.into_body(), 16 * 1024).await.unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.contains("araf_bff_requests_total"));
+        assert!(!text.contains("x-correlation-id"));
     }
 
     #[tokio::test]

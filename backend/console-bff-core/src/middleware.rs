@@ -9,7 +9,7 @@ use axum::{
     response::{IntoResponse, Response},
     Router,
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowOrigin, CorsLayer},
@@ -17,7 +17,7 @@ use tower_http::{
     set_header::SetResponseHeaderLayer,
     trace::TraceLayer,
 };
-use tracing::info_span;
+use tracing::{info, info_span, warn};
 
 use crate::{
     request::{correlation_id_from_request, request_id_from_request, SessionState},
@@ -50,7 +50,6 @@ pub fn apply_default_layers(router: Router, surface: &'static str) -> Router {
         info_span!(
             "http_request",
             method = %request.method(),
-            uri = %request.uri(),
             request_id = %request_id,
             correlation_id = %correlation_id,
         )
@@ -115,6 +114,9 @@ pub fn apply_default_layers(router: Router, surface: &'static str) -> Router {
         .layer(compression)
         .layer(cors)
         .layer(axum::middleware::from_fn(propagate_id_headers))
+        .layer(axum::middleware::from_fn(
+            move |request: Request, next: Next| observe_request(request, next, surface),
+        ))
         .layer(trace)
         .layer(axum::middleware::from_fn(redact_sensitive_logs))
 }
@@ -126,7 +128,7 @@ pub fn apply_production_layers(
     trusted_origins: Vec<String>,
 ) -> Router {
     let trace = TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
-        info_span!("http_request", method = %request.method(), uri = %request.uri(), request_id = %request_id_from_request(request), correlation_id = %correlation_id_from_request(request))
+        info_span!("http_request", method = %request.method(), request_id = %request_id_from_request(request), correlation_id = %correlation_id_from_request(request))
     });
     let csp_header = SetResponseHeaderLayer::overriding(
         axum::http::header::CONTENT_SECURITY_POLICY,
@@ -204,6 +206,9 @@ pub fn apply_production_layers(
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE_BYTES))
         .layer(CompressionLayer::new())
         .layer(axum::middleware::from_fn(propagate_id_headers))
+        .layer(axum::middleware::from_fn(
+            move |request: Request, next: Next| observe_request(request, next, surface),
+        ))
         .layer(trace)
         .layer(axum::middleware::from_fn(redact_sensitive_logs))
 }
@@ -216,6 +221,8 @@ async fn require_authenticated_session(request: Request, next: Next) -> Response
     let public = matches!(
         (request.method(), request.uri().path()),
         (&axum::http::Method::GET, "/healthz")
+            | (&axum::http::Method::GET, "/readyz")
+            | (&axum::http::Method::GET, "/metrics")
             | (&axum::http::Method::GET, "/api/v1/auth/login")
             | (&axum::http::Method::GET, "/api/v1/auth/callback")
             | (&axum::http::Method::GET, "/api/v1/auth/session")
@@ -229,6 +236,12 @@ async fn require_authenticated_session(request: Request, next: Next) -> Response
         .get::<Arc<SessionState>>()
         .is_some_and(|session| session.authenticated);
     if !authenticated {
+        crate::metrics::record_auth_failure(
+            request
+                .extensions()
+                .get::<Arc<SessionState>>()
+                .map_or("unknown", |session| session.surface),
+        );
         return StatusCode::UNAUTHORIZED.into_response();
     }
     next.run(request).await
@@ -323,4 +336,42 @@ async fn redact_sensitive_logs(request: Request, next: Next) -> Response {
     // we never add headers to the span. The actual log redaction is enforced by
     // not including sensitive data in structured fields.
     next.run(request).await
+}
+
+/// Record a bounded request metric and a structured completion event.  The
+/// path is intentionally omitted: concrete resource/operation IDs are
+/// unbounded and belong only in the request correlation chain.
+async fn observe_request(request: Request, next: Next, surface: &'static str) -> Response {
+    let method = request.method().clone();
+    let request_id = request_id_from_request(&request);
+    let correlation_id = correlation_id_from_request(&request);
+    let started = Instant::now();
+    let response = next.run(request).await;
+    let status = response.status();
+    let elapsed_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+    crate::metrics::record_request(surface, status.as_u16(), elapsed_ms);
+    if status.is_server_error() {
+        warn!(
+            surface,
+            %method,
+            status = status.as_u16(),
+            elapsed_ms,
+            %request_id,
+            %correlation_id,
+            event = "request_completed",
+            "request failed"
+        );
+    } else {
+        info!(
+            surface,
+            %method,
+            status = status.as_u16(),
+            elapsed_ms,
+            %request_id,
+            %correlation_id,
+            event = "request_completed",
+            "request completed"
+        );
+    }
+    response
 }

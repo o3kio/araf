@@ -196,13 +196,14 @@ impl OpenStackAdapter {
         };
         let url = self.keystone_url("tokens")?;
         let body = json!({"auth":{"identity":{"methods":["password"],"password":{"user":{"name":username,"domain":{"name":self.config.user_domain},"password":password}}},"scope": self.config.project_id.as_ref().map(|id| json!({"project":{"id":id}})).or_else(|| self.config.project_name.as_ref().map(|name| json!({"project":{"name":name,"domain":{"name":self.config.user_domain}}})))}});
-        let response = self
-            .client
-            .post(url)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| config_error(e.to_string()))?;
+        let response = match self.client.post(url).json(&body).send().await {
+            Ok(response) => response,
+            Err(error) => {
+                crate::metrics::record_backend_call("openstack", 0);
+                return Err(config_error(error.to_string()));
+            }
+        };
+        crate::metrics::record_backend_call("openstack", response.status().as_u16());
         if !response.status().is_success() {
             return Err(map_status(response.status(), &Value::Null));
         }
@@ -389,11 +390,15 @@ impl OpenStackAdapter {
         if let Some(body) = body {
             request = request.json(&body);
         }
-        let response = request
-            .send()
-            .await
-            .map_err(|e| ApiError::Upstream(UpstreamError::Error(e.to_string())))?;
+        let response = match request.send().await {
+            Ok(response) => response,
+            Err(error) => {
+                crate::metrics::record_backend_call("openstack", 0);
+                return Err(ApiError::Upstream(UpstreamError::Error(error.to_string())));
+            }
+        };
         let status = response.status();
+        crate::metrics::record_backend_call("openstack", status.as_u16());
         let bytes = response
             .bytes()
             .await
