@@ -24,10 +24,11 @@
 
 ## Local pilot
 
-The local soak exercises two Tenant BFF processes, repeated bounded resource
-lists and metrics reads, then abruptly kills and restarts one replica. The
-fixture adapter is explicitly labelled development-only and cannot establish
-production cloud or identity claims.
+The local soak exercises two Tenant and two Operator BFF processes, repeated
+bounded resource lists and metrics reads, then abruptly kills and restarts one
+replica of each surface. The latest run completed in 9 seconds with 800
+requests and recovery passing. The fixture adapter is explicitly labelled
+development-only and cannot establish production cloud or identity claims.
 
 Converged O3K process smoke gates also pass for discovery/collection, native
 operations, governance, and metering (`tests/p2-3` through `tests/p2-5` and

@@ -57,7 +57,8 @@ profiles.
 ## Validation
 
 ```text
-./tests/performance-bounded.sh                                  PASS
+./tests/performance-bounded.sh                                  PASS (p50 12.06 ms, p95 16.75 ms, p99 18.90 ms)
+./tests/pilot-soak.sh                                           PASS (800 requests, 2 Tenant + 2 Operator replicas)
 pnpm build                                                       PASS
 pnpm typecheck                                                   PASS
 pnpm lint                                                        PASS
