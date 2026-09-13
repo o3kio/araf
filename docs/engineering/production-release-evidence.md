@@ -17,7 +17,7 @@
 | P3 OpenStack core profile | `docs/engineering/openstack-production-evidence.md`, `target/p3-9-openstack-gate/result.env` | PASS at exact commit `92d4013`; current-head rerun blocked by torn-down Kolla services |
 | P4.1 observability | `p4-1-observability-evidence.md`, `/metrics`, `/readyz`, correlation tests | PASS locally; real deployment attachment required |
 | P4.2 performance/scale | `performance-evidence.md`, `tests/performance-bounded.sh` | PASS for bounded fixture; O3K/OpenStack load attachment required |
-| P4.3 HA/session | encrypted file-locked store tests and restart/replica topology | PASS for the shared durable primitive and concurrent-writer recovery; multi-host rolling-failure test required |
+| P4.3 HA/session | encrypted file-locked store tests, restart/replica topology, and current-head O3K replica smoke | PASS for the shared durable primitive, concurrent-writer recovery, and same-host O3K replica continuity; multi-host rolling-failure test required |
 | P4.4 security/supply chain | `security-release-evidence.md`, CI gate, pinned Trivy/Syft/cosign artifacts | PASS local scan/SBOM/signature; MEDIUM base refresh/risk acceptance and trusted CI provenance required |
 | P4.5 packaging | current-head OCI builds/digests, Helm lint/template, Compose validation | PASS build and packaging checks; clean external install/upgrade attachment required |
 | P4.6 supportability | `docs/operations/operator-runbook.md`, redacted bundle script | PASS documentation gate |
@@ -70,6 +70,14 @@ the original unmodified run therefore stopped at `native_token_exchange`
 without treating that mismatch as a product success. A supported OpenStack
 current-head rerun, multi-host failover and external clean-install evidence
 remain required.
+
+The same current-head O3K topology also ran two Tenant BFF replicas sharing
+the encrypted durable session file. Login and scope/CSRF selection on replica A
+were accepted by replica B; an abrupt replica-B kill produced an observed
+outage, restart restored readiness and the scoped session, and logout on B was
+visible as revocation on A. This proves same-host durable-session continuity,
+not multi-host storage or network-failure tolerance; the redacted result is
+`/tmp/araf-p4-o3k-current-head-2035/ha-o3k-redacted.json`.
 
 The browser-critical Playwright suite passes locally (17 tests) against the
 fixture profile, including tenant/operator navigation, resource actions,
