@@ -21,6 +21,17 @@ configuration remains fail-closed: production requires an explicit adapter,
 HTTPS public/trusted origins, upstream credentials/endpoints and
 `ARAF_SESSION_STORE_PATH` and `ARAF_SESSION_STORE_KEY`.
 
+Development-host OCI evidence for RC `0.1.0-rc` (revision
+`309b827c6108a08fd24601e903b3071956526771`) is available in the local registry:
+
+- BFF: `sha256:0ecef2122b00a5e1a5cd03831a755a55b70651ac841db190c8803d3d04379336`
+- Tenant console: `sha256:ab8bc01ad0cf0266dfc463cfc72c4795059ea82988f578409791d9fc0d63435`
+- Operator console: `sha256:11538ef1fe6c7f3a8f6eb05582d4a9cef1f5087cfbe839f3a103c9aa2d182c2c`
+
+The images build with bounded contexts and include OCI labels, but publication
+remains blocked pending signed provenance and remediation/acceptance of the
+Trivy HIGH findings recorded in the security evidence.
+
 Compatibility matrix:
 
 | Araf release | O3K | OpenStack |
