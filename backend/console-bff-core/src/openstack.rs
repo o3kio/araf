@@ -238,41 +238,48 @@ impl OpenStackAdapter {
                 .map(ToOwned::to_owned)
                 .or_else(|| catalog_url("compute"))
                 .map(|u| (u, "servers/detail")),
+            "compute.flavor" => self
+                .config
+                .compute_url
+                .as_deref()
+                .map(ToOwned::to_owned)
+                .or_else(|| catalog_url("compute"))
+                .map(|u| (u, "flavors/detail")),
             "image.image" => self
                 .config
                 .image_url
                 .as_deref()
                 .map(ToOwned::to_owned)
                 .or_else(|| catalog_url("image"))
-                .map(|u| (u, "images")),
+                .map(|u| (u, "v2/images")),
             "network.network" => self
                 .config
                 .network_url
                 .as_deref()
                 .map(ToOwned::to_owned)
                 .or_else(|| catalog_url("network"))
-                .map(|u| (u, "networks")),
+                .map(|u| (u, "v2.0/networks")),
             "network.subnet" => self
                 .config
                 .network_url
                 .as_deref()
                 .map(ToOwned::to_owned)
                 .or_else(|| catalog_url("network"))
-                .map(|u| (u, "subnets")),
+                .map(|u| (u, "v2.0/subnets")),
             "network.port" => self
                 .config
                 .network_url
                 .as_deref()
                 .map(ToOwned::to_owned)
                 .or_else(|| catalog_url("network"))
-                .map(|u| (u, "ports")),
+                .map(|u| (u, "v2.0/ports")),
             "network.security-group" => self
                 .config
                 .network_url
                 .as_deref()
                 .map(ToOwned::to_owned)
                 .or_else(|| catalog_url("network"))
-                .map(|u| (u, "security-groups")),
+                .map(|u| (u, "v2.0/security-groups")),
             "block.volume" => self
                 .config
                 .volume_url
@@ -329,6 +336,12 @@ impl OpenStackAdapter {
         if let Ok(mut catalog) = self.catalog.write() {
             catalog.extend(discovered);
         }
+    }
+
+    fn scoped_base(&self, base: &str, project: Option<&str>) -> String {
+        project
+            .map(|id| base.replace("%(tenant_id)s", id))
+            .unwrap_or_else(|| base.to_owned())
     }
 
     async fn discover_catalog(&self, ctx: &RequestContext) -> Result<(), ApiError> {
@@ -489,7 +502,7 @@ impl OpenStackAdapter {
                     .unwrap_or("UNKNOWN");
                 let state = match record.action.as_str() {
                     "delete" => OperationState::Running,
-                    "start" if resource.status == ResourceStatus::Ready => {
+                    "start" | "reboot" if resource.status == ResourceStatus::Ready => {
                         OperationState::Succeeded
                     }
                     "stop"
@@ -553,6 +566,12 @@ impl OpenStackAdapter {
                 "compute.server",
                 vec![("name", "Name"), ("status", "Status")],
             ),
+            "compute.flavor" => (
+                "Compute Size",
+                "Compute Sizes",
+                "compute.flavor",
+                vec![("name", "Name"), ("vcpus", "vCPUs"), ("ram", "RAM")],
+            ),
             "image.image" => (
                 "Image",
                 "Images",
@@ -613,7 +632,9 @@ impl OpenStackAdapter {
                 ("delete", ActionRiskClass::Destructive),
                 ("start", ActionRiskClass::Disruptive),
                 ("stop", ActionRiskClass::Disruptive),
+                ("reboot", ActionRiskClass::Disruptive),
             ],
+            "compute.flavor" => &[],
             "image.image"
             | "network.network"
             | "network.subnet"
@@ -718,6 +739,7 @@ impl OpenStackAdapter {
             project_id: value
                 .get("tenant_id")
                 .or_else(|| value.get("project_id"))
+                .or_else(|| value.get("owner"))
                 .and_then(Value::as_str)
                 .or(project)
                 .unwrap_or("unknown")
@@ -810,6 +832,7 @@ impl Upstream for OpenStackAdapter {
         }
         for resource_type in [
             "compute.server",
+            "compute.flavor",
             "image.image",
             "network.network",
             "network.subnet",
@@ -876,7 +899,11 @@ impl Upstream for OpenStackAdapter {
         let _ = self.discover_catalog(ctx).await;
         let mut services = Vec::new();
         for (id, name, resource_types) in [
-            ("compute", "Compute", vec!["compute.server"]),
+            (
+                "compute",
+                "Compute",
+                vec!["compute.server", "compute.flavor"],
+            ),
             ("image", "Images", vec!["image.image"]),
             (
                 "network",
@@ -947,13 +974,24 @@ impl Upstream for OpenStackAdapter {
         ctx: &RequestContext,
         project_id: Option<&str>,
     ) -> Result<PaginatedCollection<ProjectQuota>, ApiError> {
-        let project = self
-            .project(ctx, project_id)
-            .ok_or(ApiError::Unauthorized)?;
+        let _ = self.discover_catalog(ctx).await;
+        let project = match self.project(ctx, project_id) {
+            Some(project) => project.to_owned(),
+            None => self
+                .discover_scopes(ctx)
+                .await?
+                .into_iter()
+                .next()
+                .map(|scope| scope.id)
+                .ok_or(ApiError::Unauthorized)?,
+        };
         let mut entries = Vec::new();
-        if let Some(base) = self.config.compute_url.as_deref() {
-            let url = Url::parse(&format!("{base}/os-quota-sets/{project}"))
-                .map_err(|e| config_error(e.to_string()))?;
+        if let Some((base, _)) = self.endpoint("compute.server") {
+            let url = Url::parse(&format!(
+                "{}/os-quota-sets/{project}",
+                self.scoped_base(&base, Some(&project))
+            ))
+            .map_err(|e| config_error(e.to_string()))?;
             if let Ok((_, body)) = self.request_json(ctx, Method::GET, url, None).await {
                 if let Some(quota) = body.get("quota_set") {
                     for (field, resource_type, unit) in [
@@ -977,9 +1015,12 @@ impl Upstream for OpenStackAdapter {
                 }
             }
         }
-        if let Some(base) = self.config.network_url.as_deref() {
-            let url = Url::parse(&format!("{base}/quotas/{project}"))
-                .map_err(|e| config_error(e.to_string()))?;
+        if let Some((base, _)) = self.endpoint("network.network") {
+            let url = Url::parse(&format!(
+                "{}/quotas/{project}",
+                self.scoped_base(&base, Some(&project))
+            ))
+            .map_err(|e| config_error(e.to_string()))?;
             if let Ok((_, body)) = self.request_json(ctx, Method::GET, url, None).await {
                 if let Some(quota) = body.get("quota").or_else(|| body.get("quotas")) {
                     for (field, resource_type, unit) in [
@@ -1008,9 +1049,12 @@ impl Upstream for OpenStackAdapter {
                 }
             }
         }
-        if let Some(base) = self.config.volume_url.as_deref() {
-            let url = Url::parse(&format!("{base}/os-quota-sets/{project}"))
-                .map_err(|e| config_error(e.to_string()))?;
+        if let Some((base, _)) = self.endpoint("block.volume") {
+            let url = Url::parse(&format!(
+                "{}/os-quota-sets/{project}",
+                self.scoped_base(&base, Some(&project))
+            ))
+            .map_err(|e| config_error(e.to_string()))?;
             if let Ok((_, body)) = self.request_json(ctx, Method::GET, url, None).await {
                 if let Some(quota) = body.get("quota_set") {
                     if let Some(value) = quota
@@ -1042,7 +1086,7 @@ impl Upstream for OpenStackAdapter {
         }
         Ok(PaginatedCollection {
             items: vec![ProjectQuota {
-                project_id: project.into(),
+                project_id: project,
                 entries,
             }],
             total: 1,
@@ -1058,6 +1102,7 @@ impl Upstream for OpenStackAdapter {
         resource_type: &str,
         params: ListResourcesParams,
     ) -> Result<PaginatedCollection<Resource>, ApiError> {
+        let _ = self.discover_catalog(ctx).await;
         let (base, path) = self.endpoint(resource_type).ok_or_else(|| {
             ApiError::NotImplemented(format!(
                 "OpenStack capability is unavailable for {resource_type}"
@@ -1065,16 +1110,35 @@ impl Upstream for OpenStackAdapter {
         })?;
         let project = self.project(ctx, params.project_id.as_deref());
         let page_size = params.page_size.clamp(1, MAX_PAGE_SIZE);
-        let mut url =
-            Url::parse(&format!("{base}/{path}")).map_err(|e| config_error(e.to_string()))?;
+        let mut url = Url::parse(&format!("{}/{path}", self.scoped_base(&base, project)))
+            .map_err(|e| config_error(e.to_string()))?;
         // All supported OpenStack collection APIs accept bounded pagination
         // parameters (some deployments ignore `offset`; the bounded limit is
         // still enforced and the deviation is surfaced by `has_more`).
         url.query_pairs_mut()
-            .append_pair("limit", &page_size.to_string())
-            .append_pair("offset", &(params.page.min(100) * page_size).to_string());
-        if let Some(project) = project {
-            url.query_pairs_mut().append_pair("project_id", project);
+            .append_pair("limit", &page_size.to_string());
+        if !resource_type.starts_with("network.") && !resource_type.starts_with("compute.") {
+            // Glance/Cinder do not accept Neutron's filter-style query fields.
+        } else if resource_type == "network.network"
+            || resource_type == "network.subnet"
+            || resource_type == "network.port"
+            || resource_type == "network.security-group"
+        {
+            // Neutron has no offset parameter; the bounded limit still prevents
+            // unbounded browser inventories.
+        } else {
+            url.query_pairs_mut()
+                .append_pair("offset", &(params.page.min(100) * page_size).to_string());
+        }
+        if resource_type.starts_with("network.") || resource_type == "compute.server" {
+            if let Some(project) = project {
+                url.query_pairs_mut().append_pair("project_id", project);
+            }
+        } else if resource_type == "image.image" {
+            if let Some(project) = project {
+                // Glance's project-scoped filter is named `owner`.
+                url.query_pairs_mut().append_pair("owner", project);
+            }
         }
         for (key, value) in &params.filters {
             if key.len() < 64 && value.len() < 256 {
@@ -1084,12 +1148,22 @@ impl Upstream for OpenStackAdapter {
         let (_, body) = self.request_json(ctx, Method::GET, url, None).await?;
         let key = if resource_type == "compute.server" {
             "servers"
+        } else if resource_type == "compute.flavor" {
+            "flavors"
         } else if resource_type == "image.image" {
             "images"
         } else if resource_type == "block.volume" {
             "volumes"
         } else if resource_type == "object.storage.bucket" {
             "containers"
+        } else if resource_type == "network.network" {
+            "networks"
+        } else if resource_type == "network.subnet" {
+            "subnets"
+        } else if resource_type == "network.port" {
+            "ports"
+        } else if resource_type == "network.security-group" {
+            "security_groups"
         } else {
             resource_type.rsplit('.').next().unwrap_or("items")
         };
@@ -1125,6 +1199,7 @@ impl Upstream for OpenStackAdapter {
         if id.is_empty() || id.len() > 256 || id.contains('/') {
             return Err(ApiError::NotFound);
         }
+        let _ = self.discover_catalog(ctx).await;
         let (base, path) = self.endpoint(resource_type).ok_or_else(|| {
             ApiError::NotImplemented(format!(
                 "OpenStack capability is unavailable for {resource_type}"
@@ -1132,23 +1207,47 @@ impl Upstream for OpenStackAdapter {
         })?;
         let singular = if resource_type == "compute.server" {
             "servers"
+        } else if resource_type == "compute.flavor" {
+            "flavors"
         } else if resource_type == "image.image" {
             "images"
         } else if resource_type == "block.volume" {
             "volumes"
         } else if resource_type == "object.storage.bucket" {
             "containers"
+        } else if resource_type == "network.network" {
+            "networks"
+        } else if resource_type == "network.subnet" {
+            "subnets"
+        } else if resource_type == "network.port" {
+            "ports"
+        } else if resource_type == "network.security-group" {
+            "security-groups"
         } else {
             path.trim_end_matches("/detail")
         };
-        let url = Url::parse(&format!("{base}/{singular}/{id}"))
-            .map_err(|e| config_error(e.to_string()))?;
+        let url = Url::parse(&format!(
+            "{}/{singular}/{id}",
+            self.scoped_base(&base, self.project(ctx, None))
+        ))
+        .map_err(|e| config_error(e.to_string()))?;
         let (_, body) = self.request_json(ctx, Method::GET, url, None).await?;
         let value = body
-            .get(singular.trim_end_matches("s"))
+            .get(match resource_type {
+                "network.security-group" => "security_group",
+                _ => singular.trim_end_matches('s'),
+            })
             .or_else(|| body.get(singular))
             .unwrap_or(&body);
-        Self::map_resource(resource_type, value, self.config.project_id.as_deref())
+        let resource = Self::map_resource(resource_type, value, self.project(ctx, None))?;
+        if let Some(project) = self.project(ctx, None) {
+            if resource.project_id != "unknown" && resource.project_id != project {
+                // A privileged Keystone token may technically read another
+                // project, but the Araf scope is authoritative for this request.
+                return Err(ApiError::NotFound);
+            }
+        }
+        Ok(resource)
     }
 
     async fn create_resource(
@@ -1162,13 +1261,18 @@ impl Upstream for OpenStackAdapter {
                 "OpenStack create is not supported by the configured profile".into(),
             ));
         }
+        let _ = self.discover_catalog(ctx).await;
         let (base, path) = self.endpoint(resource_type).ok_or_else(|| {
             ApiError::NotImplemented(format!(
                 "OpenStack capability is unavailable for {resource_type}"
             ))
         })?;
-        let url = Url::parse(&format!("{base}/{}", path.trim_end_matches("/detail")))
-            .map_err(|e| config_error(e.to_string()))?;
+        let url = Url::parse(&format!(
+            "{}/{}",
+            self.scoped_base(&base, self.project(ctx, None)),
+            path.trim_end_matches("/detail")
+        ))
+        .map_err(|e| config_error(e.to_string()))?;
         let key = if resource_type == "compute.server" {
             "server"
         } else if resource_type == "block.volume" {
@@ -1211,24 +1315,31 @@ impl Upstream for OpenStackAdapter {
         request: ActionRequest,
     ) -> Result<Operation, ApiError> {
         if resource_type != "compute.server"
-            || !matches!(request.action_id.as_str(), "start" | "stop")
+            || !matches!(request.action_id.as_str(), "start" | "stop" | "reboot")
         {
             return Err(ApiError::NotImplemented(
                 "OpenStack action is not supported by the configured profile".into(),
             ));
         }
-        let base = self.config.compute_url.as_deref().ok_or_else(|| {
+        let _ = self.discover_catalog(ctx).await;
+        let (base, _) = self.endpoint("compute.server").ok_or_else(|| {
             ApiError::NotImplemented("OpenStack compute capability is unavailable".into())
         })?;
-        let action = if request.action_id == "start" {
-            "os-start"
-        } else {
-            "os-stop"
+        let action_body = match request.action_id.as_str() {
+            "start" => json!({"os-start": Value::Null}),
+            "stop" => json!({"os-stop": Value::Null}),
+            "reboot" => {
+                json!({"reboot": {"type": request.payload.as_ref().and_then(|v| v.get("type")).and_then(Value::as_str).unwrap_or("SOFT")}})
+            }
+            _ => unreachable!(),
         };
-        let url = Url::parse(&format!("{base}/servers/{id}/action"))
-            .map_err(|e| config_error(e.to_string()))?;
+        let url = Url::parse(&format!(
+            "{}/servers/{id}/action",
+            self.scoped_base(&base, self.project(ctx, None))
+        ))
+        .map_err(|e| config_error(e.to_string()))?;
         let _ = self
-            .request_json(ctx, Method::POST, url, Some(json!({ action: Value::Null })))
+            .request_json(ctx, Method::POST, url, Some(action_body))
             .await?;
         let operation = self.operation(
             ctx,
@@ -1248,6 +1359,7 @@ impl Upstream for OpenStackAdapter {
         resource_type: &str,
         id: &str,
     ) -> Result<Operation, ApiError> {
+        let _ = self.discover_catalog(ctx).await;
         let (base, path) = self.endpoint(resource_type).ok_or_else(|| {
             ApiError::NotImplemented(format!(
                 "OpenStack capability is unavailable for {resource_type}"
@@ -1259,11 +1371,22 @@ impl Upstream for OpenStackAdapter {
             "volumes"
         } else if resource_type == "object.storage.bucket" {
             "containers"
+        } else if resource_type == "network.network" {
+            "networks"
+        } else if resource_type == "network.subnet" {
+            "subnets"
+        } else if resource_type == "network.port" {
+            "ports"
+        } else if resource_type == "network.security-group" {
+            "security-groups"
         } else {
             path.trim_end_matches("/detail")
         };
-        let url = Url::parse(&format!("{base}/{singular}/{id}"))
-            .map_err(|e| config_error(e.to_string()))?;
+        let url = Url::parse(&format!(
+            "{}/{singular}/{id}",
+            self.scoped_base(&base, self.project(ctx, None))
+        ))
+        .map_err(|e| config_error(e.to_string()))?;
         let _ = self.request_json(ctx, Method::DELETE, url, None).await?;
         let operation = self.operation(
             ctx,
