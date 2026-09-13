@@ -165,8 +165,9 @@ export interface Resource {
   /** O3K omits region identity for global resources. */
   regionId: string | null;
   status: ResourceStatus;
-  createdAt: string;
-  updatedAt: string;
+  /** Native O3K may omit timestamps for resource classes without them. */
+  createdAt: string | null;
+  updatedAt: string | null;
   generation: number;
   properties?: Record<string, unknown>;
 }

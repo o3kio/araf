@@ -136,10 +136,13 @@ impl FixtureAdapter {
             project_id,
             region_id: Some(region.to_string()),
             status,
-            created_at: OffsetDateTime::UNIX_EPOCH
-                + time::Duration::seconds((seed % 1_000_000) as i64),
-            updated_at: OffsetDateTime::UNIX_EPOCH
-                + time::Duration::seconds((seed % 1_000_000) as i64 + 60),
+            created_at: Some(
+                OffsetDateTime::UNIX_EPOCH + time::Duration::seconds((seed % 1_000_000) as i64),
+            ),
+            updated_at: Some(
+                OffsetDateTime::UNIX_EPOCH
+                    + time::Duration::seconds((seed % 1_000_000) as i64 + 60),
+            ),
             generation: 1,
             properties: None,
         }
@@ -173,10 +176,13 @@ impl FixtureAdapter {
             project_id,
             region_id: Some(region.to_string()),
             status,
-            created_at: OffsetDateTime::UNIX_EPOCH
-                + time::Duration::seconds((seed % 1_000_000) as i64),
-            updated_at: OffsetDateTime::UNIX_EPOCH
-                + time::Duration::seconds((seed % 1_000_000) as i64 + 60),
+            created_at: Some(
+                OffsetDateTime::UNIX_EPOCH + time::Duration::seconds((seed % 1_000_000) as i64),
+            ),
+            updated_at: Some(
+                OffsetDateTime::UNIX_EPOCH
+                    + time::Duration::seconds((seed % 1_000_000) as i64 + 60),
+            ),
             generation: 1,
             properties: Some(properties),
         }
@@ -218,10 +224,13 @@ impl FixtureAdapter {
             project_id,
             region_id: Some(region.to_string()),
             status,
-            created_at: OffsetDateTime::UNIX_EPOCH
-                + time::Duration::seconds((seed % 1_000_000) as i64),
-            updated_at: OffsetDateTime::UNIX_EPOCH
-                + time::Duration::seconds((seed % 1_000_000) as i64 + 60),
+            created_at: Some(
+                OffsetDateTime::UNIX_EPOCH + time::Duration::seconds((seed % 1_000_000) as i64),
+            ),
+            updated_at: Some(
+                OffsetDateTime::UNIX_EPOCH
+                    + time::Duration::seconds((seed % 1_000_000) as i64 + 60),
+            ),
             generation: 1,
             properties: Some(properties),
         }
@@ -258,10 +267,13 @@ impl FixtureAdapter {
             project_id,
             region_id: Some(region.to_string()),
             status,
-            created_at: OffsetDateTime::UNIX_EPOCH
-                + time::Duration::seconds((seed % 1_000_000) as i64),
-            updated_at: OffsetDateTime::UNIX_EPOCH
-                + time::Duration::seconds((seed % 1_000_000) as i64 + 60),
+            created_at: Some(
+                OffsetDateTime::UNIX_EPOCH + time::Duration::seconds((seed % 1_000_000) as i64),
+            ),
+            updated_at: Some(
+                OffsetDateTime::UNIX_EPOCH
+                    + time::Duration::seconds((seed % 1_000_000) as i64 + 60),
+            ),
             generation: 1,
             properties: Some(properties),
         }
@@ -284,8 +296,14 @@ impl FixtureAdapter {
             "status" => format!("{:?}", resource.status),
             "projectId" => resource.project_id.clone(),
             "regionId" => resource.region_id.clone().unwrap_or_default(),
-            "createdAt" => resource.created_at.to_string(),
-            "updatedAt" => resource.updated_at.to_string(),
+            "createdAt" => resource
+                .created_at
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            "updatedAt" => resource
+                .updated_at
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
             _ if field.starts_with("properties.") => {
                 let key = field.strip_prefix("properties.").unwrap_or(field);
                 resource
