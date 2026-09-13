@@ -67,10 +67,33 @@ agent lab's serialized upstream path and is not a production OpenStack budget
 claim. It is retained as a real upstream-load observation; supported
 OpenStack load and an agreed O3K production latency budget remain release gates.
 
+## Current OpenStack 2025.1 diagnostic
+
+The production-profile Tenant BFF was also exercised against the disposable
+Kolla-Ansible **2025.1** all-in-one deployment described in
+`openstack-production-evidence.md`. A protected IdP password file was supplied
+to `tests/performance-openstack.sh`; no token, password, cookie or resource
+payload was written to the evidence. The test performed 100 authenticated
+`network.network` page reads (`pageSize=100`) at concurrency 8 through the
+HTTPS ingress and sampled the real BFF process (PID 659990):
+
+```text
+requests=100 p50_ms=1130.17 p95_ms=1351.19 p99_ms=1432.28
+throughput_rps=6.94 peak_rss_mib=30.80 cpu_seconds=0.28
+profile=openstack resource_type=network.network page_size=100 concurrency=8
+```
+
+Every response was HTTP 200 and remained one server-side bounded page. The
+tail and throughput reflect the single-host disposable OpenStack control-plane
+limits; they are diagnostic observations, not a claim of a multi-host or
+customer-scale service-level objective. Repeat the same test on each
+production topology before setting a release latency budget.
+
 ## Validation
 
 ```text
 ./tests/performance-bounded.sh                                  PASS (p50 12.41 ms, p95 19.16 ms, p99 20.93 ms; 563.89 rps, peak RSS 28.44 MiB, CPU 1.67 s)
+tests/performance-openstack.sh                                  PASS (100 requests, p50 1130.17 ms, p95 1351.19 ms, p99 1432.28 ms; 6.94 rps, peak RSS 30.80 MiB, CPU 0.28 s; Kolla 2025.1)
 ./tests/pilot-soak.sh                                           PASS (800 requests, 2 Tenant + 2 Operator replicas)
 pnpm build                                                       PASS
 pnpm typecheck                                                   PASS
