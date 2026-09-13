@@ -69,3 +69,13 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.name }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
+      - name: Scan published image for blocking vulnerabilities
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.name }}@${{ steps.build.outputs.digest }}
+        run: |
+          docker run --rm \
+            -v "$HOME/.docker:/root/.docker:ro" \
+            aquasec/trivy:0.58.2 image \
+            --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL \
+            --exit-code 1 "$IMAGE_REF"
