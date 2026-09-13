@@ -64,6 +64,9 @@ jobs:
       - name: Production build
         run: pnpm build
 
+      - name: Security release gate and dependency inventory
+        run: ./tests/security-release-gate.sh
+
   rust:
     name: rust (fmt, clippy, check, test)
     runs-on: ubuntu-24.04

@@ -113,6 +113,12 @@ Never log:
 
 Structured logs should include safe correlation, route, status, scope identifiers when policy permits.
 
+For both the native O3K and OpenStack compatibility profiles, telemetry uses
+fixed surface/backend/status-class dimensions. Resource, project, operation,
+request and raw URL values are correlation data, never metric labels. The
+release gate generates dependency inventories/SBOM inputs and rejects browser
+token persistence, committed private keys and embedded bearer-token patterns.
+
 ## 11. CSP/security headers
 
 Production deployment must define and test at minimum:
