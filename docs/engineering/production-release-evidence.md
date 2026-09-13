@@ -83,6 +83,18 @@ The browser-critical Playwright suite passes locally (17 tests) against the
 fixture profile, including tenant/operator navigation, resource actions,
 operations, governance, and scope/isolation journeys.
 
+On 2026-09-13, a disposable clean-install smoke used the release registry's
+digest-pinned BFF image (`sha256:c1aabc13…`) as a non-root, read-only container
+with a durable encrypted session volume. Through the HTTPS ingress, the clean
+image completed real Keycloak OIDC login, server-side project selection,
+descriptor/context reads, and a native O3K network create/detail/delete with
+the canonical operation returned in the response. The same volume was then
+started with the preceding release digest (`sha256:3e4ebd06…`) and returned to
+the candidate digest; both revisions passed health/readiness, OIDC login,
+scope selection and native resource reads. This is useful packaging and
+rollback evidence on one host, but it is not the required clean external
+environment, multi-host rolling upgrade, trusted-provenance or pilot gate.
+
 ## Supported profiles and deviations
 
 The advertised OpenStack profile remains Keystone, Nova, Glance, Neutron and

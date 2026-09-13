@@ -39,6 +39,14 @@ signatures and CycloneDX SBOM attestations verify against the development
 public key; publication remains blocked until CI attaches the trusted keyless
 provenance identity and external install/upgrade evidence is attached.
 
+Local clean-install smoke (2026-09-13) also exercised the BFF digest in a
+non-root, read-only container behind HTTPS with a durable encrypted session
+volume. A fresh O3K/Keycloak journey completed login, scope selection and a
+real network create/detail/delete; the same volume survived a start on the
+previous BFF digest and a return to the candidate digest. This validates the
+packaging mechanics on one host only; it does not replace the external
+environment, trusted provenance, multi-host rollout or pilot gates.
+
 Compatibility matrix:
 
 | Araf release | O3K | OpenStack |
