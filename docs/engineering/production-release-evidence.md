@@ -51,6 +51,26 @@ because the Kolla services had been torn down and the Keystone proxy returned
 successful artifacts are redacted and record only IDs, capability count,
 operation count and the selected profile.
 
+On current head `22a93894b89a659a5eb62decccf6e3f90852a6c3`, a fresh disposable
+O3K TestLab (`agent` provider, O3K source `157fde108c5e0a9c6567f596d88a6abbb55b2aaf`)
+was provisioned and connected to production-profile Tenant and Operator BFFs
+through the deployment's HTTPS reverse proxy. Real Keycloak federation and
+audience validation passed; Alice and Bob discovered and selected their
+server-authoritative scopes, created/polled/deleted a network operation, and
+could not list, show, delete, or read the other tenant's resource/operation.
+Opaque secure session cookies, credential-free context/resource payloads,
+bounded collections, and the Operator profile/tenant denial journey also
+passed. The redacted diagnostic result is retained at
+`/tmp/araf-p4-o3k-current-head-2035/evidence-project-a5/harness.redacted.json`.
+
+This is not a production-readiness pass: the agent lab has no region, image or
+compute inventory, so those capabilities were recorded as upstream gaps. The
+deployment-owned legacy harness also assumes a reserved bootstrap project ID;
+the original unmodified run therefore stopped at `native_token_exchange`
+without treating that mismatch as a product success. A supported OpenStack
+current-head rerun, multi-host failover and external clean-install evidence
+remain required.
+
 The browser-critical Playwright suite passes locally (17 tests) against the
 fixture profile, including tenant/operator navigation, resource actions,
 operations, governance, and scope/isolation journeys.
