@@ -33,9 +33,10 @@ development-only and cannot establish production cloud or identity claims.
 Converged O3K process smoke gates also pass for discovery/collection, native
 operations, governance, and metering (`tests/p2-3` through `tests/p2-5` and
 `tests/p2-7`, with the local O3K process using its fake provider). The real
-P3.9 harness also passed against the development host's Kolla-Ansible
-OpenStack 2024.2 (Dalmatian), Keystone-backed Keycloak ingress and two Araf
-surfaces. Its artifacts are redacted and record only IDs, capability count,
+P3.9 harness passed against the development host's Kolla-Ansible OpenStack
+2024.2 (Dalmatian), Keystone-backed Keycloak ingress and two Araf surfaces,
+and was rerun successfully at current HEAD after the encrypted session-store
+change. Its artifacts are redacted and record only IDs, capability count,
 operation count and the selected profile.
 
 The browser-critical Playwright suite passes locally (17 tests) against the
