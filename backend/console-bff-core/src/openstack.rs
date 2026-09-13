@@ -217,9 +217,30 @@ impl OpenStackAdapter {
         &'a self,
         ctx: &'a RequestContext,
         requested: Option<&'a str>,
-    ) -> Option<&'a str> {
-        requested
-            .or(ctx.session.openstack_project_id.as_deref())
+    ) -> Result<Option<&'a str>, ApiError> {
+        let selected = ctx
+            .session
+            .openstack_project_id
+            .as_deref()
+            .or(self.config.project_id.as_deref());
+        // Tenant sessions are permanently bound to their configured/session
+        // project. Only the explicitly separate operator surface may select
+        // an arbitrary project from the privileged Keystone catalog.
+        if self.surface != "operator-bff" {
+            if let Some(requested) = requested {
+                if selected != Some(requested) {
+                    return Err(ApiError::Forbidden);
+                }
+            }
+            return Ok(selected);
+        }
+        Ok(requested.or(selected))
+    }
+
+    fn selected_project<'a>(&'a self, ctx: &'a RequestContext) -> Option<&'a str> {
+        ctx.session
+            .openstack_project_id
+            .as_deref()
             .or(self.config.project_id.as_deref())
     }
 
@@ -412,7 +433,7 @@ impl OpenStackAdapter {
             state,
             resource_id,
             resource_type: Some(resource_type.into()),
-            project_id: self.project(ctx, None).map(ToOwned::to_owned),
+            project_id: self.selected_project(ctx).map(ToOwned::to_owned),
             region_id: self.config.region.clone(),
             initiated_by: ctx.session.user_id.clone(),
             started_at: Some(now),
@@ -806,14 +827,28 @@ impl Upstream for OpenStackAdapter {
         let _ = self.server_token(ctx).await?;
         let url = self.keystone_url("projects")?;
         let (_, body) = self.request_json(ctx, Method::GET, url, None).await?;
+        let selected = self.selected_project(ctx);
+        let configured_name = self.config.project_name.as_deref();
         Ok(body
             .get("projects")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
             .filter_map(|project| {
+                let id = project.get("id")?.as_str()?.to_owned();
+                if self.surface != "operator-bff" {
+                    if let Some(selected) = selected {
+                        if selected != id {
+                            return None;
+                        }
+                    } else if self.config.project_id.as_deref() != Some(id.as_str())
+                        && project.get("name").and_then(Value::as_str) != configured_name
+                    {
+                        return None;
+                    }
+                }
                 Some(crate::upstream::BackendScope {
-                    id: project.get("id")?.as_str()?.to_owned(),
+                    id,
                     kind: "project".into(),
                     name: project
                         .get("name")
@@ -1002,7 +1037,7 @@ impl Upstream for OpenStackAdapter {
         project_id: Option<&str>,
     ) -> Result<PaginatedCollection<ProjectQuota>, ApiError> {
         let _ = self.discover_catalog(ctx).await;
-        let project = match self.project(ctx, project_id) {
+        let project = match self.project(ctx, project_id)? {
             Some(project) => project.to_owned(),
             None => self
                 .discover_scopes(ctx)
@@ -1135,44 +1170,8 @@ impl Upstream for OpenStackAdapter {
                 "OpenStack capability is unavailable for {resource_type}"
             ))
         })?;
-        let project = self.project(ctx, params.project_id.as_deref());
+        let project = self.project(ctx, params.project_id.as_deref())?;
         let page_size = params.page_size.clamp(1, MAX_PAGE_SIZE);
-        let mut url = Url::parse(&format!("{}/{path}", self.scoped_base(&base, project)))
-            .map_err(|e| config_error(e.to_string()))?;
-        // All supported OpenStack collection APIs accept bounded pagination
-        // parameters (some deployments ignore `offset`; the bounded limit is
-        // still enforced and the deviation is surfaced by `has_more`).
-        url.query_pairs_mut()
-            .append_pair("limit", &page_size.to_string());
-        if !resource_type.starts_with("network.") && !resource_type.starts_with("compute.") {
-            // Glance/Cinder do not accept Neutron's filter-style query fields.
-        } else if resource_type == "network.network"
-            || resource_type == "network.subnet"
-            || resource_type == "network.port"
-            || resource_type == "network.security-group"
-        {
-            // Neutron has no offset parameter; the bounded limit still prevents
-            // unbounded browser inventories.
-        } else {
-            url.query_pairs_mut()
-                .append_pair("offset", &(params.page.min(100) * page_size).to_string());
-        }
-        if resource_type.starts_with("network.") || resource_type == "compute.server" {
-            if let Some(project) = project {
-                url.query_pairs_mut().append_pair("project_id", project);
-            }
-        } else if resource_type == "image.image" {
-            if let Some(project) = project {
-                // Glance's project-scoped filter is named `owner`.
-                url.query_pairs_mut().append_pair("owner", project);
-            }
-        }
-        for (key, value) in &params.filters {
-            if key.len() < 64 && value.len() < 256 {
-                url.query_pairs_mut().append_pair(key, value);
-            }
-        }
-        let (_, body) = self.request_json(ctx, Method::GET, url, None).await?;
         let key = if resource_type == "compute.server" {
             "servers"
         } else if resource_type == "compute.flavor" {
@@ -1194,20 +1193,104 @@ impl Upstream for OpenStackAdapter {
         } else {
             resource_type.rsplit('.').next().unwrap_or("items")
         };
-        let values = body
-            .get(key)
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let is_neutron = resource_type.starts_with("network.");
+        let sort_key = params
+            .sort_field
+            .as_deref()
+            .map(|field| match field {
+                "name" | "status" | "id" => Ok(field),
+                _ => Err(ApiError::BadRequest(format!(
+                    "unsupported sort field: {field}"
+                ))),
+            })
+            .transpose()?;
+        let make_url = |marker: Option<&str>| -> Result<Url, ApiError> {
+            let mut url = Url::parse(&format!("{}/{path}", self.scoped_base(&base, project)))
+                .map_err(|e| config_error(e.to_string()))?;
+            url.query_pairs_mut()
+                .append_pair("limit", &page_size.to_string());
+            if is_neutron {
+                if let Some(marker) = marker {
+                    url.query_pairs_mut().append_pair("marker", marker);
+                }
+            } else if params.page > 0 {
+                url.query_pairs_mut()
+                    .append_pair("offset", &(params.page.min(100) * page_size).to_string());
+            }
+            if is_neutron || resource_type == "compute.server" {
+                if let Some(project) = project {
+                    url.query_pairs_mut().append_pair("project_id", project);
+                }
+            } else if resource_type == "image.image" {
+                if let Some(project) = project {
+                    url.query_pairs_mut().append_pair("owner", project);
+                }
+            }
+            if let Some(sort_key) = sort_key {
+                url.query_pairs_mut().append_pair("sort_key", sort_key);
+                url.query_pairs_mut().append_pair(
+                    "sort_dir",
+                    if params.sort_direction == crate::model::SortDirection::Desc {
+                        "desc"
+                    } else {
+                        "asc"
+                    },
+                );
+            }
+            for (key, value) in &params.filters {
+                if key.len() < 64 && value.len() < 256 {
+                    url.query_pairs_mut().append_pair(key, value);
+                }
+            }
+            Ok(url)
+        };
+        let mut marker = None;
+        let mut prefetched_values = None;
+        if is_neutron {
+            // Neutron uses marker pagination. Walk only the requested bounded
+            // number of pages; never load an unbounded inventory.
+            for _ in 0..params.page.min(100) {
+                let (_, body) = self
+                    .request_json(ctx, Method::GET, make_url(marker.as_deref())?, None)
+                    .await?;
+                let page = body
+                    .get(key)
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+                if page.len() < page_size as usize {
+                    prefetched_values = Some(page);
+                    break;
+                }
+                marker = page
+                    .last()
+                    .and_then(|value| value.get("id"))
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned);
+                if marker.is_none() {
+                    prefetched_values = Some(page);
+                    break;
+                }
+            }
+        }
+        let values = if let Some(values) = prefetched_values {
+            values
+        } else {
+            let (_, body) = self
+                .request_json(ctx, Method::GET, make_url(marker.as_deref())?, None)
+                .await?;
+            body.get(key)
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        };
         let page_size = page_size as usize;
-        let start = 0usize;
         let items = values
             .into_iter()
-            .skip(start)
             .take(page_size)
             .map(|v| Self::map_resource(resource_type, &v, project))
             .collect::<Result<Vec<_>, _>>()?;
-        let total = (start + items.len()) as u64;
+        let total = items.len() as u64;
         Ok(PaginatedCollection {
             has_more: items.len() == page_size,
             items,
@@ -1253,9 +1336,10 @@ impl Upstream for OpenStackAdapter {
         } else {
             path.trim_end_matches("/detail")
         };
+        let project = self.project(ctx, None)?;
         let url = Url::parse(&format!(
             "{}/{singular}/{id}",
-            self.scoped_base(&base, self.project(ctx, None))
+            self.scoped_base(&base, project)
         ))
         .map_err(|e| config_error(e.to_string()))?;
         let (_, body) = self.request_json(ctx, Method::GET, url, None).await?;
@@ -1266,8 +1350,8 @@ impl Upstream for OpenStackAdapter {
             })
             .or_else(|| body.get(singular))
             .unwrap_or(&body);
-        let resource = Self::map_resource(resource_type, value, self.project(ctx, None))?;
-        if let Some(project) = self.project(ctx, None) {
+        let resource = Self::map_resource(resource_type, value, project)?;
+        if let Some(project) = project {
             if resource.project_id != "unknown" && resource.project_id != project {
                 // A privileged Keystone token may technically read another
                 // project, but the Araf scope is authoritative for this request.
@@ -1294,9 +1378,10 @@ impl Upstream for OpenStackAdapter {
                 "OpenStack capability is unavailable for {resource_type}"
             ))
         })?;
+        let project = self.project(ctx, None)?;
         let url = Url::parse(&format!(
             "{}/{}",
-            self.scoped_base(&base, self.project(ctx, None)),
+            self.scoped_base(&base, project),
             path.trim_end_matches("/detail")
         ))
         .map_err(|e| config_error(e.to_string()))?;
@@ -1368,9 +1453,10 @@ impl Upstream for OpenStackAdapter {
             }
             _ => unreachable!(),
         };
+        let project = self.project(ctx, None)?;
         let url = Url::parse(&format!(
             "{}/servers/{id}/action",
-            self.scoped_base(&base, self.project(ctx, None))
+            self.scoped_base(&base, project)
         ))
         .map_err(|e| config_error(e.to_string()))?;
         if let Err(error) = self
@@ -1422,9 +1508,10 @@ impl Upstream for OpenStackAdapter {
         } else {
             path.trim_end_matches("/detail")
         };
+        let project = self.project(ctx, None)?;
         let url = Url::parse(&format!(
             "{}/{singular}/{id}",
-            self.scoped_base(&base, self.project(ctx, None))
+            self.scoped_base(&base, project)
         ))
         .map_err(|e| config_error(e.to_string()))?;
         if let Err(error) = self.request_json(ctx, Method::DELETE, url, None).await {
@@ -1458,7 +1545,7 @@ impl Upstream for OpenStackAdapter {
                 has_more: false,
             });
         };
-        let selected_project = self.project(ctx, params.project_id.as_deref());
+        let selected_project = self.project(ctx, params.project_id.as_deref())?;
         let mut operations = journal
             .read()
             .await
@@ -1510,7 +1597,7 @@ impl Upstream for OpenStackAdapter {
         let Some(record) = journal.read().await.get(id).cloned() else {
             return Err(ApiError::NotFound);
         };
-        if let Some(project) = self.project(ctx, None) {
+        if let Some(project) = self.project(ctx, None)? {
             if record.project_id.as_deref() != Some(project) {
                 return Err(ApiError::NotFound);
             }
@@ -1634,6 +1721,42 @@ mod tests {
         assert_eq!(
             OpenStackAdapter::derive_operation_state("stop", ResourceStatus::Busy, "SHUTOFF"),
             OperationState::Succeeded
+        );
+    }
+
+    #[test]
+    fn tenant_project_scope_cannot_be_overridden() {
+        let adapter = OpenStackAdapter::new(
+            "tenant-bff",
+            OpenStackClientConfig {
+                auth_url: "https://keystone.example/v3".into(),
+                token: Some("token".into()),
+                username: None,
+                password: None,
+                user_domain: "Default".into(),
+                project_name: None,
+                project_id: Some("project-a".into()),
+                region: None,
+                compute_url: None,
+                image_url: None,
+                network_url: None,
+                volume_url: None,
+                object_storage_url: None,
+            },
+        )
+        .expect("adapter");
+        let ctx = RequestContext::new(
+            "request".into(),
+            "correlation".into(),
+            Arc::new(crate::request::SessionState::fixture("tenant-bff")),
+        );
+        assert!(matches!(
+            adapter.project(&ctx, Some("project-b")),
+            Err(ApiError::Forbidden)
+        ));
+        assert_eq!(
+            adapter.project(&ctx, Some("project-a")).unwrap(),
+            Some("project-a")
         );
     }
 

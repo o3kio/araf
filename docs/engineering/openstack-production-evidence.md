@@ -38,6 +38,7 @@ Nova state was polled from subsequent resource reads; compatibility operation re
 ## Adapter and capability boundary
 
 The OpenStack adapter translates Keystone/Nova/Glance/Neutron/Cinder wire shapes into provider-neutral descriptors and resources. Unsupported optional services/actions are omitted from the capability map. Server-side pagination is bounded (`limit <= 100`); Neutron's lack of offset is explicitly handled while retaining the browser inventory bound.
+Tenant requests are bound to the configured/session project; arbitrary project selection and inventory remain restricted to the separate operator surface. Supported sort fields are forwarded to the provider, and Neutron pages advance with marker cursors.
 
 ## Artifacts and reproducibility
 
