@@ -500,26 +500,7 @@ impl OpenStackAdapter {
                     .and_then(|properties| properties.get("status"))
                     .and_then(Value::as_str)
                     .unwrap_or("UNKNOWN");
-                let state = match record.action.as_str() {
-                    "delete" => OperationState::Running,
-                    "start" | "reboot" if resource.status == ResourceStatus::Ready => {
-                        OperationState::Succeeded
-                    }
-                    "stop"
-                        if matches!(
-                            resource.status,
-                            ResourceStatus::Busy | ResourceStatus::Ready
-                        ) =>
-                    {
-                        OperationState::Succeeded
-                    }
-                    "create" if resource.status == ResourceStatus::Error => OperationState::Failed,
-                    "create" if resource.status == ResourceStatus::Ready => {
-                        OperationState::Succeeded
-                    }
-                    _ if resource.status == ResourceStatus::Error => OperationState::Failed,
-                    _ => OperationState::Running,
-                };
+                let state = Self::derive_operation_state(&record.action, resource.status, status);
                 (state, status.to_owned())
             }
             Err(ApiError::NotFound) if record.action == "delete" => {
@@ -556,6 +537,26 @@ impl OpenStackAdapter {
             .await
             .get(operation_id)
             .map(Self::operation_from_record))
+    }
+
+    fn derive_operation_state(
+        action: &str,
+        resource_status: ResourceStatus,
+        provider_status: &str,
+    ) -> OperationState {
+        match action {
+            "delete" => OperationState::Running,
+            "start" | "reboot" if resource_status == ResourceStatus::Ready => {
+                OperationState::Succeeded
+            }
+            // Nova reports SHUTOFF as a terminal state. BUILD, ACTIVE, and
+            // transitional power states must remain running.
+            "stop" if provider_status.eq_ignore_ascii_case("SHUTOFF") => OperationState::Succeeded,
+            "create" if resource_status == ResourceStatus::Error => OperationState::Failed,
+            "create" if resource_status == ResourceStatus::Ready => OperationState::Succeeded,
+            _ if resource_status == ResourceStatus::Error => OperationState::Failed,
+            _ => OperationState::Running,
+        }
     }
 
     fn descriptor(resource_type: &str) -> Option<ResourceTypeDescriptor> {
@@ -1578,6 +1579,18 @@ mod tests {
         assert_eq!(
             adapter.keystone_url("projects").expect("url").as_str(),
             "https://keystone.example/v3/auth/projects"
+        );
+    }
+
+    #[test]
+    fn stop_reconciliation_waits_for_nova_shutoff() {
+        assert_eq!(
+            OpenStackAdapter::derive_operation_state("stop", ResourceStatus::Ready, "ACTIVE"),
+            OperationState::Running
+        );
+        assert_eq!(
+            OpenStackAdapter::derive_operation_state("stop", ResourceStatus::Busy, "SHUTOFF"),
+            OperationState::Succeeded
         );
     }
 }
