@@ -11,13 +11,15 @@ session storage and `/healthz`/`/readyz` probes.
 Both references pass backend endpoints and per-surface OIDC configuration
 explicitly. Compose values are supplied from an external environment file; the
 Helm chart reads O3K/OpenStack credentials and OIDC client secrets from an
-operator-created Kubernetes Secret (`secrets.name`). No credential is stored
-in the chart or image. Missing values remain fail-closed at BFF startup.
+operator-created Kubernetes Secret (`secrets.name`), including the base64
+AES-256 `ARAF_SESSION_STORE_KEY` used to encrypt the shared durable session
+file. No credential or encryption key is stored in the chart or image. Missing
+values remain fail-closed at BFF startup.
 
 The BFF exposes `/version` for operator support and release inventory. Runtime
 configuration remains fail-closed: production requires an explicit adapter,
 HTTPS public/trusted origins, upstream credentials/endpoints and
-`ARAF_SESSION_STORE_PATH`.
+`ARAF_SESSION_STORE_PATH` and `ARAF_SESSION_STORE_KEY`.
 
 Compatibility matrix:
 

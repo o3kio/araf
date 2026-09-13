@@ -27,6 +27,11 @@ spec:
               value: {{ $.Values.gitSha | quote }}
             - name: ARAF_SESSION_STORE_PATH
               value: /var/lib/araf/sessions.json
+            - name: ARAF_SESSION_STORE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.secrets.name }}
+                  key: {{ $.Values.secrets.sessionStoreKey }}
             - name: O3K_URL
               value: {{ $.Values.backend.o3kUrl | quote }}
             - name: O3K_TOKEN

@@ -11,6 +11,7 @@ services:
       ARAF_PUBLIC_URL: ${ARAF_TENANT_PUBLIC_URL:?set tenant URL}
       ARAF_TRUSTED_ORIGINS: ${ARAF_TENANT_PUBLIC_URL:?set tenant URL}
       ARAF_SESSION_STORE_PATH: /var/lib/araf/sessions.json
+      ARAF_SESSION_STORE_KEY: ${ARAF_SESSION_STORE_KEY:?set base64 session store key}
       O3K_URL: ${O3K_URL:-}
       O3K_TOKEN: ${O3K_TOKEN:-}
       OPENSTACK_AUTH_URL: ${OPENSTACK_AUTH_URL:-}
@@ -37,6 +38,7 @@ services:
       ARAF_PUBLIC_URL: ${ARAF_OPERATOR_PUBLIC_URL:?set operator URL}
       ARAF_TRUSTED_ORIGINS: ${ARAF_OPERATOR_PUBLIC_URL:?set operator URL}
       ARAF_SESSION_STORE_PATH: /var/lib/araf/sessions.json
+      ARAF_SESSION_STORE_KEY: ${ARAF_SESSION_STORE_KEY:?set base64 session store key}
       O3K_URL: ${O3K_URL:-}
       O3K_TOKEN: ${O3K_TOKEN:-}
       OPENSTACK_AUTH_URL: ${OPENSTACK_AUTH_URL:-}

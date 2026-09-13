@@ -6,8 +6,8 @@ versioned Compose or Helm artifacts; do not deploy from a source checkout.
 ## Install and verify
 
 1. Supply digest-pinned images and external secrets (`ARAF_BFF_IMAGE`,
-   `ARAF_BFF_DIGEST`, OIDC credentials, backend credentials and the durable
-   session-store path).
+   `ARAF_BFF_DIGEST`, OIDC credentials, backend credentials, the durable
+   session-store path and a base64-encoded AES-256 `ARAF_SESSION_STORE_KEY`).
 2. Set `ARAF_RUNTIME_PROFILE=production`, an explicit `ARAF_UPSTREAM_ADAPTER`
    (`o3k` or `openstack`), HTTPS public/trusted origins and the documented
    backend endpoint variables.
@@ -44,8 +44,9 @@ Common incidents:
 ## Recovery and change
 
 Back up the encrypted/permissioned session store and compatibility journal
-according to the deployment storage policy. Restore them only to the matching
-surface and release. Roll out N+1 with the same external state, verify
+according to the deployment storage policy. Keep the session encryption key in
+the external secret manager; a backup without its matching key is unusable.
+Restore them only to the matching surface and release. Roll out N+1 with the same external state, verify
 `/version`, readiness, session continuity and operation recovery, then roll
 back the image digest if required. Configuration errors must stop startup.
 

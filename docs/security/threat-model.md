@@ -25,6 +25,7 @@ Production target:
 
 - OIDC authorization-code flow through a confidential Rust BFF client,
 - BFF retains OAuth/O3K tokens server-side,
+- production replicas use authenticated encryption for durable session state,
 - browser receives an opaque secure session cookie,
 - cookie is `Secure`, `HttpOnly` and appropriately `SameSite`/host-scoped,
 - explicit CSRF defense for state-changing browser requests,

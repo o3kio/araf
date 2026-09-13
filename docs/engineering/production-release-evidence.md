@@ -16,9 +16,9 @@
 | P3 OpenStack core profile | `docs/engineering/openstack-production-evidence.md`, `target/p3-9-openstack-gate/result.env` | PASS (real Kolla 2024.2 Dalmatian profile) |
 | P4.1 observability | `p4-1-observability-evidence.md`, `/metrics`, `/readyz`, correlation tests | PASS locally; real deployment attachment required |
 | P4.2 performance/scale | `performance-evidence.md`, `tests/performance-bounded.sh` | PASS for bounded fixture; O3K/OpenStack load attachment required |
-| P4.3 HA/session | durable store test and restart/replica topology | PASS for local durable primitive; multi-host shared-store test required |
-| P4.4 security/supply chain | `security-release-evidence.md`, CI gate | PASS for deterministic checks; advisory/image scan attachment required |
-| P4.5 packaging | `packaging-evidence.md`, Helm lint/template | PASS artifacts; clean external install/upgrade attachment required |
+| P4.3 HA/session | encrypted file-locked store tests and restart/replica topology | PASS for the shared durable primitive and concurrent-writer recovery; multi-host rolling-failure test required |
+| P4.4 security/supply chain | `security-release-evidence.md`, CI gate, pinned Trivy/Syft artifacts | PASS for dependency/static/image evidence; signed provenance attestation required |
+| P4.5 packaging | OCI builds/digests, Helm lint/template, Compose validation | PASS build and packaging checks; clean external install/upgrade attachment required |
 | P4.6 supportability | `docs/operations/operator-runbook.md`, redacted bundle script | PASS documentation gate |
 | P4.7 pilot/soak | `tests/pilot-soak.sh`, `target/p3-9-openstack-gate/redacted-run.txt` | PASS for local HA soak and real OpenStack profile; full RC pilot still required |
 
@@ -56,7 +56,6 @@ state only.
 
 This candidate must not be called v1.0 yet. The remaining release boundary is
 a current-head O3K production run, multi-host durable-session/rolling-restart
-evidence, signed OCI artifacts with external image/advisory scans, and a
-representative production pilot/rollback. The real OpenStack evidence is
-profile-scoped and does not waive those gaps or advertise Swift, floating IP,
-or attachment workflows.
+evidence, signed OCI provenance attestations, and a representative production
+pilot/rollback. The real OpenStack evidence is profile-scoped and does not
+waive those gaps or advertise Swift, floating IP, or attachment workflows.

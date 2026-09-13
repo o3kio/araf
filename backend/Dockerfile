@@ -29,7 +29,9 @@ LABEL org.opencontainers.image.title="Araf BFF" \
       org.opencontainers.image.revision="$ARAF_GIT_SHA" \
       org.opencontainers.image.source="https://github.com/o3kio/araf"
 
-RUN apt-get update && apt-get install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get dist-upgrade -y && \
+    apt-get install -y --no-install-recommends ca-certificates wget && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/bin/tenant-bff /usr/local/bin/tenant-bff
 COPY --from=builder /usr/local/bin/operator-bff /usr/local/bin/operator-bff

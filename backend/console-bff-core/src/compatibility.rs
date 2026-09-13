@@ -6,6 +6,7 @@
 use std::{
     collections::BTreeMap,
     fs,
+    fs::OpenOptions,
     path::{Path, PathBuf},
 };
 
@@ -90,15 +91,52 @@ impl CompatibilityJournal {
         self.records.values()
     }
 
-    fn flush(&self) -> std::io::Result<()> {
+    fn flush(&mut self) -> std::io::Result<()> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let temporary = self.path.with_extension("tmp");
+        let lock_path = self.path.with_extension("lock");
+        let lock_file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(lock_path)?;
+        fs2::FileExt::lock_exclusive(&lock_file)?;
+        // Merge records written by another replica while this process held a
+        // stale in-memory snapshot. Local records win for the operation IDs
+        // this instance just inserted or authoritatively updated.
+        if let Ok(bytes) = fs::read(&self.path) {
+            let mut merged: BTreeMap<String, CompatibilityRecord> =
+                serde_json::from_slice(&bytes).unwrap_or_default();
+            merged.extend(self.records.clone());
+            while merged.len() > MAX_RECORDS {
+                let oldest = merged
+                    .iter()
+                    .min_by_key(|(_, record)| record.updated_at)
+                    .map(|(id, _)| id.clone());
+                if let Some(id) = oldest {
+                    merged.remove(&id);
+                } else {
+                    break;
+                }
+            }
+            self.records = merged;
+        }
+        let temporary = PathBuf::from(format!(
+            "{}.tmp-{}",
+            self.path.display(),
+            std::process::id()
+        ));
         fs::write(
             &temporary,
             serde_json::to_vec(&self.records).map_err(std::io::Error::other)?,
         )?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600))?;
+        }
         fs::rename(temporary, &self.path)
     }
 }
@@ -169,5 +207,32 @@ mod tests {
         }
         assert_eq!(journal.records().count(), MAX_RECORDS);
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn stale_replica_journals_merge_without_losing_operations() {
+        let path =
+            std::env::temp_dir().join(format!("araf-compat-merge-{}.json", uuid::Uuid::new_v4()));
+        let mut first = CompatibilityJournal::open(&path).expect("first");
+        let mut second = CompatibilityJournal::open(&path).expect("second");
+        let record = |id: &str| CompatibilityRecord {
+            operation_id: id.into(),
+            action: "create".into(),
+            resource_type: "compute.server".into(),
+            resource_id: None,
+            project_id: None,
+            correlation_id: id.into(),
+            state: OperationState::Running,
+            observed_status: None,
+            error: None,
+            updated_at: OffsetDateTime::now_utc(),
+        };
+        first.insert(record("operation-a")).expect("first insert");
+        second.insert(record("operation-b")).expect("second insert");
+        let reopened = CompatibilityJournal::open(&path).expect("reopen");
+        assert!(reopened.get("operation-a").is_some());
+        assert!(reopened.get("operation-b").is_some());
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("lock"));
     }
 }

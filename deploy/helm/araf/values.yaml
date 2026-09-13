@@ -25,6 +25,7 @@ oidc:
   operatorRedirectUri: ""
 secrets:
   name: araf-runtime-secrets
+  sessionStoreKey: session-store-key
   o3kTokenKey: o3k-token
   tenantOidcClientSecretKey: tenant-oidc-client-secret
   operatorOidcClientSecretKey: operator-oidc-client-secret

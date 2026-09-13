@@ -31,6 +31,7 @@ use axum::{
     routing::{delete, get, post},
     Router,
 };
+use base64::Engine;
 pub use descriptor_validation::validate_descriptor_json;
 pub use error::{ApiError, BffError, ProblemDetails, UpstreamError};
 pub use fixture::{FixtureAdapter, FIXTURE_RESOURCE_TOTAL};
@@ -384,10 +385,30 @@ pub fn api_router_for_config(config: BffConfig) -> Result<Router, ApiError> {
         UpstreamAdapter::O3k => Arc::new(O3kAdapter::from_env(config.surface)?),
         UpstreamAdapter::OpenStack => Arc::new(OpenStackAdapter::from_env(config.surface)?),
     };
+    let session_key = if config.profile == RuntimeProfile::Production {
+        let encoded = std::env::var("ARAF_SESSION_STORE_KEY").map_err(|_| {
+            config_error(
+                "ARAF_SESSION_STORE_KEY is required in production and must be a base64 AES-256 key",
+            )
+        })?;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(encoded.trim())
+            .map_err(|_| config_error("ARAF_SESSION_STORE_KEY must be valid base64"))?;
+        decoded
+            .try_into()
+            .map_err(|_| config_error("ARAF_SESSION_STORE_KEY must decode to exactly 32 bytes"))?
+    } else {
+        [0u8; 32]
+    };
     let sessions = match std::env::var("ARAF_SESSION_STORE_PATH")
         .ok()
         .filter(|path| !path.trim().is_empty())
     {
+        Some(path) if config.profile == RuntimeProfile::Production => {
+            session::SessionStore::new_durable_encrypted(path, session_key).map_err(|error| {
+                config_error(format!("failed to open durable session store: {error}"))
+            })?
+        }
         Some(path) => session::SessionStore::new_durable(path).map_err(|error| {
             config_error(format!("failed to open durable session store: {error}"))
         })?,
