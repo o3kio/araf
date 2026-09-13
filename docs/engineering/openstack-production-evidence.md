@@ -13,6 +13,7 @@ The recorded run had 30 tenant capabilities, real image/flavor/network/subnet/vo
 | Item | Observed value |
 |---|---|
 | Host | Ubuntu 24.04.4 LTS, kernel 6.8.0-139-generic, 16 vCPU, 62 GiB RAM |
+| Araf commit | `dab4b364804add96b386fff6845bd13508f27b58` |
 | Virtualization | `/dev/kvm` present; disposable Nova profile uses KVM/libvirt |
 | Kolla-Ansible | 19.7.0; OpenStack 2024.2 (Dalmatian), Ubuntu Noble images |
 | Core services | Keystone, Nova, Glance, Neutron, Cinder, Placement (plus Heat) |
