@@ -4,7 +4,7 @@
 
 - Repository: `o3kio/araf`
 - Candidate branch: `codex/p4-1-observability`
-- Candidate source: `733ce243597113248fc6f9b1372d605a16a61638`
+- Candidate source: branch HEAD (exact commit reported in the release handoff)
 - Artifact version: `0.1.0-rc` (locally signed/attested candidate; trusted CI provenance remains gated)
 - Date: 2026-09-13
 
