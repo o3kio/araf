@@ -70,5 +70,8 @@ state only.
 This candidate must not be called v1.0 yet. The remaining release boundary is
 a current-head O3K production run, multi-host durable-session/rolling-restart
 evidence, trusted CI provenance attestations, and a representative production
-pilot/rollback. The real OpenStack evidence is profile-scoped and does not
-waive those gaps or advertise Swift, floating IP, or attachment workflows.
+pilot/rollback. A current-head OCI rebuild was attempted on the development
+host but could not complete because the Docker daemon had no usable default
+bridge network; no replacement artifact is claimed. The real OpenStack
+evidence is profile-scoped and does not waive those gaps or advertise Swift,
+floating IP, or attachment workflows.
