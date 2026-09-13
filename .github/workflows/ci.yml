@@ -64,6 +64,9 @@ jobs:
       - name: Production build
         run: pnpm build
 
+      - name: Install Rust supply-chain scanners
+        run: cargo install --locked cargo-audit cargo-deny
+
       - name: Security release gate and dependency inventory
         run: ./tests/security-release-gate.sh
 
