@@ -15,11 +15,24 @@ evidence only.
 
 ## Current target verdict
 
-`NO-GO — OPENSTACK 2026.1 TARGET NOT YET CERTIFIED`
+`PASS — OPENSTACK 2026.1 P3.9 PROFILE EVIDENCE RECORDED`
 
 A clean P3.9 run using matching Kolla-Ansible 22.x tooling and 2026.1 service
-images is required before the repository may advertise 2026.1 as the current
-certified OpenStack release.
+images passed on the exact Araf source recorded in
+[`openstack-2026.1-p3.9-evidence.md`](openstack-2026.1-p3.9-evidence.md).
+This certifies only the documented Keystone/Nova/Glance/Neutron/Cinder
+compatibility profile; it does not waive the remaining P4 release gates.
+
+## Matched 2026.1 P3.9 run
+
+The deployment used Kolla-Ansible 22.2.0 and
+`quay.io/openstack/kolla/*:2026.1-ubuntu-noble` images. The unchanged
+production-profile harness passed with 30 capabilities, real CRUD and
+asynchronous Nova lifecycle transitions, invalid-input failure journaling,
+quota reads, project isolation, and 18 persisted operations. HTTPS trust was
+validated with the deployment CA. External networking was deliberately
+disabled (`ENABLE_EXT_NET=0`) on an internal-only disposable bridge, so public
+floating-IP behavior remains outside the certified profile.
 
 ## Supplemental 2025.1 single-host run
 
@@ -91,16 +104,13 @@ OpenStack 2024.2 (Dalmatian) environment. That result remains valuable
 historical compatibility evidence but does not certify the current 2026.1
 reference release.
 
-## Required 2026.1 certification closure
+## Remaining release closure
 
-Before changing the current target verdict to GO:
-
-1. deploy OpenStack 2026.1 Gazpacho using matching Kolla-Ansible 22.x tooling;
-2. use matching 2026.1 service images;
-3. run the unchanged P3.9 gate through production-profile Tenant and Operator BFFs;
-4. exercise the documented Keystone/Nova/Glance/Neutron/Cinder profile, failure path, isolation, restart/reconciliation and quota journeys;
-5. publish durable redacted evidence tied to the exact Araf HEAD and exact OpenStack/Kolla versions;
-6. only then record `GO — OPENSTACK PROFILE SUPPORTED` for the 2026.1 target.
+The matched 2026.1 P3.9 deployment, journey and durable redacted artifact are
+complete. The broader production-release verdict remains independently gated
+by multi-host HA/rolling upgrade, trusted provenance, representative pilot and
+soak, and the other P4 acceptance criteria in
+[`production-release-evidence.md`](production-release-evidence.md).
 
 ## Deferred / non-goals
 

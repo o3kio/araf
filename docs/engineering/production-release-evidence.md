@@ -4,10 +4,10 @@
 
 - Repository: `o3kio/araf`
 - Candidate branch: `codex/target-openstack-2026-1`
-- Candidate source (implementation): `24a8b691a7c447ce001271519713d5b322757eb8`
+- Candidate source (implementation): `40db777b06f49d3a329a8e3813cb5686ac0758d9`
 - Artifact version: `0.1.0-rc` (locally signed/attested candidate; trusted CI provenance remains gated)
 - Target OpenStack profile: **2026.1 Gazpacho (SLURP)** using matching `stable/2026.1` Kolla-Ansible 22.x tooling and 2026.1 service images; support is version-specific, not `2026.1 or later`
-- Date: 2026-09-13
+- Date: 2026-09-14
 
 ## Gate matrix
 
@@ -15,7 +15,7 @@
 | --- | --- | --- |
 | P2 native O3K | Post-P3 baseline and existing real O3K gate evidence | PASS (baseline) |
 | P12 IAM/current-process identity | `p12-iam-real-idp-p4-evidence.md` (O3K `p12-iam-7-real-idp.sh` with Araf P12-IAM.8 hook) | PASS for the current-process external-IdP journey; this is not a production deployment claim |
-| P3 OpenStack core profile | `docs/engineering/openstack-production-evidence.md`; historical 2024.2 baseline plus supplemental 2025.1 image run | **NO-GO for the current 2026.1 target** until a matched Kolla-Ansible 22.x / 2026.1 P3.9 run is recorded; the 2025.1 run used Kolla-Ansible 19.7.0 (Dalmatian-series tooling) and is compatibility evidence only |
+| P3 OpenStack core profile | `docs/engineering/openstack-production-evidence.md`; durable matched-target artifact `openstack-2026.1-p3.9-evidence.md` | PASS for the documented 2026.1 Keystone/Nova/Glance/Neutron/Cinder profile; external networking, Swift and attachment remain out of scope |
 | P4.1 observability | `p4-1-observability-evidence.md`, `/metrics`, `/readyz`, correlation tests | PASS locally; real deployment attachment required |
 | P4.2 performance/scale | `performance-evidence.md`, `tests/performance-bounded.sh` | PASS for bounded fixture; O3K/OpenStack load attachment required |
 | P4.3 HA/session | encrypted file-locked store tests, restart/replica topology, and current-head O3K replica smoke | PASS for the shared durable primitive, concurrent-writer recovery, and same-host O3K replica continuity; multi-host rolling-failure test required |
@@ -63,8 +63,9 @@ evidence references and are not immutable release artifacts.
 
 The repository's current OpenStack production reference target is OpenStack
 2026.1 Gazpacho (SLURP) with matching Kolla-Ansible 22.x tooling and matching
-2026.1 images. A clean current-target P3.9 run with durable redacted evidence is
-still required before the OpenStack release target can be marked GO.
+2026.1 images. The matched P3.9 run and durable redacted evidence are recorded
+in `openstack-2026.1-p3.9-evidence.md`; this closes the P3 target gate but does
+not change the overall release verdict below.
 
 On current head `22a93894b89a659a5eb62decccf6e3f90852a6c3`, a fresh disposable
 O3K TestLab (`agent` provider, O3K source `157fde108c5e0a9c6567f596d88a6abbb55b2aaf`)
@@ -127,8 +128,8 @@ a forward-compatibility claim.
 **NO-GO — NOT PRODUCTION READY**
 
 This candidate must not be called v1.0 yet. The remaining release boundary is
-a current-head O3K production run, a matched OpenStack 2026.1 P3.9 certification
-run, multi-host durable-session/rolling-restart evidence, trusted CI provenance
-attestations, and a representative production pilot/rollback. Historical and
-supplemental OpenStack evidence does not waive those gaps or advertise Swift,
-floating IP, or attachment workflows.
+a current-head O3K production run, multi-host durable-session/rolling-restart
+evidence, trusted CI provenance attestations, and a representative production
+pilot/rollback. The matched OpenStack evidence closes only the documented
+2026.1 P3 profile; it does not advertise Swift, floating IP, or attachment
+workflows.
