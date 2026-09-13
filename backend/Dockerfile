@@ -36,6 +36,10 @@ COPY --from=builder /usr/local/bin/tenant-bff /usr/local/bin/tenant-bff
 COPY --from=builder /usr/local/bin/operator-bff /usr/local/bin/operator-bff
 ENV ARAF_VERSION=$ARAF_VERSION ARAF_GIT_SHA=$ARAF_GIT_SHA
 
+# Clear the debug distroless shell entrypoint so Compose commands execute the
+# selected BFF binary directly.
+ENTRYPOINT []
+
 EXPOSE 8080 8081
 
 CMD ["tenant-bff"]

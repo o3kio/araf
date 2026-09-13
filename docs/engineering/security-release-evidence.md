@@ -40,4 +40,7 @@ images, and zero HIGH/CRITICAL findings for the distroless BFF image. The
 candidate images are also signed and SBOM-attested in the local registry with
 an ephemeral development cosign key; verification is recorded in
 `target/security/cosign-verify.txt`. A release still requires the CI-owned
-trusted keyless provenance attestation before publication.
+trusted keyless provenance attestation before publication. The tag-triggered
+`.github/workflows/release-images.yml` is the publication path: Buildx emits
+maximum SLSA provenance/SBOM metadata and `actions/attest-build-provenance`
+binds the digest to the GitHub OIDC identity.

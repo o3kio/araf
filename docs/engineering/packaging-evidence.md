@@ -22,9 +22,9 @@ HTTPS public/trusted origins, upstream credentials/endpoints and
 `ARAF_SESSION_STORE_PATH` and `ARAF_SESSION_STORE_KEY`.
 
 Development-host OCI evidence for RC `0.1.0-rc` (revision
-`309b827c6108a08fd24601e903b3071956526771`) is available in the local registry:
+`92d4013fc4f779178375fa00830e89b8c4b462ba`) is available in the local registry:
 
-- BFF: `sha256:64672d6a2be9e08ee7a80155d0d05a14f74abdc9541560410d0b6619e2a2016d`
+- BFF: `sha256:3c06cb7c3458a53f4154bee31a24785d3f64c5dc136c890c70b3574814fb0574`
 - Tenant console: `sha256:ab8bc01ad0cf0266dfc463cfc72c4795059ea82988f578409791d9fc0d63435`
 - Operator console: `sha256:11538ef1fe6c7f3a8f6eb05582d4a9cef1f5087cfbe839f3a103c9aa2d182c2c`
 
