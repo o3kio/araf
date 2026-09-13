@@ -436,6 +436,7 @@ impl OpenStackAdapter {
             correlation_id: operation.correlation_id.clone(),
             state: operation.state,
             observed_status: None,
+            error: operation.error.clone(),
             updated_at: operation.updated_at.unwrap_or_else(OffsetDateTime::now_utc),
         };
         journal.write().await.insert(record).map_err(|error| {
@@ -457,7 +458,7 @@ impl OpenStackAdapter {
             started_at: Some(occurred_at),
             updated_at: Some(occurred_at),
             correlation_id: record.correlation_id.clone(),
-            error: None,
+            error: record.error.clone(),
             events: vec![OperationEvent {
                 id: format!("{}-state", record.operation_id),
                 state: record.state,
@@ -763,6 +764,31 @@ impl OpenStackAdapter {
 }
 
 impl CloudBackend for OpenStackAdapter {}
+
+impl OpenStackAdapter {
+    async fn persist_failed_operation(
+        &self,
+        ctx: &RequestContext,
+        action: &str,
+        resource_type: &str,
+        resource_id: Option<&str>,
+        error: &ApiError,
+    ) -> Result<(), ApiError> {
+        let operation = self.operation(
+            ctx,
+            action,
+            resource_type,
+            resource_id.map(ToOwned::to_owned),
+            OperationState::Failed,
+            Some(OperationError {
+                code: format!("openstack.{}", error.status().as_u16()),
+                title: "OpenStack request failed".into(),
+                detail: error.to_string(),
+            }),
+        );
+        self.persist_operation(&operation).await
+    }
+}
 
 #[async_trait]
 impl Upstream for OpenStackAdapter {
@@ -1283,14 +1309,22 @@ impl Upstream for OpenStackAdapter {
         } else {
             resource_type.rsplit('.').next().unwrap_or("resource")
         };
-        let (_, body) = self
+        let (_, body) = match self
             .request_json(
                 ctx,
                 Method::POST,
                 url,
                 Some(json!({ key: request.payload })),
             )
-            .await?;
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                self.persist_failed_operation(ctx, "create", resource_type, None, &error)
+                    .await?;
+                return Err(error);
+            }
+        };
         let id = body
             .get(key)
             .and_then(|v| v.get("id"))
@@ -1339,9 +1373,14 @@ impl Upstream for OpenStackAdapter {
             self.scoped_base(&base, self.project(ctx, None))
         ))
         .map_err(|e| config_error(e.to_string()))?;
-        let _ = self
+        if let Err(error) = self
             .request_json(ctx, Method::POST, url, Some(action_body))
-            .await?;
+            .await
+        {
+            self.persist_failed_operation(ctx, &request.action_id, resource_type, Some(id), &error)
+                .await?;
+            return Err(error);
+        }
         let operation = self.operation(
             ctx,
             &request.action_id,
@@ -1388,7 +1427,11 @@ impl Upstream for OpenStackAdapter {
             self.scoped_base(&base, self.project(ctx, None))
         ))
         .map_err(|e| config_error(e.to_string()))?;
-        let _ = self.request_json(ctx, Method::DELETE, url, None).await?;
+        if let Err(error) = self.request_json(ctx, Method::DELETE, url, None).await {
+            self.persist_failed_operation(ctx, "delete", resource_type, Some(id), &error)
+                .await?;
+            return Err(error);
+        }
         let operation = self.operation(
             ctx,
             "delete",
@@ -1591,6 +1634,32 @@ mod tests {
         assert_eq!(
             OpenStackAdapter::derive_operation_state("stop", ResourceStatus::Busy, "SHUTOFF"),
             OperationState::Succeeded
+        );
+    }
+
+    #[test]
+    fn failed_compatibility_record_round_trips_error_details() {
+        let record = CompatibilityRecord {
+            operation_id: "openstack-compat-failed".into(),
+            action: "create".into(),
+            resource_type: "compute.server".into(),
+            resource_id: None,
+            project_id: Some("project-a".into()),
+            correlation_id: "corr-1".into(),
+            state: OperationState::Failed,
+            observed_status: None,
+            error: Some(OperationError {
+                code: "openstack.502".into(),
+                title: "OpenStack request failed".into(),
+                detail: "upstream request failed".into(),
+            }),
+            updated_at: OffsetDateTime::now_utc(),
+        };
+        let operation = OpenStackAdapter::operation_from_record(&record);
+        assert_eq!(operation.state, OperationState::Failed);
+        assert_eq!(
+            operation.error.as_ref().map(|error| error.code.as_str()),
+            Some("openstack.502")
         );
     }
 }

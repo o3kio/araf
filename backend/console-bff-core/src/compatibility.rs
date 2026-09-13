@@ -12,7 +12,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
-use crate::model::OperationState;
+use crate::model::{OperationError, OperationState};
 
 const MAX_RECORDS: usize = 1_000;
 
@@ -27,6 +27,8 @@ pub struct CompatibilityRecord {
     pub correlation_id: String,
     pub state: OperationState,
     pub observed_status: Option<String>,
+    #[serde(default)]
+    pub error: Option<OperationError>,
     pub updated_at: OffsetDateTime,
 }
 
@@ -119,6 +121,7 @@ mod tests {
                 correlation_id: "corr".into(),
                 state: OperationState::Running,
                 observed_status: None,
+                error: None,
                 updated_at: OffsetDateTime::now_utc(),
             })
             .expect("insert");
@@ -159,6 +162,7 @@ mod tests {
                     correlation_id: index.to_string(),
                     state: OperationState::Running,
                     observed_status: None,
+                    error: None,
                     updated_at: OffsetDateTime::now_utc(),
                 })
                 .expect("insert");
