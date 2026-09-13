@@ -2,42 +2,55 @@
 
 ## Target reference
 
-The target OpenStack release for the supported Kolla deployment is **2025.1 or
-later**, using matching Kolla-Ansible tooling and service images. This document
-records a current-candidate P3.9 run against OpenStack 2025.1 and retains the
-older 2024.2 result as historical context. The profile is certified only for
-the capabilities and topology described below.
+The current OpenStack certification target is **OpenStack 2026.1 Gazpacho
+(SLURP)**, deployed with matching `stable/2026.1` Kolla-Ansible 22.x tooling
+and matching 2026.1 service images. OpenStack support is version-specific;
+Araf does not claim automatic support for `2026.1 or later` without separate
+P3.9 evidence for each later series.
 
-## Verdict
+As of 2026-09-13, 2026.1 is the current maintained stable SLURP release.
+OpenStack 2026.2 Hibiscus is still a development series. Existing 2024.2 and
+2025.1 results are retained below as historical/transitional compatibility
+evidence only.
 
-`GO — OPENSTACK PROFILE SUPPORTED (SINGLE-HOST 2025.1 PROFILE)`
+## Current target verdict
 
-The unchanged fail-closed gate passed against a real Kolla-Ansible 2025.1
-all-in-one deployment and production-profile Tenant and Operator BFFs. The
-deployment harness created and destroyed real Nova, Glance, Neutron and
-Cinder resources and wrote the redacted artifact at
+`NO-GO — OPENSTACK 2026.1 TARGET NOT YET CERTIFIED`
+
+A clean P3.9 run using matching Kolla-Ansible 22.x tooling and 2026.1 service
+images is required before the repository may advertise 2026.1 as the current
+certified OpenStack release.
+
+## Supplemental 2025.1 single-host run
+
+A later single-host run exercised 2025.1 service images through the unchanged
+fail-closed gate and production-profile Tenant and Operator BFFs. The deployment
+harness created and destroyed real Nova, Glance, Neutron and Cinder resources
+and wrote a redacted local artifact at
 `/tmp/araf-p4-openstack-2025/evidence5/redacted-run.txt`.
 
 The recorded run had 30 tenant capabilities, real image/flavor/network/subnet/volume/server IDs, authoritative ACTIVE/SHUTOFF transitions, stop/start/reboot, invalid server input, quota reads, deletion, and 25 persisted compatibility operations.
 
-## Deployment
+This is useful compatibility evidence, but it is **not** a matched-toolchain
+2025.1 certification: the run used Kolla-Ansible 19.7.0, which belongs to the
+OpenStack 2024.2 Dalmatian Kolla series, with 2025.1 service images. Official
+OpenStack 2025.1 Epoxy Kolla-Ansible is the 20.x series. The earlier wording
+that described this pairing as matching 2025.1 tooling was incorrect.
+
+## Deployment observed in the supplemental run
 
 | Item | Observed value |
 |---|---|
 | Host | Ubuntu 24.04.4 LTS, kernel 6.8.0-139-generic, 16 vCPU, 62 GiB RAM |
 | Araf implementation source under test | `24a8b691a7c447ce001271519713d5b322757eb8` |
 | Virtualization | `/dev/kvm` present; disposable Nova profile uses KVM/libvirt |
-| Kolla-Ansible | 19.7.0; OpenStack 2025.1, Ubuntu Noble images |
+| Kolla-Ansible | 19.7.0 (Dalmatian-series tooling) |
+| OpenStack service images | `quay.io/openstack/kolla/*:2025.1-ubuntu-noble` |
 | Core services | Keystone, Nova, Glance, Neutron, Cinder, Placement (plus Heat) |
-| Service images | `quay.io/openstack/kolla/*:2025.1-ubuntu-noble` |
 | Araf ingress | Local CA-backed HTTPS: Tenant 8445, Operator 8446, Keystone proxy 9444 |
 | Network topology | Existing management `eth0` preserved; Neutron external `ens19` isolated; no public floating-IP requirement |
 | Storage | Dedicated 15 GiB loopback image and `cinder-volumes` LVM VG; no host disks used |
 | Object Storage | Not deployed and correctly capability-hidden (`OPENSTACK_OBJECT_STORAGE_URL` unset) |
-
-The deployment used the compatible `openstack.kolla` collection from the
-Kolla-Ansible 19.7.0 environment with matching 2025.1 service images. No
-cross-version image substitution was used.
 
 ## Security and isolation evidence
 
@@ -56,12 +69,38 @@ Tenant requests are bound to the configured/session project; arbitrary project s
 
 ## Artifacts and reproducibility
 
-- Gate result: `/tmp/araf-p4-openstack-2025/evidence5/harness.success`
-- Redacted run: `/tmp/araf-p4-openstack-2025/evidence5/redacted-run.txt`
+The 2025.1 supplemental artifacts were generated on the development host:
+
+- Local harness marker: `/tmp/araf-p4-openstack-2025/evidence5/harness.success`
+- Local redacted run: `/tmp/araf-p4-openstack-2025/evidence5/redacted-run.txt`
 - Deployment-owned harness: `/root/p3-9-openstack-run/harness.sh`
 - Durable tenant journal: `/root/p3-9-openstack-run/tenant-journal.jsonl`
 
+Paths under `/tmp` are **not durable release artifacts**. They are useful local
+evidence references only and must not be treated as immutable certification
+evidence after the host/environment is removed. A 2026.1 certification run
+should publish a durable redacted artifact through the repository/CI evidence
+mechanism.
+
 No passwords, tokens, private keys, or `clouds.yaml` credentials are committed.
+
+## Historical 2024.2 baseline
+
+Araf previously passed the P3.9 support-profile gate against a real Kolla-Ansible
+OpenStack 2024.2 (Dalmatian) environment. That result remains valuable
+historical compatibility evidence but does not certify the current 2026.1
+reference release.
+
+## Required 2026.1 certification closure
+
+Before changing the current target verdict to GO:
+
+1. deploy OpenStack 2026.1 Gazpacho using matching Kolla-Ansible 22.x tooling;
+2. use matching 2026.1 service images;
+3. run the unchanged P3.9 gate through production-profile Tenant and Operator BFFs;
+4. exercise the documented Keystone/Nova/Glance/Neutron/Cinder profile, failure path, isolation, restart/reconciliation and quota journeys;
+5. publish durable redacted evidence tied to the exact Araf HEAD and exact OpenStack/Kolla versions;
+6. only then record `GO — OPENSTACK PROFILE SUPPORTED` for the 2026.1 target.
 
 ## Deferred / non-goals
 
