@@ -22,9 +22,17 @@ rg -q 'readOnlyRootFilesystem: true' "$chart/templates/deployment.yaml" \
   || fail "Helm deployment must use a read-only root filesystem"
 rg -q 'ARAF_SESSION_STORE_KEY' "$compose" "$chart/templates/deployment.yaml" \
   || fail "durable session encryption key must be externally referenced"
+rg -q 'ARAF_OPENSTACK_COMPATIBILITY_JOURNAL' "$compose" "$chart/templates/deployment.yaml" \
+  || fail "OpenStack compatibility journal must be externally configured"
+rg -q 'ARAF_TENANT_CONSOLE_IMAGE' "$compose" \
+  || fail "Tenant console release image must be digest-pinned"
+rg -q 'ARAF_OPERATOR_CONSOLE_IMAGE' "$compose" \
+  || fail "Operator console release image must be digest-pinned"
 
 if command -v helm >/dev/null 2>&1; then
   helm lint "$chart" --set image.digest=sha256:"$(printf '%064d' 0)" \
+    --set frontendImage.tenant.digest=sha256:"$(printf '%064d' 0)" \
+    --set frontendImage.operator.digest=sha256:"$(printf '%064d' 0)" \
     --set backend.o3kUrl=https://o3k.example.invalid \
     --set oidc.tenantIssuerUrl=https://idp.example.invalid \
     --set oidc.tenantClientId=placeholder \

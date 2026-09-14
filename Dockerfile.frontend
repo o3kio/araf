@@ -38,6 +38,9 @@ LABEL org.opencontainers.image.title="Araf ${APP} console" \
       org.opencontainers.image.source="https://github.com/o3kio/araf"
 COPY --from=builder /build/apps/$APP/dist /usr/share/nginx/html
 COPY deploy/nginx-default.conf.template /etc/nginx/templates/default.conf.template
-ENV BFF_UPSTREAM=http://tenant-bff:8080
+# The upstream is deployment configuration, not an image default.  The
+# nginx entrypoint substitutes BFF_UPSTREAM at runtime; an unset value causes
+# nginx validation to fail closed rather than silently targeting a developer
+# endpoint.
 EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]

@@ -51,7 +51,23 @@ Compatibility matrix:
 
 | Araf release | O3K | OpenStack |
 | --- | --- | --- |
-| 0.0.x RC | native O3K P2 contract at the pinned deployment SHA | Keystone/Nova/Glance/Neutron/Cinder profile certified by P3.9 |
+| 0.0.x RC | native O3K P2 API profile at the tested development commit; no stable O3K release is claimed and multi-node certification remains deferred to #106 | OpenStack 2026.1 Gazpacho (SLURP), Keystone/Nova/Glance/Neutron/Cinder profile certified by P3.9; Swift, floating IP and volume attachment are deferred |
+
+The release artifact topology is three OCI images: one shared Rust BFF image
+with separate `tenant-bff` and `operator-bff` commands, plus independently
+built Tenant and Operator console images. The console images contain only
+static assets and receive their BFF upstream at runtime; no customer endpoint,
+OIDC value or credential is baked into an image. Helm deploys each surface as
+an independent frontend/BFF Deployment and Service. Tenant and Operator
+ingress rules must be configured separately.
+
+Container contract: BFFs listen on 8080 (Tenant) or 8081 (Operator), expose
+`/healthz`, `/readyz` and `/version`, and write only to the mounted durable
+session/journal path plus temporary storage. Console images listen on 8080 and
+require `BFF_UPSTREAM`; an unset upstream makes nginx reject its configuration.
+The release Compose file supplies all four digest-pinned images and external
+runtime configuration, while Helm requires both BFF and per-surface frontend
+digests.
 
 An upgrade/rollback test must deploy release N, create a session and pending
 compatibility operation, replace images with N+1, verify `/version`, session

@@ -3,9 +3,14 @@ image:
   digest: ""
   pullPolicy: IfNotPresent
 frontendImage:
-  repository: ghcr.io/o3kio/araf-frontend
-  digest: ""
-  pullPolicy: IfNotPresent
+  tenant:
+    repository: ghcr.io/o3kio/araf-tenant-console
+    digest: ""
+    pullPolicy: IfNotPresent
+  operator:
+    repository: ghcr.io/o3kio/araf-operator-console
+    digest: ""
+    pullPolicy: IfNotPresent
 replicas: 2
 resources:
   requests: { cpu: 100m, memory: 128Mi }

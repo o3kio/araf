@@ -11,10 +11,11 @@ spec:
       labels: { app.kubernetes.io/name: araf, araf.o3k.io/component: frontend, araf.o3k.io/surface: {{ $surface }} }
     spec:
       automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
       containers:
         - name: frontend
-          image: {{ include "araf.frontendImage" $ }}
-          imagePullPolicy: {{ $.Values.frontendImage.pullPolicy }}
+          image: {{ include "araf.frontendImage" (dict "Values" $.Values "surface" $surface) }}
+          imagePullPolicy: {{ (index $.Values.frontendImage $surface).pullPolicy }}
           env:
             - name: BFF_UPSTREAM
               value: http://{{ include "araf.fullname" $ }}-{{ $surface }}-bff
