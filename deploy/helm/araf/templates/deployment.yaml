@@ -4,13 +4,15 @@ kind: Deployment
 metadata:
   name: {{ include "araf.fullname" $ }}-{{ $surface }}-bff
 spec:
-  replicas: 2
+  replicas: {{ $.Values.replicas }}
   selector:
     matchLabels: { app.kubernetes.io/name: araf, araf.o3k.io/surface: {{ $surface }} }
   template:
     metadata:
       labels: { app.kubernetes.io/name: araf, araf.o3k.io/surface: {{ $surface }} }
     spec:
+      securityContext:
+{{ toYaml $.Values.podSecurityContext | nindent 8 }}
       containers:
         - name: bff
           image: {{ include "araf.image" $ }}
@@ -86,8 +88,22 @@ spec:
               value: {{ $.Values.oidc.operatorRedirectUri | quote }}
             {{- end }}
           ports: [{ name: http, containerPort: {{ if eq $surface "tenant" }}8080{{ else }}8081{{ end }} }]
-          readinessProbe: { httpGet: { path: /readyz, port: http } }
-          livenessProbe: { httpGet: { path: /healthz, port: http } }
+          resources:
+{{ toYaml $.Values.resources | nindent 12 }}
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            failureThreshold: 30
+            periodSeconds: 2
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           securityContext: { readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
           volumeMounts: [{ name: session-store, mountPath: /var/lib/araf }]
       volumes:
