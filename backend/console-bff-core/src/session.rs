@@ -250,10 +250,26 @@ impl SessionStore {
         };
         let bytes = match fs::read(path) {
             Ok(bytes) => bytes,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error),
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                // A missing authority must not leave this replica serving its
+                // last in-memory snapshot. Fail closed until the authority is
+                // restored and a subsequent request reloads it.
+                self.sessions.write().await.clear();
+                return Ok(());
+            }
+            Err(error) => {
+                self.sessions.write().await.clear();
+                return Err(error);
+            }
         };
-        *self.sessions.write().await = self.deserialize_sessions(&bytes)?;
+        let sessions = match self.deserialize_sessions(&bytes) {
+            Ok(sessions) => sessions,
+            Err(error) => {
+                self.sessions.write().await.clear();
+                return Err(error);
+            }
+        };
+        *self.sessions.write().await = sessions;
         Ok(())
     }
 
@@ -289,13 +305,22 @@ impl SessionStore {
             std::process::id(),
             Uuid::new_v4()
         ));
-        fs::write(&temporary, encoded)?;
+        if let Err(error) = fs::write(&temporary, encoded) {
+            let _ = fs::remove_file(&temporary);
+            return Err(error);
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600))?;
+            if let Err(error) = fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600)) {
+                let _ = fs::remove_file(&temporary);
+                return Err(error);
+            }
         }
-        fs::rename(&temporary, path)?;
+        if let Err(error) = fs::rename(&temporary, path) {
+            let _ = fs::remove_file(&temporary);
+            return Err(error);
+        }
         *self.sessions.write().await = sessions;
         Ok(result)
     }
@@ -382,7 +407,9 @@ impl SessionStore {
 
     /// Look up a session by its opaque token.
     pub async fn get(&self, session_token: &str) -> Option<SessionData> {
-        let _ = self.reload_from_disk().await;
+        if self.reload_from_disk().await.is_err() {
+            return None;
+        }
         let sessions = self.sessions.read().await;
         sessions.get(session_token).cloned()
     }
@@ -460,7 +487,9 @@ impl SessionStore {
 
     /// Number of active sessions (for health monitoring).
     pub async fn active_count(&self) -> usize {
-        let _ = self.reload_from_disk().await;
+        if self.reload_from_disk().await.is_err() {
+            return 0;
+        }
         self.sessions.read().await.len()
     }
 
@@ -687,6 +716,36 @@ mod tests {
         assert!(!bytes
             .windows(b"tenant-token-0".len())
             .any(|window| window == b"tenant-token-0"));
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("lock"));
+    }
+
+    #[tokio::test]
+    async fn deleted_authority_invalidates_existing_replica() {
+        let path =
+            std::env::temp_dir().join(format!("araf-session-deleted-{}.json", Uuid::new_v4()));
+        let store = SessionStore::new_durable(&path).expect("store");
+        let token = store
+            .create("user".into(), "User".into(), "tenant-bff", None, None, None)
+            .await;
+        assert!(store.validate(&token).await.is_some());
+        fs::remove_file(&path).expect("remove authority");
+        assert!(store.validate(&token).await.is_none());
+        assert_eq!(store.active_count().await, 0);
+        let _ = fs::remove_file(path.with_extension("lock"));
+    }
+
+    #[tokio::test]
+    async fn corrupt_authority_fails_closed() {
+        let path =
+            std::env::temp_dir().join(format!("araf-session-corrupt-{}.json", Uuid::new_v4()));
+        let store = SessionStore::new_durable(&path).expect("store");
+        let token = store
+            .create("user".into(), "User".into(), "tenant-bff", None, None, None)
+            .await;
+        fs::write(&path, b"not-json").expect("corrupt authority");
+        assert!(store.validate(&token).await.is_none());
+        assert_eq!(store.active_count().await, 0);
         let _ = fs::remove_file(&path);
         let _ = fs::remove_file(path.with_extension("lock"));
     }

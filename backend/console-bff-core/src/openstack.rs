@@ -482,6 +482,20 @@ impl OpenStackAdapter {
         })
     }
 
+    async fn journal_record(
+        &self,
+        operation_id: &str,
+    ) -> Result<Option<CompatibilityRecord>, ApiError> {
+        let Some(journal) = &self.journal else {
+            return Ok(None);
+        };
+        let mut journal = journal.write().await;
+        journal.refresh().map_err(|error| {
+            config_error(format!("cannot refresh compatibility journal: {error}"))
+        })?;
+        Ok(journal.get(operation_id).cloned())
+    }
+
     fn operation_from_record(record: &CompatibilityRecord) -> Operation {
         let occurred_at = record.updated_at;
         Operation {
@@ -521,7 +535,7 @@ impl OpenStackAdapter {
         let Some(journal) = &self.journal else {
             return Ok(None);
         };
-        let record = journal.read().await.get(operation_id).cloned();
+        let record = self.journal_record(operation_id).await?;
         let Some(record) = record else {
             return Ok(None);
         };
@@ -557,11 +571,10 @@ impl OpenStackAdapter {
                     .map_err(|error| {
                         config_error(format!("cannot update compatibility operation: {error}"))
                     })?;
-                return Ok(journal
-                    .read()
-                    .await
-                    .get(operation_id)
-                    .map(Self::operation_from_record));
+                return Ok(self
+                    .journal_record(operation_id)
+                    .await?
+                    .map(|record| Self::operation_from_record(&record)));
             }
         };
         journal
@@ -571,11 +584,10 @@ impl OpenStackAdapter {
             .map_err(|error| {
                 config_error(format!("cannot update compatibility operation: {error}"))
             })?;
-        Ok(journal
-            .read()
-            .await
-            .get(operation_id)
-            .map(Self::operation_from_record))
+        Ok(self
+            .journal_record(operation_id)
+            .await?
+            .map(|record| Self::operation_from_record(&record)))
     }
 
     fn derive_operation_state(
@@ -1584,9 +1596,11 @@ impl Upstream for OpenStackAdapter {
             });
         };
         let selected_project = self.project(ctx, params.project_id.as_deref())?;
+        let mut journal = journal.write().await;
+        journal.refresh().map_err(|error| {
+            config_error(format!("cannot refresh compatibility journal: {error}"))
+        })?;
         let mut operations = journal
-            .read()
-            .await
             .records()
             .filter(|record| {
                 params.state.is_none_or(|state| state == record.state)
@@ -1629,10 +1643,10 @@ impl Upstream for OpenStackAdapter {
         if let Some(operation) = self.reconcile_operation(ctx, id).await? {
             return Ok(operation);
         }
-        let Some(journal) = &self.journal else {
+        if self.journal.is_none() {
             return Err(ApiError::NotFound);
-        };
-        let Some(record) = journal.read().await.get(id).cloned() else {
+        }
+        let Some(record) = self.journal_record(id).await? else {
             return Err(ApiError::NotFound);
         };
         if let Some(project) = self.project(ctx, None)? {
