@@ -87,6 +87,7 @@ Live tracking starts at **epic #2**; the committed roadmap index is in `issues/R
 
 See:
 
+- `docs/operator/README.md` — cold-operator installation, support and recovery entry point.
 - `docs/product/mvp-prototype.md`
 - `docs/product/strategic-alignment.md`
 - `docs/product/screen-inventory.md`

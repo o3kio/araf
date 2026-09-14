@@ -53,6 +53,11 @@ Compatibility matrix:
 | --- | --- | --- |
 | 0.0.x RC | native O3K P2 API profile at the tested development commit recorded in `docs/engineering/o3k-production-evidence.md`; no stable O3K release is claimed and multi-node certification remains deferred to #106 | OpenStack 2026.1 Gazpacho (SLURP), Keystone/Nova/Glance/Neutron/Cinder profile certified by P3.9; Swift, floating IP and volume attachment are deferred |
 
+The operator-facing release claim and limitation boundary is canonical in
+[`docs/operator/limitations.md`](../operator/limitations.md). In particular,
+`#106 remains OPEN — stable-release multi-node HA/O3K certification is
+intentionally deferred.`
+
 The release artifact topology is three OCI images: one shared Rust BFF image
 with separate `tenant-bff` and `operator-bff` commands, plus independently
 built Tenant and Operator console images. The console images contain only

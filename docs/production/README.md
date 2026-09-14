@@ -24,3 +24,8 @@ The program has four release gates:
 See `roadmap.md`, `definition-of-done.md`, `release-gates.md`,
 `main-protection.md`, `openstack-support.md`, and
 `../architecture/backend-abstraction.md`.
+
+For operating a release, use the [cold-operator documentation](../operator/README.md)
+and its [canonical support limitations](../operator/limitations.md). `#106
+remains OPEN — stable-release multi-node HA/O3K certification is intentionally
+deferred.`

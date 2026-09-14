@@ -9,7 +9,7 @@ Allow Araf to be deployed as a production cloud console for a supported OpenStac
 OpenStack production certification is **version-specific**. Araf must not treat a
 validated release as an automatic claim for `that release or later`.
 
-The current reference target is **OpenStack 2026.1 Gazpacho (SLURP)**, deployed
+The current certified profile is **OpenStack 2026.1 Gazpacho (SLURP)**, deployed
 with the matching `stable/2026.1` Kolla-Ansible **22.x** toolchain and matching
 2026.1 service images. A later OpenStack series must pass the P3.9 production
 gate separately before it is advertised as supported.
@@ -31,8 +31,9 @@ nested KVM with `/dev/kvm` exposed to the guest; otherwise the disposable
 functional profile must use `qemu` and must not make native-KVM performance
 claims.
 
-A current certification claim for OpenStack 2026.1 requires a clean P3.9 run
-using matching 2026.1 Kolla-Ansible tooling and images.
+The matched P3.9 result is recorded in
+[`../engineering/openstack-2026.1-p3.9-evidence.md`](../engineering/openstack-2026.1-p3.9-evidence.md).
+This exact profile is certified; no later OpenStack series is implied.
 
 ## Core v1 profile
 
@@ -53,6 +54,18 @@ Optional capability profile:
 - S3-compatible object storage endpoint (for example an operator-configured RGW S3 endpoint)
 
 Optional services must not be assumed to exist.
+
+| Capability | 2026.1 profile |
+| --- | --- |
+| Keystone v3 identity/catalog | Certified |
+| Nova v2.1 compute | Certified |
+| Glance v2 images | Certified |
+| Neutron v2 networking | Certified |
+| Cinder v3 volumes | Certified |
+| Swift/Object Storage | Deferred/not advertised |
+| Public floating IP workflows | Deferred/not advertised |
+| Volume attachment workflows | Deferred/not advertised |
+| Provider-specific tenant UI | Deferred/not advertised |
 
 ## Authentication
 

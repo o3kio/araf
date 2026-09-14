@@ -8,6 +8,11 @@ The O3K repository and published native/compatibility contracts remain authorita
 
 The planning baseline was cross-checked against the active O3K development line on 2026-08-31, including the P13.5A IaC convergence work and the established provider-neutral mappings for Compute, Network, Volume and related resources. Those details are evidence for the direction, not permission for Araf to freeze undocumented endpoints.
 
+The current Araf evidence is a native O3K convergence/development profile; an
+O3K stable semantic/API release is not claimed yet. Stable-release multi-node
+HA and final real-mutation acceptance are intentionally deferred to
+[#106](https://github.com/o3kio/araf/issues/106).
+
 ## 2. No invented production APIs
 
 When an Araf feature needs an upstream capability:

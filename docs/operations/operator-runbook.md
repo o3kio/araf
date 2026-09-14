@@ -1,5 +1,9 @@
 # Araf operator runbook
 
+> Canonical navigation is now [`docs/operator/README.md`](../operator/README.md).
+> This short legacy runbook remains as a compatibility link for existing
+> bookmarks; use the linked scenario procedures for production incidents.
+
 This runbook is written for an engineer with no repository knowledge. Use the
 versioned Compose or Helm artifacts; do not deploy from a source checkout.
 
