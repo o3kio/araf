@@ -2,6 +2,10 @@ image:
   repository: ghcr.io/o3kio/araf-bff
   digest: ""
   pullPolicy: IfNotPresent
+frontendImage:
+  repository: ghcr.io/o3kio/araf-frontend
+  digest: ""
+  pullPolicy: IfNotPresent
 replicas: 2
 resources:
   requests: { cpu: 100m, memory: 128Mi }

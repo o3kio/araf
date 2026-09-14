@@ -25,7 +25,7 @@ spec:
             pathType: {{ .pathType | default "Prefix" }}
             backend:
               service:
-                name: {{ include "araf.fullname" $ }}-{{ .surface }}-bff
+                name: {{ include "araf.fullname" $ }}-{{ .surface }}-frontend
                 port: { name: http }
         {{- end }}
   {{- end }}

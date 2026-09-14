@@ -11,6 +11,7 @@ spec:
     metadata:
       labels: { app.kubernetes.io/name: araf, araf.o3k.io/surface: {{ $surface }} }
     spec:
+      automountServiceAccountToken: false
       securityContext:
 {{ toYaml $.Values.podSecurityContext | nindent 8 }}
       containers:
@@ -34,6 +35,10 @@ spec:
                 secretKeyRef:
                   name: {{ $.Values.secrets.name }}
                   key: {{ $.Values.secrets.sessionStoreKey }}
+            - name: ARAF_PUBLIC_URL
+              value: {{ if eq $surface "tenant" }}{{ $.Values.tenant.publicUrl | quote }}{{ else }}{{ $.Values.operator.publicUrl | quote }}{{ end }}
+            - name: ARAF_TRUSTED_ORIGINS
+              value: {{ if eq $surface "tenant" }}{{ $.Values.tenant.trustedOrigins | quote }}{{ else }}{{ $.Values.operator.trustedOrigins | quote }}{{ end }}
             - name: O3K_URL
               value: {{ $.Values.backend.o3kUrl | quote }}
             - name: O3K_TOKEN
