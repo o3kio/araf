@@ -69,6 +69,8 @@ services:
     ports: ["5173:8080"]
     depends_on:
       tenant-bff: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8080/"]
   operator-console:
     image: ${ARAF_OPERATOR_CONSOLE_IMAGE:?set ARAF_OPERATOR_CONSOLE_IMAGE}@${ARAF_OPERATOR_CONSOLE_DIGEST:?set ARAF_OPERATOR_CONSOLE_DIGEST}
     environment:
@@ -78,6 +80,8 @@ services:
     ports: ["5174:8080"]
     depends_on:
       operator-bff: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8080/"]
 volumes:
   tenant-session:
   operator-session:

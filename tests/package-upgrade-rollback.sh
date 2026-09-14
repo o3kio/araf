@@ -28,6 +28,8 @@ rg -q 'ARAF_TENANT_CONSOLE_IMAGE' "$compose" \
   || fail "Tenant console release image must be digest-pinned"
 rg -q 'ARAF_OPERATOR_CONSOLE_IMAGE' "$compose" \
   || fail "Operator console release image must be digest-pinned"
+[[ $(rg -c 'http://127\.0\.0\.1:8080/' "$compose") -ge 2 ]] \
+  || fail "both console containers must define health checks"
 
 if command -v helm >/dev/null 2>&1; then
   helm lint "$chart" --set image.digest=sha256:"$(printf '%064d' 0)" \

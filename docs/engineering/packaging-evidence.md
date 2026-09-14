@@ -51,7 +51,7 @@ Compatibility matrix:
 
 | Araf release | O3K | OpenStack |
 | --- | --- | --- |
-| 0.0.x RC | native O3K P2 API profile at the tested development commit; no stable O3K release is claimed and multi-node certification remains deferred to #106 | OpenStack 2026.1 Gazpacho (SLURP), Keystone/Nova/Glance/Neutron/Cinder profile certified by P3.9; Swift, floating IP and volume attachment are deferred |
+| 0.0.x RC | native O3K P2 API profile at the tested development commit recorded in `docs/engineering/o3k-production-evidence.md`; no stable O3K release is claimed and multi-node certification remains deferred to #106 | OpenStack 2026.1 Gazpacho (SLURP), Keystone/Nova/Glance/Neutron/Cinder profile certified by P3.9; Swift, floating IP and volume attachment are deferred |
 
 The release artifact topology is three OCI images: one shared Rust BFF image
 with separate `tenant-bff` and `operator-bff` commands, plus independently
