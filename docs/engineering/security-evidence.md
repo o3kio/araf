@@ -22,7 +22,7 @@ This file documents the security features implemented in Araf and the evidence t
 
 ## Content Security Policy
 
-- **Strict CSP**: `default-src 'self'; script-src 'self' 'strict-dynamic' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; block-all-mixed-content;`
+- **Strict CSP**: `default-src 'self'; script-src 'self' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; block-all-mixed-content;`
 - **No `unsafe-eval`**: The CSP does not include `unsafe-eval`, preventing arbitrary code execution from evaluated strings.
 - **No remote scripts**: No external CDN or arbitrary third-party script origins are allowed.
 
@@ -65,4 +65,12 @@ See `docs/engineering/upstream-gaps.md` entries:
 
 ## Security scan evidence
 
-(Dependency/SBOM scanning is not yet integrated into CI; see deferred scope.)
+The P4.4 release gate (`tests/security-release-gate.sh`) runs in CI after the
+locked frontend install. It rejects browser credential persistence, tracked
+credential patterns, executable UI construction, moving workflow action
+references, missing release SBOM/provenance settings, and high-severity
+frontend advisories. The same gate runs `cargo audit`, `cargo deny` license/
+source/ban policy checks, and emits locked dependency inventories plus a
+redacted manifest under `target/security/`. Release image publication is
+separate and requires an immutable image digest, BuildKit SBOM, and GitHub
+OIDC provenance attestation; no SLSA level is claimed by this repository.

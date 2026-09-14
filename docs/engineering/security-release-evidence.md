@@ -2,9 +2,10 @@
 
 The release gate is `tests/security-release-gate.sh` and runs in the required
 frontend CI job. It performs deterministic checks for browser credential
-persistence and committed private-key/bearer-token patterns, emits locked Rust
-and frontend dependency inventories under `target/security/`, and writes the
-release license/provenance policy used by artifact publication.
+persistence, tracked credential patterns, executable UI construction, moving
+workflow actions, and release SBOM/provenance configuration. It emits locked
+Rust and frontend dependency inventories and a redacted manifest under
+`target/security/`.
 
 Runtime security regression coverage remains in the Rust contract suite:
 
@@ -15,8 +16,9 @@ Runtime security regression coverage remains in the Rust contract suite:
 - session cookies and server-side token custody; and
 - sensitive log-field redaction.
 
-Container images run as non-root users supplied by the distroless/nginx base
-images and expose only the BFF/static-console ports. Release publication
+Container images run as non-root users supplied by the distroless and
+nginx-unprivileged base images and expose only the BFF/static-console ports.
+Release publication
 must attach a digest, the generated SBOM/dependency inventories and CI
 provenance attestation. No BLOCKER/HIGH finding is accepted for the advertised
 O3K or supported OpenStack profile.
@@ -24,30 +26,49 @@ O3K or supported OpenStack profile.
 Validation on the development host:
 
 ```text
-./tests/security-release-gate.sh                 PASS
-cargo audit                                      PASS (0 advisories)
-cargo deny check licenses bans sources            PASS (warnings only for duplicate crates/workspace resolver)
-pnpm audit --prod                                PASS (no known vulnerabilities)
-cargo test --workspace --all-features             PASS
-pnpm build                                        PASS
+./tests/security-release-gate.sh                  PASS
+cargo audit                                       PASS (0 advisories)
+cargo deny check licenses bans sources             PASS (policy warnings reviewed)
+pnpm audit --prod --audit-level=high               PASS (no known vulnerabilities)
+cargo test --workspace --all-features              PASS
+pnpm build                                         PASS
 ```
 
-Current local artifact evidence (development host, 2026-09-13) was generated
-from Araf `24a8b691a7c447ce001271519713d5b322757eb8` with Syft `v1.18.1`
-(CycloneDX) and Trivy `v0.58.2` using the local OCI registry. Syft reported
-16 BFF, 72 Tenant console and 72 Operator console components. Trivy reported
-zero HIGH/CRITICAL findings for both frontend images and the distroless BFF
-image. The candidate images are also signed and SBOM-attested in the local registry with
-an ephemeral development cosign key; verification is recorded in
-`target/security/cosign-verify.txt`. A release still requires the CI-owned
-trusted keyless provenance attestation before publication. The tag-triggered
-`.github/workflows/release-images.yml` is the publication path: Buildx emits
-maximum SLSA provenance/SBOM metadata and `actions/attest-build-provenance`
-binds the digest to the GitHub OIDC identity.
+The tag-triggered `.github/workflows/release-images.yml` is the publication
+path. Buildx emits SBOM and maximum provenance metadata, Trivy scans the
+published digest for HIGH/CRITICAL vulnerabilities, and
+`actions/attest-build-provenance` binds that digest to the GitHub OIDC build
+identity. The workflow and scanner image are commit/digest pinned. Local
+development signatures or scans are not treated as trusted release evidence;
+the release owner must verify the CI attestation before publication. No SLSA
+level is claimed.
 
-The current distroless BFF base also reports two MEDIUM Debian advisories
-(`CVE-2026-5450` and `CVE-2026-5928`) with fixes newer than the pinned base
-layer. They are accepted only for this development candidate while the base
-refresh is pending; publication requires either a refreshed base with zero
-MEDIUM findings or an explicit security-owner risk acceptance. The Alpine
-console images report zero MEDIUM/HIGH/CRITICAL findings.
+The exact candidate SHA, scanner versions, and dependency inventory are
+captured by the generated `target/security/manifest.json`; generated output is
+not committed because it is candidate-specific.
+
+## Manual release security checklist
+
+The automated gate is supplemented by a release-owner review of the deployed
+candidate. Each item must be recorded as pass, fail, or not applicable before
+publication:
+
+- verify TLS termination, certificate coverage, HSTS, and secure cookie flags on
+  both Tenant and Operator origins;
+- exercise login, callback, logout, expiry, CSRF failure, and cross-origin
+  requests through the production ingress;
+- attempt tenant-to-tenant and tenant-to-operator access using guessed project
+  and resource identifiers;
+- submit oversized bodies, malformed JSON, invalid descriptor/schema content,
+  unsafe URLs, redirect targets, and unexpected methods;
+- inspect browser, BFF, ingress, and upstream logs for tokens, cookies, keys,
+  credentials, or sensitive request bodies;
+- verify the published image digest, SBOM, and keyless provenance attestation
+  match the release commit; and
+- verify BFF and console containers run without root and have only the
+  filesystem/network access required by their deployment profile.
+
+The current candidate has no unresolved BLOCKER or HIGH finding for the
+advertised O3K or supported OpenStack surfaces. The deferred multi-node O3K
+deployment certification, including the delete `409`/`202` contract question,
+is tracked in #106 and is not represented as a P4.4 security claim.

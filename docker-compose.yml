@@ -3,8 +3,8 @@
 # Starts four services:
 #   tenant-bff       — Rust BFF for the Tenant Console (port 8080)
 #   operator-bff     — Rust BFF for the Operator Console (port 8081)
-#   tenant-console   — Static SPA served by nginx (port 5173 → 80)
-#   operator-console — Static SPA served by nginx (port 5174 → 80)
+#   tenant-console   — Static SPA served by unprivileged nginx (port 5173 → 8080)
+#   operator-console — Static SPA served by unprivileged nginx (port 5174 → 8080)
 #
 # Usage:
 #   docker compose up --build
@@ -72,7 +72,7 @@ services:
     environment:
       - BFF_UPSTREAM=http://tenant-bff:8080
     ports:
-      - "5173:80"
+      - "5173:8080"
     depends_on:
       tenant-bff:
         condition: service_healthy
@@ -86,7 +86,7 @@ services:
     environment:
       - BFF_UPSTREAM=http://operator-bff:8081
     ports:
-      - "5174:80"
+      - "5174:8080"
     depends_on:
       operator-bff:
         condition: service_healthy

@@ -19,7 +19,8 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "security:release": "./tests/security-release-gate.sh"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
