@@ -12,7 +12,6 @@ require_command() {
   }
 }
 
-require_command rg
 require_command cargo
 require_command cargo-audit
 require_command cargo-deny
@@ -21,23 +20,41 @@ require_command node
 
 # Workflow actions are immutable inputs. A moving tag is not an auditable
 # release dependency, so reject it before a candidate can be published.
-if rg -n --glob '*.yml' --glob '*.yaml' \
-  '^[[:space:]]*uses:[[:space:]]+[^@]+@(main|master|v?[0-9]+(?:\.[0-9]+){0,2})[[:space:]]*(#.*)?$' \
-  "$root_dir/.github/workflows"; then
+moving_action_pattern='^[[:space:]]*uses:[[:space:]]+[^@]+@(main|master|v?[0-9]+(\.[0-9]+){0,2})[[:space:]]*(#.*)?$'
+if command -v rg >/dev/null 2>&1; then
+  moving_action_scan=(rg -n --glob '*.yml' --glob '*.yaml')
+else
+  moving_action_scan=(grep -RInE --include='*.yml' --include='*.yaml')
+fi
+if "${moving_action_scan[@]}" "$moving_action_pattern" "$root_dir/.github/workflows"; then
   echo "security gate: workflow action must be pinned to a full commit SHA" >&2
   exit 1
 fi
 
-if ! rg -q 'provenance:[[:space:]]+mode=max' "$root_dir/.github/workflows/release-images.yml" \
-  || ! rg -q 'sbom:[[:space:]]+true' "$root_dir/.github/workflows/release-images.yml" \
-  || ! rg -q 'subject-digest:' "$root_dir/.github/workflows/release-images.yml"; then
+release_workflow="$root_dir/.github/workflows/release-images.yml"
+if command -v rg >/dev/null 2>&1; then
+  release_has_provenance=(rg -q 'provenance:[[:space:]]+mode=max' "$release_workflow")
+  release_has_sbom=(rg -q 'sbom:[[:space:]]+true' "$release_workflow")
+  release_has_digest=(rg -q 'subject-digest:' "$release_workflow")
+else
+  release_has_provenance=(grep -Eq 'provenance:[[:space:]]+mode=max' "$release_workflow")
+  release_has_sbom=(grep -Eq 'sbom:[[:space:]]+true' "$release_workflow")
+  release_has_digest=(grep -Eq 'subject-digest:' "$release_workflow")
+fi
+if ! "${release_has_provenance[@]}" || ! "${release_has_sbom[@]}" || ! "${release_has_digest[@]}"; then
   echo "security gate: release workflow is missing SBOM or provenance enforcement" >&2
   exit 1
 fi
 
-if rg -n '^FROM[[:space:]]+(rust|node|nginx|nginxinc|gcr\.io/)' \
-  "$root_dir/backend/Dockerfile" "$root_dir/Dockerfile.frontend" \
-  | rg -v '@sha256:'; then
+base_image_scan_pattern='^FROM[[:space:]]+(rust|node|nginx|nginxinc|gcr\.io/)'
+if command -v rg >/dev/null 2>&1; then
+  base_image_scan=(rg -n "$base_image_scan_pattern" "$root_dir/backend/Dockerfile" "$root_dir/Dockerfile.frontend")
+  unpinned_scan=(rg -v '@sha256:')
+else
+  base_image_scan=(grep -nE "$base_image_scan_pattern" "$root_dir/backend/Dockerfile" "$root_dir/Dockerfile.frontend")
+  unpinned_scan=(grep -v '@sha256:')
+fi
+if "${base_image_scan[@]}" | "${unpinned_scan[@]}"; then
   echo "security gate: release Dockerfile base must be digest pinned" >&2
   exit 1
 fi
@@ -78,9 +95,13 @@ fi
 # These checks are deliberately source-only and complement (rather than
 # replace) runtime security tests. Test fixtures are excluded from the
 # executable-content check, but remain covered by the secret scan below.
-if rg -n --glob '!*.test.*' --glob '!**/target/**' \
-  'dangerouslySetInnerHTML|new[[:space:]]+Function[[:space:]]*\(|(^|[^[:alnum:]_])eval[[:space:]]*\(' \
-  "$root_dir/apps" "$root_dir/packages"; then
+dynamic_code_pattern='dangerouslySetInnerHTML|new[[:space:]]+Function[[:space:]]*\(|(^|[^[:alnum:]_])eval[[:space:]]*\('
+if command -v rg >/dev/null 2>&1; then
+  dynamic_code_scan=(rg -n --glob '!*.test.*' --glob '!**/target/**')
+else
+  dynamic_code_scan=(grep -RInE --exclude='*.test.*' --exclude-dir=target --exclude-dir=node_modules --exclude-dir=dist)
+fi
+if "${dynamic_code_scan[@]}" "$dynamic_code_pattern" "$root_dir/apps" "$root_dir/packages"; then
   echo "security gate: executable HTML or dynamic code construction found" >&2
   exit 1
 fi
