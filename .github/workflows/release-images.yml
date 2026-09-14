@@ -49,6 +49,14 @@ jobs:
       - name: Run release security gate
         run: ./tests/security-release-gate.sh
 
+      - name: Retain security inventories
+        if: success()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: security-inventory-${{ github.sha }}
+          path: target/security/
+          if-no-files-found: error
+
   images:
     name: Build, scan and attest OCI images
     needs: security-gate
