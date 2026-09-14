@@ -24,6 +24,10 @@ rg -q 'ARAF_SESSION_STORE_KEY' "$compose" "$chart/templates/deployment.yaml" \
   || fail "durable session encryption key must be externally referenced"
 rg -q 'ARAF_OPENSTACK_COMPATIBILITY_JOURNAL' "$compose" "$chart/templates/deployment.yaml" \
   || fail "OpenStack compatibility journal must be externally configured"
+rg -q 'araf.o3k.io/component: bff' "$chart/templates/deployment.yaml" \
+  || fail "BFF pods must have a dedicated component label"
+rg -q 'araf.o3k.io/component: bff' "$chart/templates/service.yaml" \
+  || fail "BFF Service must select only BFF pods"
 rg -q 'ARAF_TENANT_CONSOLE_IMAGE' "$compose" \
   || fail "Tenant console release image must be digest-pinned"
 rg -q 'ARAF_OPERATOR_CONSOLE_IMAGE' "$compose" \

@@ -6,7 +6,7 @@ metadata:
   labels: { app.kubernetes.io/name: araf, araf.o3k.io/surface: {{ $surface }} }
 spec:
   type: {{ $.Values.service.type }}
-  selector: { app.kubernetes.io/name: araf, araf.o3k.io/surface: {{ $surface }} }
+  selector: { app.kubernetes.io/name: araf, araf.o3k.io/component: bff, araf.o3k.io/surface: {{ $surface }} }
   ports:
     - name: http
       port: 80

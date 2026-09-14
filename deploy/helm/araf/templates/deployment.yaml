@@ -6,10 +6,10 @@ metadata:
 spec:
   replicas: {{ $.Values.replicas }}
   selector:
-    matchLabels: { app.kubernetes.io/name: araf, araf.o3k.io/surface: {{ $surface }} }
+    matchLabels: { app.kubernetes.io/name: araf, araf.o3k.io/component: bff, araf.o3k.io/surface: {{ $surface }} }
   template:
     metadata:
-      labels: { app.kubernetes.io/name: araf, araf.o3k.io/surface: {{ $surface }} }
+      labels: { app.kubernetes.io/name: araf, araf.o3k.io/component: bff, araf.o3k.io/surface: {{ $surface }} }
     spec:
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 30

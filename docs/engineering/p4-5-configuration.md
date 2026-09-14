@@ -6,8 +6,9 @@ session keys, or in-memory sessions.
 
 Configuration precedence is intentionally simple: built-in defaults (only for
 non-security-sensitive values) < environment variables. Secret values are
-provided at runtime through the environment or a mounted secret file and are
-never stored in an image or ConfigMap. A deployment must provide one complete
+provided at runtime by the deployment secret manager (for example, a
+Kubernetes Secret projected into an environment variable) and are never stored
+in an image or ConfigMap. A deployment must provide one complete
 source for each required value; duplicate sources are an operational error and
 must be resolved before rollout.
 
