@@ -9,6 +9,7 @@
 //! MVP needs for M7. It does not attempt to be a generic O3K SDK.
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use futures_util::StreamExt;
 use serde::{Deserialize, Deserializer};
@@ -16,6 +17,7 @@ use uuid::Uuid;
 
 const DISCOVERY_RESPONSE_MAX_BYTES: usize = 64 * 1024;
 const JSON_RESPONSE_MAX_BYTES: usize = 4 * 1024 * 1024;
+const O3K_HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Configuration needed to talk to an O3K native API.
 #[derive(Clone, Debug)]
@@ -537,7 +539,14 @@ impl O3kClient {
     /// Create a new client from the given configuration.
     pub fn new(config: O3kClientConfig) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            // Every upstream call must have a finite bound so an unavailable
+            // control plane cannot pin a BFF task indefinitely. Retries are
+            // intentionally left to the authoritative O3K operation contract;
+            // the client never replays mutations on transport failure.
+            http: reqwest::Client::builder()
+                .timeout(O3K_HTTP_TIMEOUT)
+                .build()
+                .expect("valid O3K HTTP client configuration"),
             base_url: config.base_url.trim_end_matches('/').to_owned(),
             token: config.token,
         }

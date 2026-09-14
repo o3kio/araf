@@ -280,7 +280,15 @@ impl SessionStore {
         };
         let result = mutator(&mut sessions);
         let encoded = self.persisted_bytes(&sessions)?;
-        let temporary = PathBuf::from(format!("{}.tmp-{}", path.display(), std::process::id()));
+        // A process id is not unique across containers/hosts sharing a volume;
+        // include a UUID so concurrent replicas cannot target the same temp
+        // file before the atomic rename.
+        let temporary = PathBuf::from(format!(
+            "{}.tmp-{}-{}",
+            path.display(),
+            std::process::id(),
+            Uuid::new_v4()
+        ));
         fs::write(&temporary, encoded)?;
         #[cfg(unix)]
         {
@@ -625,6 +633,60 @@ mod tests {
         assert!(!bytes
             .windows(b"access-b".len())
             .any(|window| window == b"access-b"));
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("lock"));
+    }
+
+    #[tokio::test]
+    async fn durable_replicas_preserve_concurrent_session_creates() {
+        let path =
+            std::env::temp_dir().join(format!("araf-session-concurrent-{}.bin", Uuid::new_v4()));
+        let key = [9u8; 32];
+        let first = SessionStore::new_durable_encrypted(&path, key).expect("first replica");
+        let second = SessionStore::new_durable_encrypted(&path, key).expect("second replica");
+        let first_task = {
+            let store = first.clone();
+            tokio::spawn(async move {
+                for index in 0..8 {
+                    store
+                        .create(
+                            format!("tenant-{index}"),
+                            "Tenant".into(),
+                            "tenant-bff",
+                            Some(format!("tenant-token-{index}")),
+                            None,
+                            None,
+                        )
+                        .await;
+                }
+            })
+        };
+        let second_task = {
+            let store = second.clone();
+            tokio::spawn(async move {
+                for index in 0..8 {
+                    store
+                        .create(
+                            format!("operator-{index}"),
+                            "Operator".into(),
+                            "operator-bff",
+                            Some(format!("operator-token-{index}")),
+                            None,
+                            None,
+                        )
+                        .await;
+                }
+            })
+        };
+        first_task.await.expect("first writer");
+        second_task.await.expect("second writer");
+
+        let reopened = SessionStore::new_durable_encrypted(&path, key).expect("reopen");
+        assert_eq!(reopened.active_count().await, 16);
+        let bytes = fs::read(&path).expect("session file");
+        assert!(!bytes
+            .windows(b"tenant-token-0".len())
+            .any(|window| window == b"tenant-token-0"));
         let _ = fs::remove_file(&path);
         let _ = fs::remove_file(path.with_extension("lock"));
     }

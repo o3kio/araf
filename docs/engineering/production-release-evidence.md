@@ -18,7 +18,7 @@
 | P3 OpenStack core profile | `docs/engineering/openstack-production-evidence.md`; durable matched-target artifact `openstack-2026.1-p3.9-evidence.md` | PASS for the documented 2026.1 Keystone/Nova/Glance/Neutron/Cinder profile; external networking, Swift and attachment remain out of scope |
 | P4.1 observability | `p4-1-observability-evidence.md`, `/metrics`, `/readyz`, correlation tests | PASS locally; real deployment attachment required |
 | P4.2 performance/scale | `performance-evidence.md`, `tests/performance-bounded.sh` | PASS for bounded fixture; O3K/OpenStack load attachment required |
-| P4.3 HA/session | encrypted file-locked store tests, restart/replica topology, and current-head O3K replica smoke | PASS for the shared durable primitive, concurrent-writer recovery, and same-host O3K replica continuity; multi-host rolling-failure test required |
+| P4.3 HA/session | [`p4-3-ha-resilience-evidence.md`](p4-3-ha-resilience-evidence.md), encrypted file-locked store tests, restart/replica topology, and current-head O3K replica smoke | PASS for the shared durable primitive, concurrent-writer recovery, bounded O3K timeout behavior, and same-host O3K replica continuity; multi-host rolling-failure/upstream-outage test required |
 | P4.4 security/supply chain | `security-release-evidence.md`, CI gate, pinned Trivy/Syft/cosign artifacts | PASS local scan/SBOM/signature; MEDIUM base refresh/risk acceptance and trusted CI provenance required |
 | P4.5 packaging | current-head OCI builds/digests, Helm lint/template, Compose validation | PASS build and packaging checks; clean external install/upgrade attachment required |
 | P4.6 supportability | `docs/operations/operator-runbook.md`, redacted bundle script | PASS documentation gate |
