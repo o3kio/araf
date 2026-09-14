@@ -17,10 +17,12 @@ spec:
   {{- end }}
   rules:
   {{- range .Values.ingress.hosts }}
+    {{- if eq (len .paths) 0 }}{{ fail (printf "ingress host %q must define at least one path" .host) }}{{- end }}
     - host: {{ .host | quote }}
       http:
         paths:
         {{- range .paths }}
+          {{- if not (has .surface (list "tenant" "operator")) }}{{ fail (printf "unsupported ingress surface %q" .surface) }}{{- end }}
           - path: {{ .path | default "/" }}
             pathType: {{ .pathType | default "Prefix" }}
             backend:
