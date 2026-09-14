@@ -49,6 +49,9 @@ jobs:
       - name: Run release security gate
         run: ./tests/security-release-gate.sh
 
+      - name: Verify packaging and rollback contract
+        run: ./tests/package-upgrade-rollback.sh
+
       - name: Retain security inventories
         if: success()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0

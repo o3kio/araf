@@ -1,0 +1,15 @@
+{{- range $surface := list "tenant" "operator" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "araf.fullname" $ }}-{{ $surface }}-bff
+  labels: { app.kubernetes.io/name: araf, araf.o3k.io/surface: {{ $surface }} }
+spec:
+  type: {{ $.Values.service.type }}
+  selector: { app.kubernetes.io/name: araf, araf.o3k.io/component: bff, araf.o3k.io/surface: {{ $surface }} }
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+{{- end }}

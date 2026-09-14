@@ -1,0 +1,34 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "araf.fullname" . }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+{{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+{{ toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+  {{- range .Values.ingress.hosts }}
+    {{- if eq (len .paths) 0 }}{{ fail (printf "ingress host %q must define at least one path" .host) }}{{- end }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+        {{- range .paths }}
+          {{- if not (has .surface (list "tenant" "operator")) }}{{ fail (printf "unsupported ingress surface %q" .surface) }}{{- end }}
+          - path: {{ .path | default "/" }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                name: {{ include "araf.fullname" $ }}-{{ .surface }}-frontend
+                port: { name: http }
+        {{- end }}
+  {{- end }}
+{{- end }}

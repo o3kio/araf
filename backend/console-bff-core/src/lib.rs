@@ -345,12 +345,14 @@ fn validate_production_o3k_url() -> Result<(), ApiError> {
 }
 
 fn validate_public_url(value: &str) -> Result<(), ApiError> {
-    let url = reqwest::Url::parse(value)
+    let url = reqwest::Url::parse(value.trim())
         .map_err(|_| config_error("public URL must be a valid absolute URL"))?;
     if url.scheme() != "https"
         || url.host_str().is_none()
         || url.username() != ""
         || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
     {
         return Err(config_error(
             "production public URL/origin must be HTTPS and contain no credentials",
@@ -368,6 +370,29 @@ fn validate_trusted_origin(value: &str) -> Result<(), ApiError> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod production_config_tests {
+    use super::{validate_public_url, validate_trusted_origin};
+
+    #[test]
+    fn public_url_rejects_query_and_fragment() {
+        assert!(validate_public_url("https://console.example.test/?next=unsafe").is_err());
+        assert!(validate_public_url("https://console.example.test/#fragment").is_err());
+    }
+
+    #[test]
+    fn public_url_allows_a_clean_https_origin_or_path() {
+        assert!(validate_public_url(" https://console.example.test ").is_ok());
+        assert!(validate_public_url("https://console.example.test/console").is_ok());
+    }
+
+    #[test]
+    fn trusted_origin_must_be_an_origin_without_path() {
+        assert!(validate_trusted_origin("https://console.example.test").is_ok());
+        assert!(validate_trusted_origin("https://console.example.test/console").is_err());
+    }
 }
 
 fn router_for_surface(upstream: Arc<dyn Upstream>, surface: &'static str) -> Router {

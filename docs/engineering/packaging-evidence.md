@@ -51,11 +51,42 @@ Compatibility matrix:
 
 | Araf release | O3K | OpenStack |
 | --- | --- | --- |
-| 0.0.x RC | native O3K P2 contract at the pinned deployment SHA | Keystone/Nova/Glance/Neutron/Cinder profile certified by P3.9 |
+| 0.0.x RC | native O3K P2 API profile at the tested development commit recorded in `docs/engineering/o3k-production-evidence.md`; no stable O3K release is claimed and multi-node certification remains deferred to #106 | OpenStack 2026.1 Gazpacho (SLURP), Keystone/Nova/Glance/Neutron/Cinder profile certified by P3.9; Swift, floating IP and volume attachment are deferred |
+
+The release artifact topology is three OCI images: one shared Rust BFF image
+with separate `tenant-bff` and `operator-bff` commands, plus independently
+built Tenant and Operator console images. The console images contain only
+static assets and receive their BFF upstream at runtime; no customer endpoint,
+OIDC value or credential is baked into an image. Helm deploys each surface as
+an independent frontend/BFF Deployment and Service. Tenant and Operator
+ingress rules must be configured separately.
+
+Container contract: BFFs listen on 8080 (Tenant) or 8081 (Operator), expose
+`/healthz`, `/readyz` and `/version`, and write only to the mounted durable
+session/journal path plus temporary storage. Console images listen on 8080 and
+require `BFF_UPSTREAM`; an unset upstream makes nginx reject its configuration.
+The release Compose file supplies all four digest-pinned images and external
+runtime configuration, while Helm requires both BFF and per-surface frontend
+digests.
 
 An upgrade/rollback test must deploy release N, create a session and pending
 compatibility operation, replace images with N+1, verify `/version`, session
 and journal recovery, then roll back to N and repeat health checks. The
 release compose and Helm manifests permit this image-only transition without
 rebuilding source; the final candidate records exact image digests and the
-results in P4.7 evidence.
+results in the release evidence. Run `tests/package-upgrade-rollback.sh` before
+that deployment. It is a fail-closed contract gate: it rejects source mounts
+and build directives, requires immutable image references, checks external
+session-key wiring, and lints the chart when Helm is installed. It does not
+pretend to be the deployment test. The release owner must record both exact
+image digests, `/version` values, health/readiness, session continuity and
+journal continuity for N → N+1 → N in a disposable environment. A rollback is
+valid only when the same durable state is reused; rebuilding source or
+regenerating keys is not a rollback.
+
+Reproducibility policy: CI pins Node, pnpm and Rust toolchains and uses both
+lockfiles, while BuildKit records the source revision, SBOM and provenance on
+each published digest. The release workflow intentionally does not claim
+byte-identical images: base-image refreshes and toolchain timestamps can alter
+bytes. The digest, source SHA, lockfile hashes and workflow run are the
+authoritative identity tuple for an artifact.

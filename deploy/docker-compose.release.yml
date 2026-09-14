@@ -18,6 +18,7 @@ services:
       OPENSTACK_TOKEN: ${OPENSTACK_TOKEN:-}
       OPENSTACK_USERNAME: ${OPENSTACK_USERNAME:-}
       OPENSTACK_PASSWORD: ${OPENSTACK_PASSWORD:-}
+      ARAF_OPENSTACK_COMPATIBILITY_JOURNAL: /var/lib/araf/compatibility-operations.json
       ARAF_TENANT_OIDC_CLIENT_ID: ${ARAF_TENANT_OIDC_CLIENT_ID:?set tenant OIDC client id}
       ARAF_TENANT_OIDC_CLIENT_SECRET: ${ARAF_TENANT_OIDC_CLIENT_SECRET:?set tenant OIDC client secret}
       ARAF_TENANT_OIDC_ISSUER_URL: ${ARAF_TENANT_OIDC_ISSUER_URL:?set tenant OIDC issuer}
@@ -25,6 +26,7 @@ services:
     volumes:
       - tenant-session:/var/lib/araf
     read_only: true
+    stop_grace_period: 30s
     tmpfs: [/tmp]
     ports: ["8080:8080"]
     healthcheck:
@@ -45,6 +47,7 @@ services:
       OPENSTACK_TOKEN: ${OPENSTACK_TOKEN:-}
       OPENSTACK_USERNAME: ${OPENSTACK_USERNAME:-}
       OPENSTACK_PASSWORD: ${OPENSTACK_PASSWORD:-}
+      ARAF_OPENSTACK_COMPATIBILITY_JOURNAL: /var/lib/araf/compatibility-operations.json
       ARAF_OPERATOR_OIDC_CLIENT_ID: ${ARAF_OPERATOR_OIDC_CLIENT_ID:?set operator OIDC client id}
       ARAF_OPERATOR_OIDC_CLIENT_SECRET: ${ARAF_OPERATOR_OIDC_CLIENT_SECRET:?set operator OIDC client secret}
       ARAF_OPERATOR_OIDC_ISSUER_URL: ${ARAF_OPERATOR_OIDC_ISSUER_URL:?set operator OIDC issuer}
@@ -52,10 +55,33 @@ services:
     volumes:
       - operator-session:/var/lib/araf
     read_only: true
+    stop_grace_period: 30s
     tmpfs: [/tmp]
     ports: ["8081:8081"]
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8081/readyz"]
+  tenant-console:
+    image: ${ARAF_TENANT_CONSOLE_IMAGE:?set ARAF_TENANT_CONSOLE_IMAGE}@${ARAF_TENANT_CONSOLE_DIGEST:?set ARAF_TENANT_CONSOLE_DIGEST}
+    environment:
+      BFF_UPSTREAM: http://tenant-bff:8080
+    read_only: true
+    tmpfs: [/tmp, /var/cache/nginx, /var/run]
+    ports: ["5173:8080"]
+    depends_on:
+      tenant-bff: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8080/"]
+  operator-console:
+    image: ${ARAF_OPERATOR_CONSOLE_IMAGE:?set ARAF_OPERATOR_CONSOLE_IMAGE}@${ARAF_OPERATOR_CONSOLE_DIGEST:?set ARAF_OPERATOR_CONSOLE_DIGEST}
+    environment:
+      BFF_UPSTREAM: http://operator-bff:8081
+    read_only: true
+    tmpfs: [/tmp, /var/cache/nginx, /var/run]
+    ports: ["5174:8080"]
+    depends_on:
+      operator-bff: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8080/"]
 volumes:
   tenant-session:
   operator-session:

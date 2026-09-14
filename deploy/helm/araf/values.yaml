@@ -2,6 +2,30 @@ image:
   repository: ghcr.io/o3kio/araf-bff
   digest: ""
   pullPolicy: IfNotPresent
+frontendImage:
+  tenant:
+    repository: ghcr.io/o3kio/araf-tenant-console
+    digest: ""
+    pullPolicy: IfNotPresent
+  operator:
+    repository: ghcr.io/o3kio/araf-operator-console
+    digest: ""
+    pullPolicy: IfNotPresent
+replicas: 2
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { cpu: 500m, memory: 512Mi }
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile: { type: RuntimeDefault }
+service:
+  type: ClusterIP
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []
 version: "0.0.0"
 gitSha: unknown
 upstreamAdapter: o3k
