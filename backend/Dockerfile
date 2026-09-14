@@ -6,7 +6,7 @@
 #
 
 # Stage 1: Build both BFF binaries
-FROM rust:slim-bookworm AS builder
+FROM rust:1.95-slim-bookworm@sha256:d7482085ff5b415f84dba5647ae71606650bdef00db7aeb69f4b3d170c3e4082 AS builder
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
@@ -24,7 +24,7 @@ RUN cargo build --release --bin tenant-bff --bin operator-bff && \
 # bundle required by reqwest while avoiding a package manager and shell in the
 # production process image. The debug variant contributes only the pinned
 # BusyBox health probe used by Compose; the BFF still runs as non-root.
-FROM gcr.io/distroless/cc-debian13:debug-nonroot
+FROM gcr.io/distroless/cc-debian13:debug-nonroot@sha256:f525a9a37aed3e8a848f46cfe055999782d66ed797e9e2886928c8caaaa4fc52
 ARG ARAF_VERSION=0.0.0-dev
 ARG ARAF_GIT_SHA=unknown
 LABEL org.opencontainers.image.title="Araf BFF" \

@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -22,12 +25,12 @@ jobs:
       ARAF_RUNTIME_PROFILE: test
       ARAF_UPSTREAM_ADAPTER: fixture
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Enable corepack pnpm
         run: corepack enable && corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -41,7 +44,7 @@ jobs:
             --profile minimal --component rustfmt --component clippy
           rustup override set ${{ env.RUST_TOOLCHAIN }}
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@aa7c1c80a07a27a84c0aa76d0cef0aad3830e330 # v2.7.8
         with:
           workspaces: backend
 
@@ -65,7 +68,9 @@ jobs:
         run: pnpm build
 
       - name: Install Rust supply-chain scanners
-        run: cargo install --locked cargo-audit cargo-deny
+        run: |
+          cargo install --locked cargo-audit --version 0.22.1
+          cargo install --locked cargo-deny --version 0.18.3
 
       - name: Security release gate and dependency inventory
         run: ./tests/security-release-gate.sh
@@ -77,7 +82,7 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install Rust toolchain
         run: |
@@ -85,7 +90,7 @@ jobs:
             --profile minimal --component rustfmt --component clippy
           rustup override set ${{ env.RUST_TOOLCHAIN }}
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@aa7c1c80a07a27a84c0aa76d0cef0aad3830e330 # v2.7.8
 
       - name: Format check
         run: cargo fmt --all -- --check
@@ -106,12 +111,12 @@ jobs:
       ARAF_RUNTIME_PROFILE: test
       ARAF_UPSTREAM_ADAPTER: fixture
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Enable corepack pnpm
         run: corepack enable && corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -129,7 +134,7 @@ jobs:
         run: cargo build -p tenant-bff -p operator-bff
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -142,7 +147,7 @@ jobs:
 
       - name: Upload browser diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: browser-e2e-diagnostics
           path: |

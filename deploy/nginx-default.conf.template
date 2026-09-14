@@ -1,8 +1,9 @@
 server {
     # Reference static-console server. Production must expose this server (or
-    # an equivalent ingress) on HTTPS with a certificate and HSTS. Port 80
-    # should redirect to the HTTPS virtual host at the TLS boundary.
-    listen 80;
+    # an equivalent ingress) on HTTPS with a certificate and HSTS. The
+    # unprivileged image listens on 8080; TLS termination remains at the
+    # deployment boundary.
+    listen 8080;
     server_name _;
     root /usr/share/nginx/html;
     index index.html;

@@ -395,3 +395,23 @@ async fn observe_request(request: Request, next: Next, surface: &'static str) ->
     }
     response
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{CSP_POLICY, MAX_BODY_SIZE_BYTES};
+
+    #[test]
+    fn release_security_policy_is_fail_closed_for_script_sources() {
+        assert!(CSP_POLICY.contains("default-src 'self'"));
+        assert!(CSP_POLICY.contains("script-src 'self' 'strict-dynamic'"));
+        assert!(!CSP_POLICY.contains("script-src 'self' 'unsafe-inline'"));
+        assert!(!CSP_POLICY.contains("unsafe-eval"));
+        assert!(CSP_POLICY.contains("frame-ancestors 'none'"));
+        assert!(CSP_POLICY.contains("base-uri 'self'"));
+    }
+
+    #[test]
+    fn request_body_limit_remains_bounded() {
+        assert!(std::hint::black_box(MAX_BODY_SIZE_BYTES) <= 256 * 1024);
+    }
+}
