@@ -55,8 +55,7 @@ Compatibility matrix:
 
 The operator-facing release claim and limitation boundary is canonical in
 [`docs/operator/limitations.md`](../operator/limitations.md). In particular,
-`#106 remains OPEN — stable-release multi-node HA/O3K certification is
-intentionally deferred.`
+`#106 remains OPEN — stable-release multi-node HA/O3K certification is intentionally deferred.`
 
 The release artifact topology is three OCI images: one shared Rust BFF image
 with separate `tenant-bff` and `operator-bff` commands, plus independently
