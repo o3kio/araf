@@ -84,3 +84,54 @@ ambiguous mutation behavior, canonical O3K recovery, OpenStack outage
 reconciliation under guest loss, network partition fail-closed behavior, and
 the required repeated 100+ concurrent cross-node mutation sequence. Issue #63
 therefore remains open; no physical-host HA claim is made.
+
+## 2026-09-14 post-PR #105 real O3K audit
+
+The exact Araf main under test was `64ec4fdfe4d1950e6831123fbba4d20e951a3fa9`
+(merge of PR #105). The O3K control plane and compute agent were built from
+current O3K main `d5ca9cb299080ab707c5ea52d8adee1bbf55a033`; the agent reported
+version `0.4.0-alpha.1` and provider mode `agent`. The host is the authorized
+Kolla 2026.1 development server (Linux 6.8, x86_64, Docker 29.8). This is a
+single-host guest/process failure-domain test, not physical-host HA.
+
+The real O3K agent was enrolled with mTLS and a persisted SQLite authority.
+Using Araf's production `O3kAdapter` against that process (never the fixture
+adapter) produced these results:
+
+- `p2_3_real_o3k`: discovery, bounded resource collections, and real network
+  create/delete passed once; `p2_5_real_o3k` governance and `p2_7_real_o3k`
+  metering passed. The compute-server operation test returned O3K's
+  authoritative `NoValidHost` and was not converted into a success.
+- Stopping the real `o3kd` caused Araf's adapter path to return a structured
+  502 in 323 ms; no request hung and no mutation replay occurred. Restarting
+  `o3kd` and the real agent restored `/readyz` and native service reads without
+  restarting Araf code.
+- A controlled proxy returning an upstream 503 through the same Araf client
+  path returned a bounded structured 502 in 321 ms. No credential or token
+  appeared in the response or proxy logs.
+- A forwarding proxy delivered one real network create to O3K and dropped the
+  response. Araf returned a structured 502; the proxy observed exactly one
+  mutation request and authoritative O3K list contained exactly one resulting
+  network. The resource was then deleted through O3K. This proves no automatic
+  replay and one cloud-side effect for this network mutation, but not a
+  compute-server effect.
+
+Post-merge Rust gates on this exact main passed: `cargo fmt --all -- --check`,
+clippy with `-D warnings`, workspace check, and workspace tests (64 unit,
+62 contract, 15 O3K-adapter contract, and 6 OpenStack-adapter contract tests,
+plus remaining workspace targets). Focused durable-session/auth-state tests
+also passed, including single-use authorization state, encrypted
+reopen/revocation, concurrent replica writes, and fail-closed authority.
+
+Still not proven and therefore not accepted for closure: two Araf production
+BFF replicas alternating through a load balancer against this real O3K
+deployment; cross-replica OIDC login and revocation during O3K faults; a real
+compute mutable-resource baseline; O3K ambiguous compute mutation; OpenStack
+and O3K outage tests while alternating both Araf replicas; and the required
+repeated 100+ cross-node sequence. The two KVM guests used by the OpenStack
+audit share one physical hypervisor and user-mode NAT, so they do not provide
+independent physical-host or network-identity HA. Issue #63 remains open until
+those deployment-level checks are run and committed.
+
+**P4.3 verdict: PARTIAL — merged software hardening and real single-agent O3K
+client boundaries pass; final multi-replica external acceptance remains open.**
