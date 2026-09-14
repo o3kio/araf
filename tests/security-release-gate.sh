@@ -127,7 +127,7 @@ EOF
 cat >"$out_dir/policy.txt" <<'EOF'
 ARAF release security policy v1
 - Rust and frontend dependency advisories: no unresolved HIGH/BLOCKER.
-- Licenses: Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC and Unicode-DFS-2016 allowlist.
+- Licenses: Rust uses deny.toml; frontend packages use policy/frontend-licenses.txt.
 - Artifacts require a digest, SBOM and CI provenance attestation before publication.
 - Secret scanning and the browser-token gate are mandatory on every release candidate.
 - Workflow actions and release scanner images must be immutable (commit/digest pinned).
