@@ -64,6 +64,12 @@ struct PersistedSession {
     csrf_token: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct PersistedAuthState {
+    verifier: String,
+    expires_at_epoch: u64,
+}
+
 impl SessionData {
     pub fn is_expired(&self) -> bool {
         Instant::now() >= self.expires_at
@@ -390,19 +396,98 @@ impl SessionStore {
     pub async fn issue_auth_state(&self) -> (String, String) {
         let state = Uuid::new_v4().to_string();
         let code_verifier = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
-        self.auth_states.write().await.insert(
-            state.clone(),
-            (Instant::now() + AUTH_STATE_TTL, code_verifier.clone()),
-        );
+        if self.durable_path.is_none() {
+            self.auth_states.write().await.insert(
+                state.clone(),
+                (Instant::now() + AUTH_STATE_TTL, code_verifier.clone()),
+            );
+        } else if let Err(error) = self.mutate_auth_states(|states| {
+            states.insert(
+                state.clone(),
+                PersistedAuthState {
+                    verifier: code_verifier.clone(),
+                    expires_at_epoch: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs()
+                        .saturating_add(AUTH_STATE_TTL.as_secs()),
+                },
+            );
+        }) {
+            tracing::warn!(%error, "failed to persist OIDC authorization state");
+        }
         (state, code_verifier)
     }
 
     pub async fn consume_auth_state(&self, state: &str) -> Option<String> {
+        if self.durable_path.is_some() {
+            return self
+                .mutate_auth_states(|states| {
+                    states.remove(state).and_then(|entry| {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        (entry.expires_at_epoch > now).then_some(entry.verifier)
+                    })
+                })
+                .ok()
+                .flatten();
+        }
         let mut states = self.auth_states.write().await;
         match states.remove(state) {
             Some((expires_at, verifier)) if Instant::now() < expires_at => Some(verifier),
             _ => None,
         }
+    }
+
+    fn mutate_auth_states<R, F>(&self, mutator: F) -> Result<R, std::io::Error>
+    where
+        F: FnOnce(&mut HashMap<String, PersistedAuthState>) -> R,
+    {
+        let path = self
+            .durable_path
+            .as_deref()
+            .expect("durable path required for auth state persistence")
+            .with_extension("auth");
+        let lock_path = path.with_extension("lock");
+        let lock_file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(lock_path)?;
+        fs2::FileExt::lock_exclusive(&lock_file)?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let mut states: HashMap<String, PersistedAuthState> = match fs::read(&path) {
+            Ok(bytes) => serde_json::from_slice(&self.decode_bytes(&bytes)?)
+                .map_err(|error| std::io::Error::new(ErrorKind::InvalidData, error))?,
+            Err(error) if error.kind() == ErrorKind::NotFound => HashMap::new(),
+            Err(error) => return Err(error),
+        };
+        states.retain(|_, state| state.expires_at_epoch > now);
+        let result = mutator(&mut states);
+        let encoded = self.encode_bytes(
+            &serde_json::to_vec(&states)
+                .map_err(|error| std::io::Error::new(ErrorKind::InvalidData, error))?,
+        )?;
+        let temporary = PathBuf::from(format!(
+            "{}.tmp-{}-{}",
+            path.display(),
+            std::process::id(),
+            Uuid::new_v4()
+        ));
+        if let Err(error) =
+            fs::write(&temporary, encoded).and_then(|_| fs::rename(&temporary, &path))
+        {
+            let _ = fs::remove_file(&temporary);
+            return Err(error);
+        }
+        drop(lock_file);
+        Ok(result)
     }
 
     /// Look up a session by its opaque token.
@@ -718,6 +803,32 @@ mod tests {
             .any(|window| window == b"tenant-token-0"));
         let _ = fs::remove_file(&path);
         let _ = fs::remove_file(path.with_extension("lock"));
+    }
+
+    #[tokio::test]
+    async fn durable_replicas_share_oidc_authorization_state() {
+        let path = std::env::temp_dir().join(format!("araf-auth-state-{}.bin", Uuid::new_v4()));
+        let key = [4u8; 32];
+        let first = SessionStore::new_durable_encrypted(&path, key).expect("first replica");
+        let second = SessionStore::new_durable_encrypted(&path, key).expect("second replica");
+        let (state, verifier) = first.issue_auth_state().await;
+        assert_eq!(
+            second.consume_auth_state(&state).await.as_deref(),
+            Some(verifier.as_str())
+        );
+        assert!(
+            first.consume_auth_state(&state).await.is_none(),
+            "authorization state is single-use"
+        );
+        let auth_path = path.with_extension("auth");
+        let bytes = fs::read(&auth_path).expect("auth state file");
+        assert!(!bytes
+            .windows(verifier.len())
+            .any(|window| window == verifier.as_bytes()));
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("lock"));
+        let _ = fs::remove_file(auth_path);
+        let _ = fs::remove_file(path.with_extension("auth.lock"));
     }
 
     #[tokio::test]
