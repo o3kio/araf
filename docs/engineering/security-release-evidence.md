@@ -46,3 +46,29 @@ level is claimed.
 The exact candidate SHA, scanner versions, and dependency inventory are
 captured by the generated `target/security/manifest.json`; generated output is
 not committed because it is candidate-specific.
+
+## Manual release security checklist
+
+The automated gate is supplemented by a release-owner review of the deployed
+candidate. Each item must be recorded as pass, fail, or not applicable before
+publication:
+
+- verify TLS termination, certificate coverage, HSTS, and secure cookie flags on
+  both Tenant and Operator origins;
+- exercise login, callback, logout, expiry, CSRF failure, and cross-origin
+  requests through the production ingress;
+- attempt tenant-to-tenant and tenant-to-operator access using guessed project
+  and resource identifiers;
+- submit oversized bodies, malformed JSON, invalid descriptor/schema content,
+  unsafe URLs, redirect targets, and unexpected methods;
+- inspect browser, BFF, ingress, and upstream logs for tokens, cookies, keys,
+  credentials, or sensitive request bodies;
+- verify the published image digest, SBOM, and keyless provenance attestation
+  match the release commit; and
+- verify BFF and console containers run without root and have only the
+  filesystem/network access required by their deployment profile.
+
+The current candidate has no unresolved BLOCKER or HIGH finding for the
+advertised O3K or supported OpenStack surfaces. The deferred multi-node O3K
+deployment certification, including the delete `409`/`202` contract question,
+is tracked in #106 and is not represented as a P4.4 security claim.
