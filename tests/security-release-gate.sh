@@ -63,6 +63,11 @@ if "${base_image_scan[@]}" | "${unpinned_scan[@]}"; then
   exit 1
 fi
 
+if ! grep -Eq 'npm install -g pnpm@[0-9]+\.[0-9]+\.[0-9]+' "$root_dir/Dockerfile.frontend"; then
+  echo "security gate: frontend build tool must be version pinned" >&2
+  exit 1
+fi
+
 # Fail closed on the two highest-risk classes that can be checked without
 # credentials: browser token persistence and committed private keys.
 token_pattern='(localStorage|sessionStorage)\.(setItem|getItem).*([Tt]oken|[Ss]ession)|Bearer[[:space:]]+[A-Za-z0-9._-]{24,}'

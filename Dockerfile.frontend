@@ -23,7 +23,8 @@ COPY apps/operator-console ./apps/operator-console
 # the deployment working from any host, not just localhost.
 FROM builder-common AS builder
 ARG APP
-RUN npm install -g pnpm && pnpm install --frozen-lockfile && pnpm -F @araf/$APP build
+# Keep the image build toolchain aligned with the repository lockfile and CI.
+RUN npm install -g pnpm@10.14.0 && pnpm install --frozen-lockfile && pnpm -F @araf/$APP build
 
 # The unprivileged image listens on 8080 and runs nginx as uid 101. Keeping
 # the static console outside the root account is part of the release gate.
