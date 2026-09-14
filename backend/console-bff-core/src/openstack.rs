@@ -348,7 +348,7 @@ impl OpenStackAdapter {
                         "compute" => "compute",
                         "image" => "image",
                         "network" => "network",
-                        "volumev3" | "volume" => "volume",
+                        "volumev3" | "volume" | "block-storage" => "volume",
                         "object-store" => "object-store",
                         _ => continue,
                     };
@@ -362,9 +362,20 @@ impl OpenStackAdapter {
     }
 
     fn scoped_base(&self, base: &str, project: Option<&str>) -> String {
-        project
-            .map(|id| base.replace("%(tenant_id)s", id))
-            .unwrap_or_else(|| base.to_owned())
+        let Some(project) = project else {
+            return base.to_owned();
+        };
+        if base.contains("%(tenant_id)s") {
+            return base.replace("%(tenant_id)s", project);
+        }
+        // Cinder's Keystone catalog advertises a versioned service root
+        // (`/v3`) and expects the project scope as the next path segment.
+        let trimmed = base.trim_end_matches('/');
+        if trimmed.ends_with("/v3") {
+            format!("{trimmed}/{project}")
+        } else {
+            base.to_owned()
+        }
     }
 
     async fn discover_catalog(&self, ctx: &RequestContext) -> Result<(), ApiError> {

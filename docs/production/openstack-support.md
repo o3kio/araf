@@ -4,6 +4,36 @@
 
 Allow Araf to be deployed as a production cloud console for a supported OpenStack cloud while keeping one Araf product/runtime and preserving O3K-native architecture.
 
+## Target OpenStack release
+
+OpenStack production certification is **version-specific**. Araf must not treat a
+validated release as an automatic claim for `that release or later`.
+
+The current reference target is **OpenStack 2026.1 Gazpacho (SLURP)**, deployed
+with the matching `stable/2026.1` Kolla-Ansible **22.x** toolchain and matching
+2026.1 service images. A later OpenStack series must pass the P3.9 production
+gate separately before it is advertised as supported.
+
+As of 2026-09-13, 2026.1 is the current maintained stable SLURP release. OpenStack
+2026.2 Hibiscus is still a development series and is not a production target for
+this release. Existing 2025.1 and 2024.2 evidence remains useful historical or
+transitional compatibility evidence, but it does not certify the 2026.1 target.
+
+The supplemental 2025.1 run recorded by PR #101 used Kolla-Ansible 19.7.0,
+which belongs to the 2024.2 Dalmatian Kolla series, with 2025.1 service images.
+That cross-series result is useful API-compatibility evidence but is not a
+matched-toolchain 2025.1 certification. The official 2025.1 Kolla-Ansible
+series is 20.x.
+
+The Kolla control plane may run inside a KVM/libvirt virtual machine. If that
+deployment also provides Nova compute, `nova_compute_virt_type: kvm` requires
+nested KVM with `/dev/kvm` exposed to the guest; otherwise the disposable
+functional profile must use `qemu` and must not make native-KVM performance
+claims.
+
+A current certification claim for OpenStack 2026.1 requires a clean P3.9 run
+using matching 2026.1 Kolla-Ansible tooling and images.
+
 ## Core v1 profile
 
 Required:
