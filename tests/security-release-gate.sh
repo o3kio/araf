@@ -18,15 +18,19 @@ require_command cargo-deny
 require_command pnpm
 require_command node
 
-# Workflow actions are immutable inputs. A moving tag is not an auditable
-# release dependency, so reject it before a candidate can be published.
-moving_action_pattern='^[[:space:]]*uses:[[:space:]]+[^@]+@(main|master|v?[0-9]+(\.[0-9]+){0,2})[[:space:]]*(#.*)?$'
+# Workflow actions are immutable inputs. Every external action must resolve to
+# a full commit SHA; rejecting only well-known moving tags would leave custom
+# branches/tags as an avoidable supply-chain bypass.
+action_ref_pattern='^[[:space:]]*uses:[[:space:]]+[^@[:space:]]+@'
+unpinned_action_pattern='@[0-9a-fA-F]{40}([[:space:]]+#.*)?$'
 if command -v rg >/dev/null 2>&1; then
-  moving_action_scan=(rg -n --glob '*.yml' --glob '*.yaml')
+  action_ref_scan=(rg -n --glob '*.yml' --glob '*.yaml' "$action_ref_pattern" "$root_dir/.github/workflows")
+  unpinned_action_scan=(rg -n -v "$unpinned_action_pattern")
 else
-  moving_action_scan=(grep -RInE --include='*.yml' --include='*.yaml')
+  action_ref_scan=(grep -RInE --include='*.yml' --include='*.yaml' "$action_ref_pattern" "$root_dir/.github/workflows")
+  unpinned_action_scan=(grep -vE "$unpinned_action_pattern")
 fi
-if "${moving_action_scan[@]}" "$moving_action_pattern" "$root_dir/.github/workflows"; then
+if "${action_ref_scan[@]}" | "${unpinned_action_scan[@]}"; then
   echo "security gate: workflow action must be pinned to a full commit SHA" >&2
   exit 1
 fi
