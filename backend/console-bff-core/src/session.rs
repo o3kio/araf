@@ -480,9 +480,19 @@ impl SessionStore {
             std::process::id(),
             Uuid::new_v4()
         ));
-        if let Err(error) =
-            fs::write(&temporary, encoded).and_then(|_| fs::rename(&temporary, &path))
+        if let Err(error) = fs::write(&temporary, encoded) {
+            let _ = fs::remove_file(&temporary);
+            return Err(error);
+        }
+        #[cfg(unix)]
         {
+            use std::os::unix::fs::PermissionsExt;
+            if let Err(error) = fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600)) {
+                let _ = fs::remove_file(&temporary);
+                return Err(error);
+            }
+        }
+        if let Err(error) = fs::rename(&temporary, &path) {
             let _ = fs::remove_file(&temporary);
             return Err(error);
         }
