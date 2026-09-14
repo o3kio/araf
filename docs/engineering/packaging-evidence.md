@@ -58,4 +58,19 @@ compatibility operation, replace images with N+1, verify `/version`, session
 and journal recovery, then roll back to N and repeat health checks. The
 release compose and Helm manifests permit this image-only transition without
 rebuilding source; the final candidate records exact image digests and the
-results in P4.7 evidence.
+results in the release evidence. Run `tests/package-upgrade-rollback.sh` before
+that deployment. It is a fail-closed contract gate: it rejects source mounts
+and build directives, requires immutable image references, checks external
+session-key wiring, and lints the chart when Helm is installed. It does not
+pretend to be the deployment test. The release owner must record both exact
+image digests, `/version` values, health/readiness, session continuity and
+journal continuity for N → N+1 → N in a disposable environment. A rollback is
+valid only when the same durable state is reused; rebuilding source or
+regenerating keys is not a rollback.
+
+Reproducibility policy: CI pins Node, pnpm and Rust toolchains and uses both
+lockfiles, while BuildKit records the source revision, SBOM and provenance on
+each published digest. The release workflow intentionally does not claim
+byte-identical images: base-image refreshes and toolchain timestamps can alter
+bytes. The digest, source SHA, lockfile hashes and workflow run are the
+authoritative identity tuple for an artifact.
