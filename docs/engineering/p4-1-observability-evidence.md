@@ -65,7 +65,8 @@ deployment acceptance remains part of the P4.7 release gate.
 
 On 2026-09-15, the digest-pinned `1.0.0-rc.1` Tenant BFF was scraped by the
 repository's pinned Prometheus image
-(`sha256:2659f4c2…`). Prometheus reached the candidate readiness endpoint and
+(`sha256:2659f4c2ebb718e7695cb9b25ffa7d6be64db013daba13e05c875451cf51b0d3`).
+Prometheus reached the candidate readiness endpoint and
 returned a successful query for
 `araf_bff_requests_total{surface="tenant-bff"}` with bounded status-class
 labels. The candidate also emitted request and correlation IDs on the live
