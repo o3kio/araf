@@ -1,28 +1,31 @@
 # Araf P4.7 production-release evidence
 
-This record is for the exact release candidate tested on 2026-09-15. It is
-the source of truth for the P4.7 decision; historical evidence is linked only
-where it remains relevant and is not silently substituted for candidate-level
-evidence.
+This record is the source of truth for the P4.7 decision. The live functional
+run below was performed on 2026-09-15; the reviewed release head subsequently
+changed when the frontend runtime security base was refreshed, so the affected
+candidate artifacts and acceptance evidence are explicitly separated below.
 
 ## Candidate identity
 
 | Item | Candidate |
 | --- | --- |
 | Repository / source SHA | `o3kio/araf` / `a8d0d0e8fd2e7f5b34a6355c2674bd26c2aa6f7d` |
+| Current reviewed HEAD | `175f597cf36b49878d9b5fdda58204545369ce3c` |
 | Candidate version | `1.0.0-rc.1` |
 | BFF image | `localhost:5001/araf-bff@sha256:c6fa854b8a9764d645b973d3df359a67d5701876bf70332a4c76927d508ce18a` |
 | Tenant console image | `localhost:5001/araf-tenant@sha256:68ba1430d8bd4830172f7c11bf90f0e459c2eb724e06e505bdebfd00cda0879e` |
 | Operator console image | `localhost:5001/araf-operator@sha256:350b6ea7d0ef0f709a7114b0592d72bf22beb561920b8cb7a06910a906d69732` |
 | Chart | `deploy/helm/araf` chart `0.1.0` (`appVersion: 0.0.0`; image digests are supplied by release values) |
 | Registry | Local OCI registry on the acceptance host (`localhost:5001`) |
-| Build metadata | OCI revision labels match the source SHA and version on all three images |
+| Build metadata | OCI revision labels on the functional images match the source SHA and version |
 
-The images were rebuilt from this SHA with BuildKit and loaded/pushed by
-digest. This host has no cosign, Syft or Trivy installation; therefore a
-trusted CI signature, SBOM attestation and vulnerability report are **not
-proven for these local digests**. The candidate must not be promoted on the
-basis of this local build alone.
+The functional images above were rebuilt from the original test SHA with
+BuildKit and loaded/pushed by digest. The frontend runtime was then refreshed
+at `175f597c` to remove release-gate vulnerabilities; this source change
+supersedes the frontend digests above and requires a fresh exact-head build and
+affected acceptance rerun. The local host has no cosign, Syft or Trivy
+installation, so trusted provenance, SBOM and vulnerability results for the
+local functional digests are not inferred from this record.
 
 ## Release contract
 
@@ -124,33 +127,38 @@ it is not a claim for untested state formats or external Helm orchestration.
 
 The following deviations are release-gate findings, not hidden limitations:
 
-1. **HIGH —** trusted CI provenance, SBOM attestation and vulnerability scan
-   are not attached to the exact candidate digests.
-2. **MEDIUM —** the candidate soak was bounded to 45 seconds on the
+1. **HIGH —** the frontend runtime security fix changed the source after the
+   live functional run; exact-head frontend artifacts and the affected
+   acceptance evidence have not yet been rerun.
+2. **HIGH —** trusted CI provenance, SBOM attestation and vulnerability scan
+   are not yet attached to the exact candidate digests for the reviewed head.
+3. **MEDIUM —** the candidate soak was bounded to 45 seconds on the
    development host and was not an independently operated production pilot.
    Exact-candidate restart, rollback and failed-readiness recovery did pass.
-3. **BOUNDED —** stable-release multi-node O3K HA/resilience certification is
+4. **BOUNDED —** stable-release multi-node O3K HA/resilience certification is
    intentionally excluded and remains gated by #106.
 
 ## Review convergence
 
-Three comprehensive reviews were performed, with the final review after the
-release-gate portability fix and the final documentation updates. Each found
-B0, M0 and L0 implementation/documentation defects. The provenance finding
-remains HIGH (H1); the short, non-independent soak remains MEDIUM (M1).
-Therefore clean pass #1 and clean pass #2 (`B0/H0/M0/L0`) were **not
-achieved**; the PR must not be merged as a production release while these
-deviations remain.
+Four comprehensive reviews were performed. The final review included the
+release-gate portability fix, the frontend runtime security refresh and the
+documentation updates. No additional B0/M0/L0 implementation or
+documentation defect was found, but the runtime change invalidated the prior
+frontend candidate evidence. Exact-head clean pass #1 and clean pass #2
+(`B0/H0/M0/L0`) were therefore **not achieved**; the PR must not be merged as
+a production release until the affected gates are rerun and the remaining
+pilot limitation is accepted or resolved.
 
 ### Verdict
 
 **NO-GO — NOT PRODUCTION READY**
 
-The candidate is operationally demonstrable against the live certified
-OpenStack/IdP profile, but the unresolved provenance and lack of an
-independently operated production pilot prohibit a production-ready claim.
-Do not publish a v1.0 tag. Issue #67 is not ready for final approval until
-these findings are closed and the affected evidence is rerun at one exact
-candidate HEAD.
+The original candidate is operationally demonstrable against the live
+certified OpenStack/IdP profile, but the reviewed head still lacks exact-head
+frontend acceptance and trusted artifact evidence; the lack of an
+independently operated production pilot also remains. These findings prohibit
+a production-ready claim. Do not publish a v1.0 tag. Issue #67 is not ready
+for final approval until the findings are closed and the affected evidence is
+rerun at one exact candidate HEAD.
 
 `#106 remains OPEN — stable-release multi-node HA/O3K certification intentionally deferred.`
