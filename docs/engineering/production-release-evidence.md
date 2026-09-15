@@ -143,14 +143,16 @@ The following deviations are release-gate findings, not hidden limitations:
 
 ## Review convergence
 
-Four comprehensive reviews were performed. The final review included the
-release-gate portability fix, the frontend runtime security refresh and the
-documentation updates. No additional B0/M0/L0 implementation or
-documentation defect was found, but the runtime change invalidated the prior
-frontend candidate evidence. Exact-head clean pass #1 and clean pass #2
-(`B0/H0/M0/L0`) were therefore **not achieved**; the PR must not be merged as
-a production release until the affected gates are rerun and the remaining
-pilot limitation is accepted or resolved.
+Five comprehensive reviews were performed. The final review included the
+release-gate portability fix, the frontend runtime security and read-only nginx
+mount fixes, the rc.2 artifact identity refresh, and a stale historical
+packaging statement that was corrected. No unresolved B0/M0/L0 implementation
+or documentation defect remains. The runtime change still invalidated the
+prior frontend candidate evidence, and the private attested frontend digests
+have not been exercised in the live harness. Exact-head clean pass #1 and
+clean pass #2 (`B0/H0/M0/L0`) were therefore **not achieved**; the PR must not
+be merged as a production release until the affected live gate is rerun and
+the remaining pilot limitation is accepted or resolved.
 
 ### Verdict
 
