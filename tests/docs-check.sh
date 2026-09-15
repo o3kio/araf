@@ -36,6 +36,22 @@ text = "\n".join(p.read_text(encoding="utf-8") for p in (root / "docs/operator")
 for phrase in ("#106 remains OPEN", "CompatibilityOperation", "canonical O3K Operation", "Terraform", "OpenTofu"):
     if phrase not in text:
         raise SystemExit(f"operator documentation is missing required phrase: {phrase}")
+
+installation = (root / "docs/operator/installation.md").read_text(encoding="utf-8")
+observability = (root / "docs/operator/observability.md").read_text(encoding="utf-8")
+support_bundle = (root / "tests/support-bundle.sh").read_text(encoding="utf-8")
+for surface in ("tenant", "operator"):
+    for probe in ("healthz", "readyz", "version"):
+        if f"https://{surface}.example/{probe}" in installation:
+            raise SystemExit(f"browser-origin probe must not be documented: {surface}/{probe}")
+if "kubectl -n araf port-forward svc/<release>-tenant-bff 18080:80" not in installation:
+    raise SystemExit("installation docs must show the private Tenant BFF probe path")
+if "kubectl -n araf port-forward svc/<release>-tenant-bff 18080:80" not in observability:
+    raise SystemExit("observability docs must show the private BFF metrics path")
+if "https://tenant.example/metrics" in observability:
+    raise SystemExit("browser-origin metrics scrape must not be documented")
+if "ARAF_SUPPORT_BUNDLE_LOG_FILES" in support_bundle:
+    raise SystemExit("support bundle must not ingest arbitrary operator-selected log files")
 print("docs link/path gate: PASS")
 PY
 

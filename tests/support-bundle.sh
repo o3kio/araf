@@ -6,8 +6,9 @@ out=${1:-support-bundle-$(date -u +%Y%m%dT%H%M%SZ)}
 mkdir -p "$out"
 
 # Keep collector output useful without turning it into a credential copier.
-# Explicit log paths are opt-in and are filtered line-by-line; the collector
-# never reads the process environment, session store or compatibility journal.
+# The collector never reads arbitrary files, process environments, session
+# stores or compatibility journals. Logs remain separate, human-reviewed
+# attachments.
 redact_stream() {
   sed -E \
     -e 's/(Bearer[[:space:]]+)[A-Za-z0-9._~+\/-]+=*/\1<redacted>/Ig' \
@@ -25,15 +26,6 @@ redact_stream() {
 # Deliberately collect names/status only. Never copy the process environment,
 # cookies, authorization headers, session files, journals or request bodies.
 env | sed -E 's/=.*/=<redacted>/' | sort >"$out/environment-names.txt"
-if [[ -n "${ARAF_SUPPORT_BUNDLE_LOG_FILES:-}" ]]; then
-  : >"$out/sanitized-logs.txt"
-  IFS=',' read -r -a log_files <<<"$ARAF_SUPPORT_BUNDLE_LOG_FILES"
-  for log_file in "${log_files[@]}"; do
-    [[ -f "$log_file" ]] || continue
-    printf '\n--- %s ---\n' "$(basename "$log_file")" >>"$out/sanitized-logs.txt"
-    redact_stream <"$log_file" >>"$out/sanitized-logs.txt"
-  done
-fi
 printf '%s\n' 'Support bundle is intentionally redacted; attach logs separately after secret review.' >"$out/README.txt"
 parent_dir=$(dirname -- "$out")
 bundle_name=$(basename -- "$out")

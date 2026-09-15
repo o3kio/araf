@@ -34,9 +34,14 @@ headers, request bodies or secret-bearing environment dumps.
 ## Scrape example
 
 ```bash
-curl --fail https://tenant.example/metrics > tenant.metrics.txt
+kubectl -n araf port-forward svc/<release>-tenant-bff 18080:80
+curl --fail http://127.0.0.1:18080/metrics > tenant.metrics.txt
 grep 'araf_bff_requests_total' tenant.metrics.txt
 ```
+
+Do not scrape `/metrics` from the browser-facing console URL: the static
+frontend does not proxy that path. For Compose, use
+`http://127.0.0.1:8080/metrics` or `:8081/metrics` on the private BFF listener.
 
 Use the repository's pinned smoke check when validating a deployment:
 `./tests/prometheus-observability.sh` (requires Docker and Prometheus access).

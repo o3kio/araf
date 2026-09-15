@@ -19,8 +19,9 @@ archive, prints its path, and removes the temporary directory. It collects:
 It deliberately does not collect process environments, cookies, session
 files, compatibility journals, request bodies, Authorization headers, OIDC or
 provider credentials, client secrets, encryption keys or private keys. Attach
-logs and journal excerpts only after a human secret review; prefer correlation
-IDs and structured error fields.
+logs and journal excerpts only after a human secret review; the collector does
+not accept arbitrary log-file paths. Prefer correlation IDs and structured
+error fields.
 
 Before transfer:
 

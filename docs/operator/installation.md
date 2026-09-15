@@ -73,15 +73,32 @@ add those at the deployment boundary.
 
 ## First verification
 
-From the private BFF network and both browser-facing HTTPS origins, collect:
+The browser-facing ingress routes to the static console. Its `/api/` location
+proxies API calls, but `/healthz`, `/readyz`, `/version` and `/metrics` are not
+browser-origin probe paths. Query the private BFF Services directly instead.
+
+For Helm, replace `<release>` with the actual Helm release name (the angle
+brackets are a placeholder, not shell syntax) and keep each port-forward
+running in its own terminal:
 
 ```bash
-curl --fail https://tenant.example/healthz
-curl --fail https://tenant.example/readyz
-curl --fail https://tenant.example/version
-curl --fail https://operator.example/healthz
-curl --fail https://operator.example/readyz
-curl --fail https://operator.example/version
+kubectl -n araf port-forward svc/<release>-tenant-bff 18080:80
+kubectl -n araf port-forward svc/<release>-operator-bff 18081:80
+curl --fail http://127.0.0.1:18080/healthz
+curl --fail http://127.0.0.1:18080/readyz
+curl --fail http://127.0.0.1:18080/version
+curl --fail http://127.0.0.1:18081/healthz
+curl --fail http://127.0.0.1:18081/readyz
+curl --fail http://127.0.0.1:18081/version
+```
+
+For Compose, the release reference publishes the BFF listeners on localhost:
+
+```bash
+curl --fail http://127.0.0.1:8080/healthz
+curl --fail http://127.0.0.1:8080/readyz
+curl --fail http://127.0.0.1:8081/healthz
+curl --fail http://127.0.0.1:8081/readyz
 ```
 
 `healthz` is process liveness. `readyz` means validated configuration and the

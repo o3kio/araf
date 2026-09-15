@@ -33,4 +33,8 @@ for marker in "$oidc_marker" "$bearer_marker" "$session_marker" "$password_marke
   fi
 done
 tar -tzf "$archive" | grep -q 'environment-names.txt'
+if tar -tzf "$archive" | grep -q 'sanitized-logs.txt'; then
+  echo 'support bundle unexpectedly collected arbitrary logs' >&2
+  exit 1
+fi
 echo 'support-bundle security gate: PASS (synthetic secret markers absent)'
