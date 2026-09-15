@@ -1,135 +1,146 @@
-# Araf production release evidence
+# Araf P4.7 production-release evidence
 
-## Candidate
+This record is for the exact release candidate tested on 2026-09-15. It is
+the source of truth for the P4.7 decision; historical evidence is linked only
+where it remains relevant and is not silently substituted for candidate-level
+evidence.
 
-- Repository: `o3kio/araf`
-- Candidate branch: `codex/target-openstack-2026-1`
-- Candidate source (implementation): `40db777b06f49d3a329a8e3813cb5686ac0758d9`
-- Artifact version: `0.1.0-rc` (locally signed/attested candidate; trusted CI provenance remains gated)
-- Target OpenStack profile: **2026.1 Gazpacho (SLURP)** using matching `stable/2026.1` Kolla-Ansible 22.x tooling and 2026.1 service images; support is version-specific, not `2026.1 or later`
-- Date: 2026-09-14
+## Candidate identity
 
-## Gate matrix
+| Item | Candidate |
+| --- | --- |
+| Repository / source SHA | `o3kio/araf` / `a8d0d0e8fd2e7f5b34a6355c2674bd26c2aa6f7d` |
+| Candidate version | `1.0.0-rc.1` |
+| BFF image | `localhost:5001/araf-bff@sha256:c6fa854b8a9764d645b973d3df359a67d5701876bf70332a4c76927d508ce18a` |
+| Tenant console image | `localhost:5001/araf-tenant@sha256:68ba1430d8bd4830172f7c11bf90f0e459c2eb724e06e505bdebfd00cda0879e` |
+| Operator console image | `localhost:5001/araf-operator@sha256:350b6ea7d0ef0f709a7114b0592d72bf22beb561920b8cb7a06910a906d69732` |
+| Chart | Repository Helm chart from the P4.5 packaging baseline; chart version is not changed by this candidate |
+| Registry | Local OCI registry on the acceptance host (`localhost:5001`) |
+| Build metadata | OCI revision labels match the source SHA and version on all three images |
 
-| Gate | Evidence | Result |
-| --- | --- | --- |
-| P2 native O3K | Post-P3 baseline and existing real O3K gate evidence | PASS (baseline) |
-| P12 IAM/current-process identity | `p12-iam-real-idp-p4-evidence.md` (O3K `p12-iam-7-real-idp.sh` with Araf P12-IAM.8 hook) | PASS for the current-process external-IdP journey; this is not a production deployment claim |
-| P3 OpenStack core profile | `docs/engineering/openstack-production-evidence.md`; durable matched-target artifact `openstack-2026.1-p3.9-evidence.md` | PASS for the documented 2026.1 Keystone/Nova/Glance/Neutron/Cinder profile; external networking, Swift and attachment remain out of scope |
-| P4.1 observability | `p4-1-observability-evidence.md`, `/metrics`, `/readyz`, correlation tests | PASS locally; real deployment attachment required |
-| P4.2 performance/scale | `performance-evidence.md`, `tests/performance-bounded.sh` | PASS for bounded fixture; O3K/OpenStack load attachment required |
-| P4.3 HA/session | [`p4-3-ha-resilience-evidence.md`](p4-3-ha-resilience-evidence.md), encrypted file-locked store tests, restart/replica topology, and current-head O3K replica smoke | PASS for the shared durable primitive, concurrent-writer recovery, bounded O3K timeout behavior, and same-host O3K replica continuity; multi-host rolling-failure/upstream-outage test required |
-| P4.4 security/supply chain | `security-release-evidence.md`, CI gate, pinned Trivy/Syft/cosign artifacts | PASS local scan/SBOM/signature; MEDIUM base refresh/risk acceptance and trusted CI provenance required |
-| P4.5 packaging | current-head OCI builds/digests, Helm lint/template, Compose validation | PASS build and packaging checks; clean external install/upgrade attachment required |
-| P4.6 supportability | `docs/operations/operator-runbook.md`, redacted bundle script | PASS documentation gate |
-| P4.7 pilot/soak | `tests/pilot-soak.sh`, historical/local OpenStack evidence | PASS for local HA soak and historical/supplemental OpenStack profile evidence; current 2026.1 certification and full RC pilot still required |
+The images were rebuilt from this SHA with BuildKit and loaded/pushed by
+digest. This host has no cosign, Syft or Trivy installation; therefore a
+trusted CI signature, SBOM attestation and vulnerability report are **not
+proven for these local digests**. The candidate must not be promoted on the
+basis of this local build alone.
 
-## Local pilot
+## Release contract
 
-The local soak exercises two Tenant and two Operator BFF processes, repeated
-bounded resource lists and metrics reads, then abruptly kills and restarts one
-replica of each surface. The latest run completed in 9 seconds with 800
-requests and recovery passing. The fixture adapter is explicitly labelled
-development-only and cannot establish production cloud or identity claims.
+OpenStack support is limited to the certified 2026.1 Gazpacho profile:
+Keystone v3, Nova v2.1, Glance v2, Neutron v2 and Cinder v3. Swift/Object
+Storage, public floating-IP workflows, volume attachment workflows and
+provider-specific tenant UI are deferred and are not advertised.
 
-Converged O3K process smoke gates also pass for discovery/collection, native
-operations, governance, and metering (`tests/p2-3` through `tests/p2-5` and
-`tests/p2-7`, with the local O3K process using its fake provider). The real
-external-IdP boundary was also exercised on 2026-09-13: O3K's
-`p12-iam-7-real-idp.sh` harness passed IAM.7 and IAM.8 with an ephemeral
-Keycloak realm, a current O3K `o3kd` process, Araf's real Tenant BFF process,
-opaque-cookie session custody, scope discovery/selection, a resource request,
-and logout. This closes the process-level identity/session evidence gap, but
-the harness uses a disposable development HTTP topology and fake provider;
-it is not evidence of a production O3K deployment, HTTPS termination, or
-multi-host failover.
+O3K native functionality is supported only according to the documented
+convergence/API profile. No stable O3K semantic release is available yet.
+O3K is authoritative for native resource truth; OpenStack
+`CompatibilityOperation` records are derived correlation/reconciliation
+state, not an OpenStack authority.
 
-A supplemental P3.9 run at Araf implementation source
-`24a8b691a7c447ce001271519713d5b322757eb8` exercised 2025.1 service images in
-a clean disposable single-host environment, a Keystone-backed Keycloak ingress,
-and both Araf surfaces. The run exercised real image/flavor/network/subnet/
-volume/server resources, asynchronous Nova lifecycle actions, invalid input,
-quotas, deletion, project-scoped direct-ID isolation, and persisted compatibility
-operations. Its local redacted result was retained at
-`/tmp/araf-p4-openstack-2025/evidence5/redacted-run.txt` and records only opaque
-IDs, capability count, operation count, and the selected profile.
+`#106 remains OPEN — stable-release multi-node HA/O3K certification intentionally deferred.`
 
-That run does **not** certify a matched OpenStack 2025.1 stack or the current
-2026.1 target: it used Kolla-Ansible 19.7.0, which belongs to the 2024.2
-Dalmatian Kolla series, with 2025.1 service images. Official 2025.1
-Kolla-Ansible is 20.x. The result is retained as useful cross-series API
-compatibility evidence only. Paths under `/tmp` are also local, non-durable
-evidence references and are not immutable release artifacts.
+## Install and authentication
 
-The repository's current OpenStack production reference target is OpenStack
-2026.1 Gazpacho (SLURP) with matching Kolla-Ansible 22.x tooling and matching
-2026.1 images. The matched P3.9 run and durable redacted evidence are recorded
-in `openstack-2026.1-p3.9-evidence.md`; this closes the P3 target gate but does
-not change the overall release verdict below.
+The candidate was started from the digest-pinned local OCI artifact, without
+building source in the target runtime. Four non-root, read-only BFF
+containers (two Tenant and two Operator) shared encrypted durable session and
+CompatibilityOperation paths. The deployment used an HTTPS reverse proxy and
+Keycloak 26.3 (`araf-p28`) as the real IdP.
 
-On current head `22a93894b89a659a5eb62decccf6e3f90852a6c3`, a fresh disposable
-O3K TestLab (`agent` provider, O3K source `157fde108c5e0a9c6567f596d88a6abbb55b2aaf`)
-was provisioned and connected to production-profile Tenant and Operator BFFs
-through the deployment's HTTPS reverse proxy. Real Keycloak federation and
-audience validation passed; Alice and Bob discovered and selected their
-server-authoritative scopes, created/polled/deleted a network operation, and
-could not list, show, delete, or read the other tenant's resource/operation.
-Opaque secure session cookies, credential-free context/resource payloads,
-bounded collections, and the Operator profile/tenant denial journey also
-passed. The redacted diagnostic result is retained at
-`/tmp/araf-p4-o3k-current-head-2035/evidence-project-a5/harness.redacted.json`.
+`/healthz`, `/readyz`, `/version` and `/metrics` returned successfully on both
+surfaces. `/version` reported `1.0.0-rc.1` and the exact source SHA above.
+Tenant and Operator OIDC login, callback, logout/session cookies and re-login
+were exercised over HTTPS. No provider token was present in browser-visible
+responses.
 
-This is not a production-readiness pass: the agent lab has no region, image or
-compute inventory, so those capabilities were recorded as upstream gaps. The
-deployment-owned legacy harness also assumes a reserved bootstrap project ID;
-the original unmodified run therefore stopped at `native_token_exchange`
-without treating that mismatch as a product success. Multi-host failover,
-external clean-install, a matched OpenStack 2026.1 certification run, and
-production-pilot evidence remain required.
+## Functional journeys
 
-The same current-head O3K topology also ran two Tenant BFF replicas sharing
-the encrypted durable session file. Login and scope/CSRF selection on replica A
-were accepted by replica B; an abrupt replica-B kill produced an observed
-outage, restart restored readiness and the scoped session, and logout on B was
-visible as revocation on A. This proves same-host durable-session continuity,
-not multi-host storage or network-failure tolerance; the redacted result is
-`/tmp/araf-p4-o3k-current-head-2035/ha-o3k-redacted.json`.
+The Tenant session discovered 30 capabilities, listed Keystone/Nova/Glance/
+Neutron/Cinder resources and selected the server-authoritative project scope.
+A real OpenStack network create returned a durable CompatibilityOperation and
+the resulting network was verified in authoritative Neutron before cleanup.
+An invalid compute create was rejected with a bounded error. The deferred
+`object.storage.bucket` capability returned HTTP 501 and did not expand the
+support contract.
 
-The browser-critical Playwright suite passes locally (17 tests) against the
-fixture profile, including tenant/operator navigation, resource actions,
-operations, governance, and scope/isolation journeys.
+The Operator session authenticated independently. A Tenant cookie sent to an
+Operator route returned HTTP 401. Requests alternated across both replicas;
+session and scope continuity remained intact after killing and restarting one
+Tenant replica. This is Araf/OpenStack replica evidence only, not O3K HA
+certification.
 
-On 2026-09-13, a disposable clean-install smoke used the release registry's
-digest-pinned BFF image (`sha256:c1aabc13…`) as a non-root, read-only container
-with a durable encrypted session volume. Through the HTTPS ingress, the clean
-image completed real Keycloak OIDC login, server-side project selection,
-descriptor/context reads, and a native O3K network create/detail/delete with
-the canonical operation returned in the response. The same volume was then
-started with the preceding release digest (`sha256:3e4ebd06…`) and returned to
-the candidate digest; both revisions passed health/readiness, OIDC login,
-scope selection and native resource reads. This is useful packaging and
-rollback evidence on one host, but it is not the required clean external
-environment, multi-host rolling upgrade, trusted-provenance or pilot gate.
+Existing matched-profile evidence remains in
+[`openstack-2026.1-p3.9-evidence.md`](openstack-2026.1-p3.9-evidence.md) and
+[`openstack-production-evidence.md`](openstack-production-evidence.md).
+Those records cover the broader 2026.1 lifecycle matrix; this candidate run
+adds live HTTPS/OIDC and digest identity but did not repeat every destructive
+lifecycle action.
 
-## Supported profiles and deviations
+No O3K runtime was available on this host during P4.7. Existing functional
+O3K convergence evidence is retained in
+[`o3k-production-evidence.md`](o3k-production-evidence.md); it must not be
+represented as a stable O3K release or as #106 evidence.
 
-The advertised OpenStack capability profile remains Keystone, Nova, Glance,
-Neutron and Cinder only. Swift/Object Storage, floating IP and volume attachment
-are not advertised without separate evidence. O3K remains authoritative for
-native semantics; OpenStack CompatibilityOperations remain correlation/
-reconciliation state only.
+## Failures, security and observability
 
-The OpenStack **release-version certification** is currently pending for the
-2026.1 target. Historical or supplemental evidence must not be interpreted as
-a forward-compatibility claim.
+- Tenant-to-Operator access was rejected server-side (HTTP 401); this was not
+  UI-only hiding.
+- Missing Object Storage capability was distinguished from outage (HTTP 501).
+- Invalid mutation returned a bounded problem response with correlation data;
+  no automatic replay was attempted.
+- HTTPS, OIDC state/PKCE, CSRF and cookie separation were exercised in the
+  live candidate path. Existing release security negatives are recorded in
+  [`security-release-evidence.md`](security-release-evidence.md).
+- `/healthz`, `/readyz`, `/version`, `/metrics`, request IDs and correlation
+  IDs were collected. The support path is browser → BFF → adapter →
+  CompatibilityOperation/authoritative OpenStack resource.
+- `tests/support-bundle-security.sh` passed with synthetic OIDC token-like,
+  bearer, session-key and password markers. A live candidate bundle contained
+  only version, readiness, metrics, environment names and a redaction notice;
+  it contained no credentials, cookies, keys or tokens.
 
-## Verdict
+## Performance and pilot/soak
+
+The candidate-level smoke exercised repeated authenticated context, service,
+resource and metrics reads. The reusable bounded and OpenStack performance
+baselines are recorded in [`performance-evidence.md`](performance-evidence.md)
+(100-request OpenStack profile and 800-request two-Tenant/two-Operator
+fixture soak). A production-like, independently operated soak with memory,
+file-descriptor and journal-growth measurements was **not completed** for
+these exact digests. Consequently no unqualified pilot/soak pass is claimed.
+
+## Upgrade, rollback and failed rollout
+
+The P4.5 package/upgrade/rollback checks passed previously and remain the
+validated procedure: preflight, digest verification, state backup/checks,
+Helm/container upgrade, readiness/smoke checks and rollback only across tested
+state formats. A fresh exact-candidate N→N+1 upgrade and intentional failed
+rollout were not repeated in this acceptance window. They remain release-gate
+evidence to be attached before a GO decision.
+
+## Findings and decision
+
+The following deviations are release-gate findings, not hidden limitations:
+
+1. **HIGH —** trusted CI provenance, SBOM attestation and vulnerability scan
+   are not attached to the exact candidate digests.
+2. **HIGH —** issue #61 remains open; production Prometheus attachment has not
+   been proven for this candidate deployment.
+3. **HIGH —** an independent production-like pilot/soak with resource-trend
+   measurements, exact-candidate upgrade and failed-rollout recovery is not
+   complete.
+4. **BOUNDED —** stable-release multi-node O3K HA/resilience certification is
+   intentionally excluded and remains gated by #106.
+
+### Verdict
 
 **NO-GO — NOT PRODUCTION READY**
 
-This candidate must not be called v1.0 yet. The remaining release boundary is
-a current-head O3K production run, multi-host durable-session/rolling-restart
-evidence, trusted CI provenance attestations, and a representative production
-pilot/rollback. The matched OpenStack evidence closes only the documented
-2026.1 P3 profile; it does not advertise Swift, floating IP, or attachment
-workflows.
+The candidate is operationally demonstrable against the live certified
+OpenStack/IdP profile, but the unresolved provenance, production observability
+and exact-candidate pilot/upgrade gates prohibit a production-ready claim.
+Do not publish a v1.0 tag. Issue #67 is not ready for final approval until
+these findings are closed and the affected evidence is rerun at one exact
+candidate HEAD.
+
+`#106 remains OPEN — stable-release multi-node HA/O3K certification intentionally deferred.`
