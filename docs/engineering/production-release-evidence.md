@@ -10,7 +10,8 @@ candidate artifacts and acceptance evidence are explicitly separated below.
 | Item | Candidate |
 | --- | --- |
 | Functional-test source SHA | `a8d0d0e8fd2e7f5b34a6355c2674bd26c2aa6f7d` |
-| Current reviewed HEAD | `f17860efba1b536a10e687788a9e35ff8bf3d768` |
+| Candidate build source SHA | `f17860efba1b536a10e687788a9e35ff8bf3d768` |
+| Documentation/review HEAD | Documentation-only commits after the candidate build (final SHA is recorded in the handoff report) |
 | Candidate version | `1.0.0-rc.1` |
 | BFF image | `ghcr.io/o3kio/araf-bff@sha256:3648c82ecb7e413acf9e6602fb983001636b05e9b45cccd7a84ed47591a9ba74` |
 | Tenant console image | `ghcr.io/o3kio/araf-tenant-console@sha256:b4df35db4140d6fd4ae870a4b5bd8b87f7b43a5d00a37402d9bfee3a1fdf5948` |
@@ -20,12 +21,14 @@ candidate artifacts and acceptance evidence are explicitly separated below.
 | Build metadata | OCI revision labels on all three images match `f17860e` and `1.0.0-rc.1` |
 
 The live functional run used the original test SHA and local digests. The
-reviewed head refreshed the frontend runtime and was rebuilt by workflow run
-`35032384144`; all three published digests passed the pinned Trivy
+candidate build source refreshed the frontend runtime and was rebuilt by
+workflow run `35032384144`; all three published digests passed the pinned Trivy
 HIGH/CRITICAL scan, BuildKit SBOM generation and GitHub OIDC provenance
-attestation. The runtime-only change still requires a fresh exact-head live
-frontend acceptance run before release approval; the prior live results are
-not silently substituted.
+attestation. Subsequent commits only update evidence text and release workflow
+metadata; they do not alter the built application inputs. A live
+Prometheus/frontend attachment against the rebuilt digests is still required
+before exact-head approval; the prior live results are not silently
+substituted.
 
 ## Release contract
 
