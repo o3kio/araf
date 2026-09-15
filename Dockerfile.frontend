@@ -28,7 +28,7 @@ RUN npm install -g pnpm@10.14.0 && pnpm install --frozen-lockfile && pnpm -F @ar
 
 # The unprivileged image listens on 8080 and runs nginx as uid 101. Keeping
 # the static console outside the root account is part of the release gate.
-FROM nginxinc/nginx-unprivileged:1.29.2-alpine-slim@sha256:a275f8ffc21663da8a9f61f5420fd31a4c9532546d27da87368393ae876f57b3 AS runtime
+FROM nginxinc/nginx-unprivileged:mainline-alpine-slim@sha256:dcc9bf9c084901dddbbce305130a7295c5637b6a8fce3e29cf678d86336982e4 AS runtime
 ARG APP
 ARG ARAF_VERSION=0.0.0-dev
 ARG ARAF_GIT_SHA=unknown
