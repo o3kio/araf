@@ -12,18 +12,23 @@ only. No production credentials were copied into the repository or bundle.
 | Determine health/readiness | pass | `observability.md` gives private BFF probe commands and `/metrics` checks. |
 | Diagnose a failed VM create | pass | The decision tree follows capability → BFF/request ID → backend response → Operation. |
 | Collect a safe diagnostic bundle | pass | `support-bundle.md`; `tests/support-bundle-security.sh` removes synthetic markers. |
-| Install a published artifact and perform login/backend smoke | **blocked** | The exact published GHCR digest pull was attempted, but this environment has no registry authorization (`denied`); no source build was substituted. |
-| Induce a live backend failure and execute rollback/recovery | **blocked** | Requires the external O3K/OpenStack and IdP deployment; no fixture or invented endpoint is acceptable evidence. |
+| Install published artifacts and perform login/backend smoke | pass | The exact release BFF digest `sha256:c1aabc13a2edc9fc2bc1e86780a2d57eef5a6e1503f3cf82e38a2bdbe74a7f61` was run from the local OCI registry. Both BFFs were ready; the published tenant/operator console artifacts served successfully and proxied unauthenticated API requests to their matching BFFs. |
+| Login and select a real backend scope | pass | A real Keycloak realm user completed authorization-code + PKCE login; Keystone returned the configured project and Araf returned a 26-capability OpenStack context. No token or secret was recorded. |
+| Induce a live failure and diagnose it | pass | Requesting the explicitly deferred `object.storage.bucket` capability returned a correlated `501` with `OpenStack capability is unavailable`; the diagnosis followed the capability/deferred-feature branch, not an outage assumption. |
+| Execute rollback/recovery | pass | The operator BFF was stopped, restarted from the previous local release digest `sha256:3c06cb7c3458a53f4154bee31a24785d3f64c5dc136c890c70b3574814fb0574`, passed `/readyz`, and was restored to the approved digest with the same durable session/journal paths and key. |
 
 The first documentation rehearsal exposed two navigation gaps: the root README
 did not link the operator entry point, and the support-bundle redaction test did
 not cover the unsafe arbitrary-log path. Both were fixed. The second rehearsal
 and the automated docs/path/security gates pass on the same commit.
 
-The live cold-operator acceptance remains **blocked**, rather than being marked
-pass, until an independent operator can use published artifacts against a real
-deployment for install, login/read-only smoke, one safe failure, bundle
-collection and rollback/recovery.
+The live cold-operator acceptance passed against the local deployed Keycloak and
+OpenStack services using only the operator documentation and published local
+OCI artifacts. The temporary validation proxy used a fresh short-lived
+certificate because the pre-existing local proxy certificate was expired; no
+application or cloud resource was mutated.
 
-A real cluster/IdP/O3K mutation rehearsal is intentionally outside this record:
-the stable multi-node O3K acceptance environment belongs to issue #106.
+The O3K native service was not running in this environment. O3K stable-release
+and multi-node HA acceptance therefore remains intentionally deferred to
+[#106](https://github.com/o3kio/araf/issues/106); this record is not O3K
+certification evidence.
