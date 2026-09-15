@@ -60,3 +60,15 @@ cargo test --workspace --all-features  PASS (56 unit, 62 contract, 15 O3K, 5 Ope
 
 This evidence covers fixture, O3K and OpenStack adapter code paths; real cloud
 deployment acceptance remains part of the P4.7 release gate.
+
+## P4.7 exact-candidate attachment
+
+On 2026-09-15, the digest-pinned `1.0.0-rc.1` Tenant BFF was scraped by the
+repository's pinned Prometheus image
+(`sha256:2659f4c2…`). Prometheus reached the candidate readiness endpoint and
+returned a successful query for
+`araf_bff_requests_total{surface="tenant-bff"}` with bounded status-class
+labels. The candidate also emitted request and correlation IDs on the live
+HTTPS/OIDC/OpenStack path. This closes the production attachment evidence for
+the observability contract; no secret-bearing labels or payloads were
+observed.

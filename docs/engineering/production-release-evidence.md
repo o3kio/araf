@@ -124,20 +124,18 @@ The following deviations are release-gate findings, not hidden limitations:
 
 1. **HIGH —** trusted CI provenance, SBOM attestation and vulnerability scan
    are not attached to the exact candidate digests.
-2. **HIGH —** issue #61 remains open; production Prometheus attachment has not
-   been proven for this candidate deployment.
-3. **HIGH —** an independent production-like pilot/soak with resource-trend
+2. **HIGH —** an independent production-like pilot/soak with resource-trend
    measurements, exact-candidate upgrade and failed-rollout recovery is not
    complete.
-4. **BOUNDED —** stable-release multi-node O3K HA/resilience certification is
+3. **BOUNDED —** stable-release multi-node O3K HA/resilience certification is
    intentionally excluded and remains gated by #106.
 
 ## Review convergence
 
 Two comprehensive reviews were performed at this exact candidate HEAD. Each
-found B0, M0 and L0 implementation/documentation defects, but the same three
-release-gate HIGH findings above remain open (H3): provenance/attestation,
-production Prometheus attachment and exact-candidate pilot/upgrade evidence.
+found B0, M0 and L0 implementation/documentation defects, but the same two
+release-gate HIGH findings above remain open (H2): provenance/attestation and
+exact-candidate pilot/upgrade evidence.
 Therefore clean pass #1 and clean pass #2 (`B0/H0/M0/L0`) were **not
 achieved**, and the draft PR must not be approved or merged as a production
 release.
@@ -147,8 +145,8 @@ release.
 **NO-GO — NOT PRODUCTION READY**
 
 The candidate is operationally demonstrable against the live certified
-OpenStack/IdP profile, but the unresolved provenance, production observability
-and exact-candidate pilot/upgrade gates prohibit a production-ready claim.
+OpenStack/IdP profile, but the unresolved provenance and exact-candidate
+pilot/upgrade gates prohibit a production-ready claim.
 Do not publish a v1.0 tag. Issue #67 is not ready for final approval until
 these findings are closed and the affected evidence is rerun at one exact
 candidate HEAD.
