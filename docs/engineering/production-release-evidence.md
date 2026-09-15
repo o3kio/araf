@@ -14,7 +14,7 @@ evidence.
 | BFF image | `localhost:5001/araf-bff@sha256:c6fa854b8a9764d645b973d3df359a67d5701876bf70332a4c76927d508ce18a` |
 | Tenant console image | `localhost:5001/araf-tenant@sha256:68ba1430d8bd4830172f7c11bf90f0e459c2eb724e06e505bdebfd00cda0879e` |
 | Operator console image | `localhost:5001/araf-operator@sha256:350b6ea7d0ef0f709a7114b0592d72bf22beb561920b8cb7a06910a906d69732` |
-| Chart | Repository Helm chart from the P4.5 packaging baseline; chart version is not changed by this candidate |
+| Chart | `deploy/helm/araf` chart `0.1.0` (`appVersion: 0.0.0`; image digests are supplied by release values) |
 | Registry | Local OCI registry on the acceptance host (`localhost:5001`) |
 | Build metadata | OCI revision labels match the source SHA and version on all three images |
 
