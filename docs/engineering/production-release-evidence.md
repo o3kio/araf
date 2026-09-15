@@ -134,7 +134,9 @@ The following deviations are release-gate findings, not hidden limitations:
 
 ## Review convergence
 
-Two comprehensive reviews were performed at this exact candidate HEAD. Each
+Two comprehensive reviews were performed before the final documentation-only
+Prometheus digest pin; the same review was rechecked against the final HEAD.
+Each
 found B0, M0 and L0 implementation/documentation defects. The provenance
 finding remains HIGH (H1); the short, non-independent soak remains MEDIUM
 (M1).
