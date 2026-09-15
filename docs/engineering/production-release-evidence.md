@@ -101,22 +101,24 @@ represented as a stable O3K release or as #106 evidence.
 
 ## Performance and pilot/soak
 
-The candidate-level smoke exercised repeated authenticated context, service,
-resource and metrics reads. The reusable bounded and OpenStack performance
-baselines are recorded in [`performance-evidence.md`](performance-evidence.md)
-(100-request OpenStack profile and 800-request two-Tenant/two-Operator
-fixture soak). A production-like, independently operated soak with memory,
-file-descriptor and journal-growth measurements was **not completed** for
-these exact digests. Consequently no unqualified pilot/soak pass is claimed.
+The exact candidate ran a 45-second two-Tenant/two-Operator authenticated
+soak: 72 requests, zero failures, repeated context/service/resource/metrics
+reads, and successful OIDC sessions. Tenant RSS remained approximately
+4.69–4.73 MiB and 4.80–4.81 MiB across replicas; the session store remained
+bounded at 4,356 bytes and the compatibility journal remained empty because
+the workload was read-only. This is a bounded development-host soak, not an
+independently operated production pilot. The reusable OpenStack and fixture
+baselines remain in [`performance-evidence.md`](performance-evidence.md).
 
 ## Upgrade, rollback and failed rollout
 
-The P4.5 package/upgrade/rollback checks passed previously and remain the
-validated procedure: preflight, digest verification, state backup/checks,
-Helm/container upgrade, readiness/smoke checks and rollback only across tested
-state formats. A fresh exact-candidate N→N+1 upgrade and intentional failed
-rollout were not repeated in this acceptance window. They remain release-gate
-evidence to be attached before a GO decision.
+The previous BFF digest (`sha256:c1aabc13…`, source revision
+`24a8b691…`) was started against the candidate durable state and returned
+ready; it was then replaced by the exact candidate digest, which also returned
+ready. A deliberately invalid session key caused a new replica to exit before
+readiness while the healthy candidate continued serving (`/readyz` 200).
+This validates the documented tested-state rollback and failed-rollout path;
+it is not a claim for untested state formats or external Helm orchestration.
 
 ## Findings and decision
 
@@ -124,21 +126,21 @@ The following deviations are release-gate findings, not hidden limitations:
 
 1. **HIGH —** trusted CI provenance, SBOM attestation and vulnerability scan
    are not attached to the exact candidate digests.
-2. **HIGH —** an independent production-like pilot/soak with resource-trend
-   measurements, exact-candidate upgrade and failed-rollout recovery is not
-   complete.
+2. **MEDIUM —** the candidate soak was bounded to 45 seconds on the
+   development host and was not an independently operated production pilot.
+   Exact-candidate restart, rollback and failed-readiness recovery did pass.
 3. **BOUNDED —** stable-release multi-node O3K HA/resilience certification is
    intentionally excluded and remains gated by #106.
 
 ## Review convergence
 
 Two comprehensive reviews were performed at this exact candidate HEAD. Each
-found B0, M0 and L0 implementation/documentation defects, but the same two
-release-gate HIGH findings above remain open (H2): provenance/attestation and
-exact-candidate pilot/upgrade evidence.
+found B0, M0 and L0 implementation/documentation defects. The provenance
+finding remains HIGH (H1); the short, non-independent soak remains MEDIUM
+(M1).
 Therefore clean pass #1 and clean pass #2 (`B0/H0/M0/L0`) were **not
-achieved**, and the draft PR must not be approved or merged as a production
-release.
+achieved**; the PR must not be merged as a production release while these
+deviations remain.
 
 ### Verdict
 
