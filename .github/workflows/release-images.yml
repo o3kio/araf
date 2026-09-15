@@ -2,6 +2,11 @@ name: release-images
 
 on:
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Candidate version to embed in image metadata (defaults to ref name)"
+        required: false
+        type: string
   push:
     tags: ["v*"]
 
@@ -17,6 +22,7 @@ env:
   NODE_VERSION: "22.23.2"
   PNPM_VERSION: "10.14.0"
   RUST_TOOLCHAIN: "1.95.0"
+  RELEASE_VERSION: ${{ inputs.release_version || github.ref_name }}
 
 jobs:
   security-gate:
@@ -102,12 +108,12 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.name }}:${{ github.ref_name }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.name }}:${{ env.RELEASE_VERSION }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.version=${{ env.RELEASE_VERSION }}
           build-args: |
-            ARAF_VERSION=${{ github.ref_name }}
+            ARAF_VERSION=${{ env.RELEASE_VERSION }}
             ARAF_GIT_SHA=${{ github.sha }}
             APP=${{ matrix.app }}
           provenance: mode=max
