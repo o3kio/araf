@@ -10,24 +10,25 @@ candidate artifacts and acceptance evidence are explicitly separated below.
 | Item | Candidate |
 | --- | --- |
 | Functional-test source SHA | `a8d0d0e8fd2e7f5b34a6355c2674bd26c2aa6f7d` |
-| Candidate build source SHA | `f17860efba1b536a10e687788a9e35ff8bf3d768` |
+| Candidate build source SHA | `c5af7cb0f2ad943774b42466c8c3617dfc64f9c0` |
 | Documentation/review HEAD | Documentation-only commits after the candidate build (final SHA is recorded in the handoff report) |
-| Candidate version | `1.0.0-rc.1` |
-| BFF image | `ghcr.io/o3kio/araf-bff@sha256:3648c82ecb7e413acf9e6602fb983001636b05e9b45cccd7a84ed47591a9ba74` |
-| Tenant console image | `ghcr.io/o3kio/araf-tenant-console@sha256:b4df35db4140d6fd4ae870a4b5bd8b87f7b43a5d00a37402d9bfee3a1fdf5948` |
-| Operator console image | `ghcr.io/o3kio/araf-operator-console@sha256:72f8d26cab361e9f217c7d70787b629989c0fa67e3aa1572db88f2abadb1dde2` |
+| Candidate version | `1.0.0-rc.2` |
+| BFF image | `ghcr.io/o3kio/araf-bff@sha256:72081d8c634b9ca3a16b9de558ce0e56b1fd9d77603e5e235819c706409b24cf` |
+| Tenant console image | `ghcr.io/o3kio/araf-tenant-console@sha256:13f6b50a19430d069c9138aa1ee1e149ef6722c6b6c79ce5ee932fd8a96c80ec` |
+| Operator console image | `ghcr.io/o3kio/araf-operator-console@sha256:1f283914e3434565739d891c98c9796cfef9df2bd1e3b9d0d39bb81580ed526a` |
 | Chart | `deploy/helm/araf` chart `0.1.0` (`appVersion: 0.0.0`; image digests are supplied by release values) |
 | Registry | GitHub Container Registry (`ghcr.io/o3kio`) |
-| Build metadata | OCI revision labels on all three images match `f17860e` and `1.0.0-rc.1` |
+| Build metadata | OCI revision labels on all three images match `c5af7cb` and `1.0.0-rc.2` |
 
 The live functional run used the original test SHA and local digests. The
-candidate build source refreshed the frontend runtime and was rebuilt by
-workflow run `35032384144`; all three published digests passed the pinned Trivy
-HIGH/CRITICAL scan, BuildKit SBOM generation and GitHub OIDC provenance
-attestation. Subsequent commits only update evidence text and release workflow
-metadata; they do not alter the built application inputs. A live
-Prometheus/frontend attachment against the rebuilt digests is still required
-before exact-head approval; the prior live results are not silently
+attested rc.2 images were built from the corrected candidate SHA above; all
+three published digests passed the pinned Trivy HIGH/CRITICAL scan, BuildKit
+SBOM generation and GitHub OIDC provenance attestation. Subsequent commits only
+update evidence text and do not alter those image inputs. The base nginx image
+was smoke-tested read-only with the mounted generated-config directory, and
+the packaging gate verifies the equivalent Helm/Compose mounts. A live
+Prometheus/frontend attachment against the private rc.2 digests is still
+required before exact-head approval; the prior live results are not silently
 substituted.
 
 ## Release contract
@@ -54,7 +55,8 @@ CompatibilityOperation paths. The deployment used an HTTPS reverse proxy and
 Keycloak 26.3 (`araf-p28`) as the real IdP.
 
 `/healthz`, `/readyz`, `/version` and `/metrics` returned successfully on both
-surfaces. `/version` reported `1.0.0-rc.1` and the exact source SHA above.
+surfaces. The original live deployment reported `1.0.0-rc.1`; the attested
+candidate identity for approval is `1.0.0-rc.2` and the exact source SHA above.
 Tenant and Operator OIDC login, callback, logout/session cookies and re-login
 were exercised over HTTPS. No provider token was present in browser-visible
 responses.
