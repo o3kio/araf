@@ -132,6 +132,16 @@ The following deviations are release-gate findings, not hidden limitations:
 4. **BOUNDED —** stable-release multi-node O3K HA/resilience certification is
    intentionally excluded and remains gated by #106.
 
+## Review convergence
+
+Two comprehensive reviews were performed at this exact candidate HEAD. Each
+found B0, M0 and L0 implementation/documentation defects, but the same three
+release-gate HIGH findings above remain open (H3): provenance/attestation,
+production Prometheus attachment and exact-candidate pilot/upgrade evidence.
+Therefore clean pass #1 and clean pass #2 (`B0/H0/M0/L0`) were **not
+achieved**, and the draft PR must not be approved or merged as a production
+release.
+
 ### Verdict
 
 **NO-GO — NOT PRODUCTION READY**
