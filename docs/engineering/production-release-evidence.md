@@ -134,12 +134,10 @@ The following deviations are release-gate findings, not hidden limitations:
 
 ## Review convergence
 
-Two comprehensive reviews were performed before the final documentation-only
-Prometheus digest pin; the same review was rechecked against the final HEAD.
-Each
-found B0, M0 and L0 implementation/documentation defects. The provenance
-finding remains HIGH (H1); the short, non-independent soak remains MEDIUM
-(M1).
+Three comprehensive reviews were performed, with the final review after the
+release-gate portability fix and the final documentation updates. Each found
+B0, M0 and L0 implementation/documentation defects. The provenance finding
+remains HIGH (H1); the short, non-independent soak remains MEDIUM (M1).
 Therefore clean pass #1 and clean pass #2 (`B0/H0/M0/L0`) were **not
 achieved**; the PR must not be merged as a production release while these
 deviations remain.
