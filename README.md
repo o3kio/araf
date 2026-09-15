@@ -6,9 +6,23 @@ Araf is one tenant/operator console product with a shared generic UX and a serve
 
 Araf is **not** a Horizon fork and does not implement a Horizon compatibility protocol. It is intended as a modern successor to Horizon's role for the supported OpenStack profile while remaining the native console for O3K. Each backend remains authoritative for its own cloud resource state.
 
-![Araf, O3K and OpenStack architecture](docs/architecture/araf-o3k-openstack-architecture.webp)
+![Araf, O3K and OpenStack architecture](docs/architecture/araf-o3k-openstack-architecture.svg)
 
 For the full architecture, authority boundaries, compatibility paths, current support evidence, and claim limits, see [Araf, O3K and OpenStack architecture](docs/architecture/araf-o3k-openstack.md).
+
+For the product surfaces grounded in the current implementation, see the [Araf visual tour](docs/product/visual-tour.md).
+
+## Product preview
+
+The following are **documentation renderings based on the current implemented screen structure**. Sample names, counts, statuses and timestamps are illustrative; they are not live cloud telemetry.
+
+### Tenant Console
+
+![Araf Tenant Home](docs/product/screenshots/tenant-home.svg)
+
+### Operator Console
+
+![Araf Operator Overview](docs/product/screenshots/operator-overview.svg)
 
 ## Strategic position
 
@@ -91,6 +105,7 @@ See:
 - `docs/product/mvp-prototype.md`
 - `docs/product/strategic-alignment.md`
 - `docs/product/screen-inventory.md`
+- `docs/product/visual-tour.md`
 - `docs/architecture/araf-o3k-openstack.md`
 - `docs/architecture/overview.md`
 - `docs/architecture/backend-abstraction.md`

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="850" viewBox="0 0 1600 850">
+<rect width="100%" height="100%" fill="#f2f3f3"/>
+<style>
+text{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;fill:#16191f}
+.h1{font-size:34px;font-weight:700} .h2{font-size:22px;font-weight:700} .body{font-size:15px} .small{font-size:12px;fill:#5f6b7a} .muted{fill:#5f6b7a} .blueText{fill:#033160}
+</style>
+<text x="70" y="60" class="h1">Araf product surface</text>
+<text x="70" y="94" class="body muted">One shared platform, two trust surfaces, capability-driven navigation.</text>
+<rect x="90" y="160" width="650" height="180" rx="16" fill="#eef6ff" stroke="#70a9df" stroke-width="2"/>
+<text x="125" y="200" class="h2 blueText">Tenant Console</text>
+<text x="125" y="238" class="body">Home · Service catalog · Resources · Operations · Usage &amp; Cost</text>
+<text x="125" y="268" class="body">Projects · Users &amp; Access · Quotas · Audit · API &amp; CLI</text>
+<text x="125" y="306" class="small">Self-service trust surface + Tenant BFF</text>
+<rect x="860" y="160" width="650" height="180" rx="16" fill="#f4f0ff" stroke="#9586d8" stroke-width="2"/>
+<text x="895" y="200" class="h2">Operator Console</text>
+<text x="895" y="238" class="body">Platform overview · Regions · Health · Capacity · Accounts</text>
+<text x="895" y="268" class="body">Installed Services · Resources · Operations · Audit</text>
+<text x="895" y="306" class="small">Operator/admin trust surface + Operator BFF</text>
+<rect x="300" y="430" width="1000" height="180" rx="16" fill="#fff" stroke="#aab7b8" stroke-width="2"/>
+<text x="800" y="475" text-anchor="middle" class="h2">Shared Araf runtime</text>
+<text x="800" y="515" text-anchor="middle" class="body">React + TypeScript + Vite · Araf UI abstraction · generic resources</text>
+<text x="800" y="545" text-anchor="middle" class="body">schema-driven actions · Operations · capability discovery</text>
+<text x="800" y="582" text-anchor="middle" class="small">Backend-specific implementation stays server-side; the React product does not fork by backend.</text>
+<line x1="420" y1="340" x2="650" y2="430" stroke="#0972d3" stroke-width="4"/>
+<line x1="1180" y1="340" x2="950" y2="430" stroke="#0972d3" stroke-width="4"/>
+<line x1="800" y1="610" x2="800" y2="690" stroke="#0972d3" stroke-width="4"/>
+<polygon points="800,700 792,685 808,685" fill="#0972d3"/>
+<rect x="420" y="700" width="760" height="95" rx="14" fill="#eaf3ff" stroke="#0972d3" stroke-width="2"/>
+<text x="800" y="738" text-anchor="middle" class="h2">Server-side CloudBackend</text>
+<text x="800" y="770" text-anchor="middle" class="small">O3kBackend or OpenStackBackend; multi-backend aggregation is not required for the first release.</text>
+</svg>
