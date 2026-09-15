@@ -58,8 +58,9 @@ cargo check --workspace --all-targets --all-features  PASS
 cargo test --workspace --all-features  PASS (56 unit, 62 contract, 15 O3K, 5 OpenStack)
 ```
 
-This evidence covers fixture, O3K and OpenStack adapter code paths; real cloud
-deployment acceptance remains part of the P4.7 release gate.
+This evidence covers fixture, O3K and OpenStack adapter code paths. The exact
+candidate's live Prometheus attachment is recorded below; broader release
+readiness remains governed by the P4.7 evidence record.
 
 ## P4.7 exact-candidate attachment
 
