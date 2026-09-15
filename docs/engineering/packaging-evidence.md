@@ -69,9 +69,13 @@ Container contract: BFFs listen on 8080 (Tenant) or 8081 (Operator), expose
 `/healthz`, `/readyz` and `/version`, and write only to the mounted durable
 session/journal path plus temporary storage. Console images listen on 8080 and
 require `BFF_UPSTREAM`; an unset upstream makes nginx reject its configuration.
-The release Compose file supplies all four digest-pinned images and external
-runtime configuration, while Helm requires both BFF and per-surface frontend
-digests.
+Because the nginx entrypoint renders that value at startup, both release
+references mount `/etc/nginx/conf.d` as an ephemeral uid-101 writable volume
+while keeping the remaining image root read-only. `/var/cache/nginx`,
+`/var/run` and `/tmp` are likewise ephemeral. The release Compose file supplies
+all four digest-pinned images and external runtime configuration, while Helm
+requires both BFF and per-surface frontend digests and preserves the same
+read-only-root contract.
 
 An upgrade/rollback test must deploy release N, create a session and pending
 compatibility operation, replace images with N+1, verify `/version`, session

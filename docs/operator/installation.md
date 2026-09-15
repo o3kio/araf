@@ -71,6 +71,12 @@ Compose is a reference container contract. It does not provide TLS,
 secret-manager protection, a shared multi-host filesystem or a load balancer;
 add those at the deployment boundary.
 
+The release Compose and Helm references keep console image roots read-only.
+They provide only ephemeral writable mounts for nginx-generated configuration
+(`/etc/nginx/conf.d`) and nginx runtime paths. Preserve those mounts when
+translating the manifests to another orchestrator; without them the console
+entrypoint fails closed before readiness.
+
 ## First verification
 
 The browser-facing ingress routes to the static console. Its `/api/` location

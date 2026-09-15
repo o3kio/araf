@@ -32,6 +32,12 @@ search_q 'required "image\.digest is required"' "$chart/templates/_helpers.tpl" 
   || fail "Helm must require an immutable image digest"
 search_q 'readOnlyRootFilesystem: true' "$chart/templates/deployment.yaml" \
   || fail "Helm deployment must use a read-only root filesystem"
+search_q 'readOnlyRootFilesystem: true' "$chart/templates/frontend-deployment.yaml" \
+  || fail "Helm frontend deployment must use a read-only root filesystem"
+search_q 'mountPath: /etc/nginx/conf.d' "$chart/templates/frontend-deployment.yaml" \
+  || fail "Helm frontend must mount ephemeral nginx configuration"
+search_q 'name: nginx-conf' "$chart/templates/frontend-deployment.yaml" \
+  || fail "Helm frontend must define the nginx configuration volume"
 search_q 'ARAF_SESSION_STORE_KEY' "$compose" "$chart/templates/deployment.yaml" \
   || fail "durable session encryption key must be externally referenced"
 search_q 'ARAF_OPENSTACK_COMPATIBILITY_JOURNAL' "$compose" "$chart/templates/deployment.yaml" \
@@ -46,6 +52,8 @@ search_q 'ARAF_OPERATOR_CONSOLE_IMAGE' "$compose" \
   || fail "Operator console release image must be digest-pinned"
 [[ $(search_c 'http://127\.0\.0\.1:8080/' "$compose") -ge 2 ]] \
   || fail "both console containers must define health checks"
+[[ $(search_c '/etc/nginx/conf\.d:uid=101,gid=101,mode=755' "$compose") -ge 2 ]] \
+  || fail "both console containers must mount writable ephemeral nginx config"
 
 if command -v helm >/dev/null 2>&1; then
   helm lint "$chart" --set image.digest=sha256:"$(printf '%064d' 0)" \

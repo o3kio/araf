@@ -65,7 +65,14 @@ services:
     environment:
       BFF_UPSTREAM: http://tenant-bff:8080
     read_only: true
-    tmpfs: [/tmp, /var/cache/nginx, /var/run]
+    # nginx-entrypoint renders BFF_UPSTREAM into conf.d at startup. Keep the
+    # image root read-only while granting only that generated config directory
+    # and nginx's runtime paths ephemeral write access.
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+      - /var/run
+      - /etc/nginx/conf.d:uid=101,gid=101,mode=755
     ports: ["5173:8080"]
     depends_on:
       tenant-bff: { condition: service_healthy }
@@ -76,7 +83,11 @@ services:
     environment:
       BFF_UPSTREAM: http://operator-bff:8081
     read_only: true
-    tmpfs: [/tmp, /var/cache/nginx, /var/run]
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+      - /var/run
+      - /etc/nginx/conf.d:uid=101,gid=101,mode=755
     ports: ["5174:8080"]
     depends_on:
       operator-bff: { condition: service_healthy }
