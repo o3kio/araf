@@ -147,8 +147,8 @@ deviations remain.
 **NO-GO — NOT PRODUCTION READY**
 
 The candidate is operationally demonstrable against the live certified
-OpenStack/IdP profile, but the unresolved provenance and exact-candidate
-pilot/upgrade gates prohibit a production-ready claim.
+OpenStack/IdP profile, but the unresolved provenance and lack of an
+independently operated production pilot prohibit a production-ready claim.
 Do not publish a v1.0 tag. Issue #67 is not ready for final approval until
 these findings are closed and the affected evidence is rerun at one exact
 candidate HEAD.
