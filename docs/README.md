@@ -1,5 +1,11 @@
 # Araf design and planning documents
 
+## Operator entry point
+
+- [`operator/README.md`](operator/README.md) — installation, configuration,
+  security, observability, troubleshooting, recovery and support bundles for
+  a cold operator.
+
 ## Product
 
 - `product/mvp-prototype.md` — prototype/MVP scope, personas and success criteria.

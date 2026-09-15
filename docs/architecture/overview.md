@@ -23,21 +23,29 @@ Provider implementation is deliberately outside the normal tenant mental model.
 Araf has one shared platform and two security surfaces:
 
 ```text
-                 shared Araf packages
-                        |
-          +-------------+-------------+
-          |                           |
-   Tenant Console                Operator Console
-   public/self-service           management surface
-          |                           |
-   Tenant BFF                    Operator BFF
-          |                           |
-          +-------------+-------------+
-                        |
-                   O3K Native API
+Browser
+  |\
+  | +-- Tenant Console (public/self-service)
+  |       |
+  |    Tenant BFF ---- CloudBackend ---- O3K native API
+  |                         \\---------- OpenStackBackend
+  |
+  +---- Operator Console (management surface)
+           |
+        Operator BFF ---- privileged backend APIs
+
+Tenant and Operator share packages, not browser sessions, OIDC clients or
+deployment trust boundaries. The browser never talks directly to O3K,
+Keystone or another provider API.
 ```
 
 The applications may live in one repository and share most UI/runtime code. They do not share browser sessions, OIDC clients or deployment trust boundaries.
+
+The BFF is the browser session owner and server-side credential custodian.
+`CloudBackend` selects the explicitly configured O3K or OpenStack adapter;
+O3K or the relevant OpenStack service remains authoritative for cloud state.
+Capability discovery controls usability only—server authorization remains
+mandatory.
 
 ## 3. Organizational and regional scope
 

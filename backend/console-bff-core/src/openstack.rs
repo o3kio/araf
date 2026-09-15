@@ -133,18 +133,18 @@ pub struct OpenStackAdapter {
 impl OpenStackAdapter {
     pub fn from_env(surface: &'static str) -> Result<Self, ApiError> {
         let config = OpenStackClientConfig::from_env()?;
-        let journal = std::env::var("ARAF_OPENSTACK_COMPATIBILITY_JOURNAL")
+        let path = std::env::var("ARAF_OPENSTACK_COMPATIBILITY_JOURNAL")
             .ok()
             .filter(|value| !value.trim().is_empty())
-            .map(|path| {
-                CompatibilityJournal::open(path)
-                    .map(|journal| Arc::new(RwLock::new(journal)))
-                    .map_err(|error| {
-                        config_error(format!("cannot open compatibility journal: {error}"))
-                    })
-            })
-            .transpose()?;
-        Self::new_with_journal(surface, config, journal)
+            .ok_or_else(|| {
+                config_error(
+                    "ARAF_OPENSTACK_COMPATIBILITY_JOURNAL is required when the OpenStack adapter is built from environment",
+                )
+            })?;
+        let journal = CompatibilityJournal::open(path)
+            .map(|journal| Arc::new(RwLock::new(journal)))
+            .map_err(|error| config_error(format!("cannot open compatibility journal: {error}")))?;
+        Self::new_with_journal(surface, config, Some(journal))
     }
 
     pub fn new(surface: &'static str, config: OpenStackClientConfig) -> Result<Self, ApiError> {

@@ -374,7 +374,9 @@ fn validate_trusted_origin(value: &str) -> Result<(), ApiError> {
 
 #[cfg(test)]
 mod production_config_tests {
-    use super::{validate_public_url, validate_trusted_origin};
+    use super::{
+        validate_production_openstack_journal, validate_public_url, validate_trusted_origin,
+    };
 
     #[test]
     fn public_url_rejects_query_and_fragment() {
@@ -392,6 +394,15 @@ mod production_config_tests {
     fn trusted_origin_must_be_an_origin_without_path() {
         assert!(validate_trusted_origin("https://console.example.test").is_ok());
         assert!(validate_trusted_origin("https://console.example.test/console").is_err());
+    }
+
+    #[test]
+    fn production_openstack_requires_compatibility_journal() {
+        assert!(validate_production_openstack_journal(None).is_err());
+        assert!(validate_production_openstack_journal(Some(
+            "/var/lib/araf/compatibility-operations.json".into(),
+        ))
+        .is_ok());
     }
 }
 
@@ -506,10 +517,13 @@ fn validate_production_openstack_url() -> Result<(), ApiError> {
             "production OpenStack requires OPENSTACK_TOKEN or OPENSTACK_USERNAME and OPENSTACK_PASSWORD",
         ));
     }
-    let journal = std::env::var("ARAF_OPENSTACK_COMPATIBILITY_JOURNAL")
-        .ok()
-        .filter(|value| !value.trim().is_empty());
-    if journal.is_none() {
+    validate_production_openstack_journal(
+        std::env::var("ARAF_OPENSTACK_COMPATIBILITY_JOURNAL").ok(),
+    )
+}
+
+fn validate_production_openstack_journal(value: Option<String>) -> Result<(), ApiError> {
+    if value.is_none_or(|value| value.trim().is_empty()) {
         return Err(config_error(
             "ARAF_OPENSTACK_COMPATIBILITY_JOURNAL is required in production",
         ));

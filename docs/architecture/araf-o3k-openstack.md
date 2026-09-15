@@ -106,9 +106,8 @@ OpenStack remains authoritative for OpenStack-backed resources. Araf must not ma
 As of 2026-09-13:
 
 - the **O3K backend** has passed Araf's P2.8 native production-convergence gate;
-- the bounded **OpenStack backend profile** has historical real-environment P3.9 evidence against OpenStack 2024.2 (Dalmatian) and a supplemental single-host run using 2025.1 service images;
-- that 2025.1 run used Kolla-Ansible 19.7.0, which is Dalmatian-series tooling rather than the matching 20.x Epoxy toolchain, so it is compatibility evidence rather than a matched-toolchain certification;
-- the current production reference target is **OpenStack 2026.1 Gazpacho (SLURP)** with matching Kolla-Ansible 22.x tooling and 2026.1 service images; a clean P3.9 run against that exact series is required before 2026.1 is advertised as the current certified OpenStack release;
+- the bounded **OpenStack backend profile** is certified against **OpenStack 2026.1 Gazpacho (SLURP)** with matching Kolla-Ansible 22.x tooling and the Keystone/Nova/Glance/Neutron/Cinder profile documented in [`../production/openstack-support.md`](../production/openstack-support.md);
+- historical 2024.2 and supplemental 2025.1 runs are retained as compatibility evidence, not as broader release claims;
 - Araf does not claim automatic compatibility with `2026.1 or later`; each later series requires its own production gate;
 - multi-backend aggregation in one running console is **not required** for the first production release;
 - optional OpenStack Object Storage, public floating-IP exposure, volume-attachment UX, and provider-specific React pages remain outside the certified P3.9 profile unless separately proven.
