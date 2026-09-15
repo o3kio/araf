@@ -9,23 +9,23 @@ candidate artifacts and acceptance evidence are explicitly separated below.
 
 | Item | Candidate |
 | --- | --- |
-| Repository / source SHA | `o3kio/araf` / `a8d0d0e8fd2e7f5b34a6355c2674bd26c2aa6f7d` |
-| Current reviewed HEAD | `175f597cf36b49878d9b5fdda58204545369ce3c` |
+| Functional-test source SHA | `a8d0d0e8fd2e7f5b34a6355c2674bd26c2aa6f7d` |
+| Current reviewed HEAD | `f17860efba1b536a10e687788a9e35ff8bf3d768` |
 | Candidate version | `1.0.0-rc.1` |
-| BFF image | `localhost:5001/araf-bff@sha256:c6fa854b8a9764d645b973d3df359a67d5701876bf70332a4c76927d508ce18a` |
-| Tenant console image | `localhost:5001/araf-tenant@sha256:68ba1430d8bd4830172f7c11bf90f0e459c2eb724e06e505bdebfd00cda0879e` |
-| Operator console image | `localhost:5001/araf-operator@sha256:350b6ea7d0ef0f709a7114b0592d72bf22beb561920b8cb7a06910a906d69732` |
+| BFF image | `ghcr.io/o3kio/araf-bff@sha256:3648c82ecb7e413acf9e6602fb983001636b05e9b45cccd7a84ed47591a9ba74` |
+| Tenant console image | `ghcr.io/o3kio/araf-tenant-console@sha256:b4df35db4140d6fd4ae870a4b5bd8b87f7b43a5d00a37402d9bfee3a1fdf5948` |
+| Operator console image | `ghcr.io/o3kio/araf-operator-console@sha256:72f8d26cab361e9f217c7d70787b629989c0fa67e3aa1572db88f2abadb1dde2` |
 | Chart | `deploy/helm/araf` chart `0.1.0` (`appVersion: 0.0.0`; image digests are supplied by release values) |
-| Registry | Local OCI registry on the acceptance host (`localhost:5001`) |
-| Build metadata | OCI revision labels on the functional images match the source SHA and version |
+| Registry | GitHub Container Registry (`ghcr.io/o3kio`) |
+| Build metadata | OCI revision labels on all three images match `f17860e` and `1.0.0-rc.1` |
 
-The functional images above were rebuilt from the original test SHA with
-BuildKit and loaded/pushed by digest. The frontend runtime was then refreshed
-at `175f597c` to remove release-gate vulnerabilities; this source change
-supersedes the frontend digests above and requires a fresh exact-head build and
-affected acceptance rerun. The local host has no cosign, Syft or Trivy
-installation, so trusted provenance, SBOM and vulnerability results for the
-local functional digests are not inferred from this record.
+The live functional run used the original test SHA and local digests. The
+reviewed head refreshed the frontend runtime and was rebuilt by workflow run
+`35032384144`; all three published digests passed the pinned Trivy
+HIGH/CRITICAL scan, BuildKit SBOM generation and GitHub OIDC provenance
+attestation. The runtime-only change still requires a fresh exact-head live
+frontend acceptance run before release approval; the prior live results are
+not silently substituted.
 
 ## Release contract
 
@@ -128,14 +128,12 @@ it is not a claim for untested state formats or external Helm orchestration.
 The following deviations are release-gate findings, not hidden limitations:
 
 1. **HIGH —** the frontend runtime security fix changed the source after the
-   live functional run; exact-head frontend artifacts and the affected
-   acceptance evidence have not yet been rerun.
-2. **HIGH —** trusted CI provenance, SBOM attestation and vulnerability scan
-   are not yet attached to the exact candidate digests for the reviewed head.
-3. **MEDIUM —** the candidate soak was bounded to 45 seconds on the
+   live functional run; exact-head frontend acceptance has not yet been rerun
+   against the published digests.
+2. **MEDIUM —** the candidate soak was bounded to 45 seconds on the
    development host and was not an independently operated production pilot.
    Exact-candidate restart, rollback and failed-readiness recovery did pass.
-4. **BOUNDED —** stable-release multi-node O3K HA/resilience certification is
+3. **BOUNDED —** stable-release multi-node O3K HA/resilience certification is
    intentionally excluded and remains gated by #106.
 
 ## Review convergence

@@ -64,13 +64,15 @@ readiness remains governed by the P4.7 evidence record.
 
 ## P4.7 exact-candidate attachment
 
-On 2026-09-15, the digest-pinned `1.0.0-rc.1` Tenant BFF was scraped by the
-repository's pinned Prometheus image
+On 2026-09-15, the digest-pinned `1.0.0-rc.1` Tenant BFF from functional-test
+SHA `a8d0d0e` was scraped by the repository's pinned Prometheus image
 (`sha256:2659f4c2ebb718e7695cb9b25ffa7d6be64db013daba13e05c875451cf51b0d3`).
 Prometheus reached the candidate readiness endpoint and
 returned a successful query for
 `araf_bff_requests_total{surface="tenant-bff"}` with bounded status-class
 labels. The candidate also emitted request and correlation IDs on the live
 HTTPS/OIDC/OpenStack path. This closes the production attachment evidence for
-the observability contract; no secret-bearing labels or payloads were
-observed.
+the observability contract for that functional candidate; no secret-bearing
+labels or payloads were observed. The reviewed head's rebuilt images are
+recorded in the P4.7 release evidence; a live Prometheus attachment against
+those new frontend digests is still required before exact-head approval.
