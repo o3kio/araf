@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<rect width="100%" height="100%" fill="#f2f3f3"/>
+<style>
+text{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;fill:#16191f}
+.h1{font-size:34px;font-weight:700} .h2{font-size:22px;font-weight:700} .h3{font-size:17px;font-weight:700}
+.body{font-size:15px} .small{font-size:12px;fill:#5f6b7a} .muted{fill:#5f6b7a}
+.nav{font-size:14px} .section{font-size:11px;font-weight:700;fill:#5f6b7a;letter-spacing:.5px}
+.card{fill:#fff;stroke:#d5dbdb;stroke-width:1} .sub{fill:#f7f8f9;stroke:#d5dbdb;stroke-width:1}
+.blue{fill:#0972d3} .blueText{fill:#033160} .white{fill:#fff} .green{fill:#18794e} .warn{fill:#b45309}
+</style>
+
+<rect x="70" y="35" width="1460" height="80" rx="12" fill="#fff"/>
+<text x="100" y="78" class="h1">Araf, O3K and OpenStack — architecture overview</text>
+<text x="100" y="105" class="body muted">Current product boundaries and evidence status · September 2026</text>
+
+<rect x="100" y="150" width="1400" height="160" rx="16" fill="#eef6ff" stroke="#70a9df" stroke-width="2"/>
+<text x="140" y="190" class="h2 blueText">ARAF — next-generation cloud console</text>
+<text x="140" y="222" class="body muted">One product/runtime; deploy against O3K or a supported OpenStack cloud.</text>
+<rect x="150" y="245" width="560" height="46" rx="8" fill="#fff" stroke="#8fb7dc"/>
+<text x="175" y="274" class="h3">Tenant Console + Tenant BFF</text>
+<rect x="790" y="245" width="660" height="46" rx="8" fill="#fff" stroke="#8fb7dc"/>
+<text x="815" y="274" class="h3">Operator Console + Operator BFF</text>
+
+<line x1="800" y1="310" x2="800" y2="365" stroke="#0972d3" stroke-width="4"/>
+<polygon points="800,375 792,360 808,360" fill="#0972d3"/>
+<rect x="390" y="375" width="820" height="90" rx="14" fill="#f7f8f9" stroke="#aab7b8" stroke-width="2"/>
+<text x="800" y="410" text-anchor="middle" class="h2">CloudBackend — server-side boundary</text>
+<text x="800" y="438" text-anchor="middle" class="small">Browser never talks directly to Keystone/Nova/etc.; backend credentials and tokens remain server-side.</text>
+
+<line x1="650" y1="465" x2="460" y2="520" stroke="#5e9c86" stroke-width="4"/>
+<polygon points="448,524 462,511 467,527" fill="#5e9c86"/>
+<line x1="950" y1="465" x2="1140" y2="520" stroke="#d88368" stroke-width="4"/>
+<polygon points="1152,524 1133,527 1138,511" fill="#d88368"/>
+
+<rect x="120" y="525" width="620" height="240" rx="16" fill="#eefaf7" stroke="#5e9c86" stroke-width="2"/>
+<text x="160" y="562" class="h2 green">O3kBackend</text>
+<text x="160" y="590" class="body muted">Uses O3K native /o3k/v1 APIs.</text>
+<rect x="165" y="620" width="530" height="110" rx="10" fill="#fff" stroke="#8fc7b4"/>
+<text x="195" y="652" class="h3">O3K Cloud Kernel</text>
+<text x="195" y="680" class="small">Canonical O3K authority: IAM/AuthContext, resources/ownership, Operations/relationships,</text>
+<text x="195" y="700" class="small">topology/failure domains, placement/capacity, quota/audit/metering, service catalog.</text>
+
+<rect x="860" y="525" width="620" height="240" rx="16" fill="#fff5f0" stroke="#d88368" stroke-width="2"/>
+<text x="900" y="562" class="h2" fill="#a6442a">OpenStackBackend</text>
+<text x="900" y="590" class="body muted">Uses supported Keystone/Nova/Glance/Neutron/Cinder APIs.</text>
+<rect x="905" y="620" width="530" height="110" rx="10" fill="#fff" stroke="#e0a08d"/>
+<text x="935" y="652" class="h3">Real OpenStack control plane</text>
+<text x="935" y="680" class="small">OpenStack remains authoritative for OpenStack-backed resource state.</text>
+<text x="935" y="700" class="small">CompatibilityOperation is derived correlation/reconciliation state only.</text>
+
+<rect x="120" y="790" width="620" height="80" rx="12" fill="#fff" stroke="#7ea6cc"/>
+<text x="150" y="820" class="h3 blueText">Separate O3K OpenStack-compatibility path</text>
+<text x="150" y="848" class="small">OpenStack CLI/SDK/Terraform/OpenTofu → O3K compatibility APIs → same O3K Cloud Kernel.</text>
+
+<rect x="860" y="790" width="620" height="80" rx="12" fill="#fffaf0" stroke="#d6a756"/>
+<text x="890" y="820" class="h3 warn">Evidence boundary</text>
+<text x="890" y="843" class="small">Historical P3.9 real-environment evidence: OpenStack 2024.2 (Dalmatian).</text>
+<text x="890" y="861" class="small">Current reference target: 2026.1 Gazpacho; fresh exact-series gate required before certification.</text>
+</svg>

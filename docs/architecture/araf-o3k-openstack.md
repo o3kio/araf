@@ -7,11 +7,13 @@ Araf is one next-generation cloud-console product with two supported backend fam
 
 Araf replaces the *role* of a traditional cloud dashboard such as Horizon; it is not a Horizon fork and does not implement a Horizon compatibility protocol. The browser-facing product stays provider-neutral while backend-specific authority and wire protocols remain behind server-side boundaries.
 
-![Araf, O3K and OpenStack architecture](araf-o3k-openstack-architecture.webp)
+![Araf, O3K and OpenStack architecture](araf-o3k-openstack-architecture.svg)
 
 ## Architecture in one sentence
 
 **Araf provides one Tenant/Operator user experience, the BFFs enforce the browser security boundary, `CloudBackend` selects O3K or OpenStack server-side behavior, and each cloud remains authoritative for its own resource state.**
+
+![Araf request and authority flow](araf-request-flow.svg)
 
 ## 1. User experience and trust surfaces
 
@@ -23,6 +25,10 @@ Araf has one shared product/runtime with two distinct security surfaces:
 They may share frontend packages and generic resource/runtime code, but they do not collapse their browser sessions, OIDC clients, or trust boundaries.
 
 The normal React product must not branch into separate O3K and OpenStack applications. Backend provenance and provider-specific details may be exposed in bounded operator/diagnostic views where required, but the common tenant vocabulary remains resource-oriented: Virtual Machine, Network, Image, Volume, Project, Operation, Usage, Quota, and capability-driven services.
+
+![Araf product surface](araf-product-surface.svg)
+
+The current Tenant and Operator screens are illustrated in the [Araf visual tour](../product/visual-tour.md). Those images are documentation renderings grounded in current source; sample data is explicitly illustrative rather than presented as live cloud state.
 
 ## 2. Server-side backend boundary
 
@@ -138,6 +144,7 @@ Those services are **not implied by endpoint names**. Each integration requires 
 
 ## Related architecture and evidence
 
+- [`../product/visual-tour.md`](../product/visual-tour.md) — current Araf product surfaces and representative UI renderings
 - [`overview.md`](overview.md) — Araf product/trust-surface architecture
 - [`backend-abstraction.md`](backend-abstraction.md) — backend abstraction design
 - [`../adr/0005-cloud-backend-openstack-compatibility.md`](../adr/0005-cloud-backend-openstack-compatibility.md) — accepted CloudBackend/OpenStack boundary

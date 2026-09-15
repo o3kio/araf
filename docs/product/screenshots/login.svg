@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<rect width="100%" height="100%" fill="#f2f3f3"/>
+<style>text{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;fill:#16191f}.h1{font-size:34px;font-weight:700}.h2{font-size:22px;font-weight:700}.h3{font-size:17px;font-weight:700}.body{font-size:15px}.small{font-size:12px;fill:#5f6b7a}.muted{fill:#5f6b7a}.section{font-size:11px;font-weight:700;fill:#5f6b7a;letter-spacing:.5px}</style>
+<rect x="0" y="0" width="650" height="900" fill="#0b1f33"/>
+<text x="70" y="110" style="font-size:42px;font-weight:700;fill:#fff">ARAF</text>
+<text x="70" y="160" style="font-size:22px;font-weight:700;fill:#c9e6ff">One console product. Backend selected by deployment.</text>
+<text x="70" y="215" style="font-size:17px;fill:#dbeafe">Native console for O3K and modern console experience</text>
+<text x="70" y="242" style="font-size:17px;fill:#dbeafe">for the supported OpenStack profile.</text>
+<rect x="70" y="385" width="430" height="58" rx="10" fill="#102b46" stroke="#33517a"/><text x="100" y="420" style="font-size:18px;font-weight:700;fill:#fff">Tenant Console</text>
+<rect x="70" y="465" width="430" height="58" rx="10" fill="#102b46" stroke="#33517a"/><text x="100" y="500" style="font-size:18px;font-weight:700;fill:#fff">Operator Console</text>
+<text x="70" y="805" style="font-size:14px;fill:#9fb6cc">Authentication is federated. Cloud credentials remain server-side.</text>
+<rect x="810" y="150" width="640" height="590" rx="18" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+<text x="870" y="235" class="h1">Sign in to Araf</text>
+<text x="870" y="278" class="body muted">Continue with your organization’s identity provider.</text>
+<text x="870" y="350" class="section">CONSOLE</text>
+<rect x="870" y="370" width="520" height="52" rx="8" fill="#f7f8f9" stroke="#aab7b8"/><text x="895" y="402" class="h3">Tenant Console</text>
+<text x="870" y="475" class="section">CLOUD PROFILE</text>
+<rect x="870" y="495" width="520" height="52" rx="8" fill="#f7f8f9" stroke="#aab7b8"/><text x="895" y="527" class="body">Configured by your deployment</text>
+<rect x="870" y="590" width="520" height="54" rx="8" fill="#0972d3"/><text x="1130" y="624" text-anchor="middle" style="font-size:16px;font-weight:700;fill:#fff">Continue with identity provider</text>
+<text x="870" y="687" class="small">Araf does not expose raw cloud backend credentials in browser JavaScript.</text>
+<text x="810" y="805" class="small">Design-reference entry screen. Actual authentication continues through the configured OIDC/Keystone federation path.</text>
+</svg>
