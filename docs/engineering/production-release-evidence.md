@@ -255,7 +255,17 @@ The following are release-gate findings, not hidden limitations:
    was attempted and exposed the blocker above; no successful mutations were
    counted, so the supplementary 360-second read-only soak cannot satisfy
    mutation/polling acceptance.
-5. **BOUNDED —** stable-release multi-node O3K HA/resilience certification is
+5. **HIGH —** additional mandatory P4.7 candidate acceptance remains
+   unverified: no RC2 native O3K functional journey; the full release-critical
+   #64 negative suite and the OpenStack invalid/quota/401/403/404/409/5xx
+   matrix were not repeated on RC2; and RC2 was not exercised through Helm
+   install, upgrade/rollback/failed rollout, or a cold-operator support
+   rehearsal. RC1, P3.9 and prior convergence evidence do not substitute for
+   these exact-candidate checks.
+6. **MEDIUM —** no RC2 concurrent load/scale run or candidate-level
+   performance thresholds were recorded; the short sequential soak is not
+   load evidence.
+7. **BOUNDED —** stable-release multi-node O3K HA/resilience certification is
    intentionally excluded and remains gated by #106.
 
 ### Post-RC2 source remediation status (not RC2 artifact evidence)
@@ -281,7 +291,7 @@ security source, read-only nginx mounts, candidate identity, and stale
 packaging/evidence statements. The exact RC2 run on this head identified the
 remaining BLOCKER/HIGH/MEDIUM findings above. The source and evidence changes
 reset review convergence to zero. The exact RC2 acceptance assessment
-remains `B1/H2/M1/L0`; clean pass #1 and clean pass #2 are both not achieved.
+remains `B1/H3/M2/L0`; clean pass #1 and clean pass #2 are both not achieved.
 Code-level tests of the unbuilt source edits cannot clear findings on the
 immutable RC2 artifacts. Release review can only converge after a corrected
 candidate is published and the exact replacement digests are re-tested.
