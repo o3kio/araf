@@ -341,6 +341,45 @@ required to finish live candidate acceptance.
 
 ## Current RC5 acceptance status
 
+### RC5 DevStack acceptance harness (2026-09-16)
+
+RC5 exact published images were pulled by digest from GHCR and run without a
+local rebuild. The isolated OpenStack environment was the disposable libvirt
+VM `p14-openstack-source`: Ubuntu 24.04 Noble, 8 vCPU, 20 GiB RAM, 130 GiB
+disk, nested KVM enabled, and DevStack `stable/2026.1` at commit
+`da2f4d73f5ad74fc8ecfbe15bd7e20f6b0982dbb`. It exposed the certified Keystone,
+Nova/Placement, Glance, Neutron and Cinder services; Swift and public
+floating-IP workflows were not enabled. This is development/CI evidence and
+does not replace the matched Kolla-Ansible 2026.1 production-profile record.
+
+The least-privilege project `araf-rc5-acceptance` and member-only user
+`araf-rc5` were provisioned locally with bounded quotas (3 instances, 4
+cores, 4 GiB RAM, 3 networks, 5 subnets, 20 ports, 3 volumes/10 GiB). No
+credential values are recorded. Direct CLI checks passed Keystone token and
+catalog discovery, CirrOS image availability, Nova create/ACTIVE/stop/start/
+reboot/delete, Neutron network/subnet/port create/delete and Cinder volume
+create/show/delete.
+
+The exact RC5 HTTPS/Keycloak 26.3 harness authenticated a Tenant session over
+TLS, returned only the configured project scope, kept provider tokens out of
+browser storage, and used Secure/HttpOnly surface-specific cookies. Exact RC5
+Network create reconciled to Neutron `ACTIVE`. Exact RC5 Subnet create exposed
+a release blocker: Neutron returned an authoritative project-scoped subnet
+without a lifecycle `status`, while the CompatibilityOperation remained
+`running` and recorded `UNKNOWN`. The resource was then removed through the
+authoritative Neutron path. This is ordinary supported functionality, not a
+#106 scenario; RC5 therefore remains NO-GO and its mutation-inclusive soak is
+invalidated. A correction was made in source after this run and requires a
+newly published candidate before any acceptance result can be reused.
+
+The fresh Compose state-volume probe also found that an uninitialized named
+volume is root-owned while the exact RC5 non-root BFF (UID 65532) cannot write
+it. RC5 required a manual ownership repair before login. This is a clean-
+install packaging HIGH. The follow-up source change seeds `/var/lib/araf` in
+the image as UID/GID 65532 and sets the Helm pod `fsGroup`; no RC5 artifact was
+modified or substituted. No RC5 soak, outage/recovery, restart, upgrade or
+rollback claim is made beyond these recorded observations.
+
 RC2 remains the only full live-artifact acceptance run. No RC5 HTTPS/OIDC
 login, OpenStack create/read/update/delete journey, representative mutation
 and Operation/CompatibilityOperation polling soak, controlled backend
