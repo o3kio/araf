@@ -378,6 +378,40 @@ impl OpenStackAdapter {
         }
     }
 
+    fn validate_resource_id(id: &str) -> Result<(), ApiError> {
+        if id.is_empty() || id.len() > 256 || id.contains('/') {
+            return Err(ApiError::NotFound);
+        }
+        Ok(())
+    }
+
+    fn item_url(base: &str, path: &str, id: &str) -> Result<Url, ApiError> {
+        Self::validate_resource_id(id)?;
+        // Keep the complete service path from the catalog endpoint (for
+        // example `v2.0/networks` or `v2/images`) when deriving detail/delete
+        // URLs. Only Nova/Cinder-style `collection/detail` paths need the
+        // detail suffix removed.
+        let collection_path = path.trim_end_matches("/detail");
+        let mut url = Url::parse(&format!(
+            "{}/{}",
+            base.trim_end_matches('/'),
+            collection_path
+        ))
+        .map_err(|e| config_error(e.to_string()))?;
+        url.path_segments_mut()
+            .map_err(|_| config_error("upstream service URL cannot accept a resource path"))?
+            .push(id);
+        Ok(url)
+    }
+
+    fn item_action_url(base: &str, path: &str, id: &str, action: &str) -> Result<Url, ApiError> {
+        let mut url = Self::item_url(base, path, id)?;
+        url.path_segments_mut()
+            .map_err(|_| config_error("upstream service URL cannot accept an action path"))?
+            .push(action);
+        Ok(url)
+    }
+
     async fn discover_catalog(&self, ctx: &RequestContext) -> Result<(), ApiError> {
         let url = self.keystone_url("catalog")?;
         let (_, value) = self.request_json(ctx, Method::GET, url, None).await?;
@@ -1356,9 +1390,7 @@ impl Upstream for OpenStackAdapter {
         resource_type: &str,
         id: &str,
     ) -> Result<Resource, ApiError> {
-        if id.is_empty() || id.len() > 256 || id.contains('/') {
-            return Err(ApiError::NotFound);
-        }
+        Self::validate_resource_id(id)?;
         let _ = self.discover_catalog(ctx).await;
         let (base, path) = self.endpoint(resource_type).ok_or_else(|| {
             ApiError::NotImplemented(format!(
@@ -1387,11 +1419,7 @@ impl Upstream for OpenStackAdapter {
             path.trim_end_matches("/detail")
         };
         let project = self.project(ctx, None)?;
-        let url = Url::parse(&format!(
-            "{}/{singular}/{id}",
-            self.scoped_base(&base, project)
-        ))
-        .map_err(|e| config_error(e.to_string()))?;
+        let url = Self::item_url(&self.scoped_base(&base, project), path, id)?;
         let (_, body) = self.request_json(ctx, Method::GET, url, None).await?;
         let value = body
             .get(match resource_type {
@@ -1484,6 +1512,7 @@ impl Upstream for OpenStackAdapter {
         id: &str,
         request: ActionRequest,
     ) -> Result<Operation, ApiError> {
+        Self::validate_resource_id(id)?;
         if resource_type != "compute.server"
             || !matches!(request.action_id.as_str(), "start" | "stop" | "reboot")
         {
@@ -1504,11 +1533,8 @@ impl Upstream for OpenStackAdapter {
             _ => unreachable!(),
         };
         let project = self.project(ctx, None)?;
-        let url = Url::parse(&format!(
-            "{}/servers/{id}/action",
-            self.scoped_base(&base, project)
-        ))
-        .map_err(|e| config_error(e.to_string()))?;
+        let url =
+            Self::item_action_url(&self.scoped_base(&base, project), "servers", id, "action")?;
         if let Err(error) = self
             .request_json(ctx, Method::POST, url, Some(action_body))
             .await
@@ -1535,35 +1561,15 @@ impl Upstream for OpenStackAdapter {
         resource_type: &str,
         id: &str,
     ) -> Result<Operation, ApiError> {
+        Self::validate_resource_id(id)?;
         let _ = self.discover_catalog(ctx).await;
         let (base, path) = self.endpoint(resource_type).ok_or_else(|| {
             ApiError::NotImplemented(format!(
                 "OpenStack capability is unavailable for {resource_type}"
             ))
         })?;
-        let singular = if resource_type == "compute.server" {
-            "servers"
-        } else if resource_type == "block.volume" {
-            "volumes"
-        } else if resource_type == "object.storage.bucket" {
-            "containers"
-        } else if resource_type == "network.network" {
-            "networks"
-        } else if resource_type == "network.subnet" {
-            "subnets"
-        } else if resource_type == "network.port" {
-            "ports"
-        } else if resource_type == "network.security-group" {
-            "security-groups"
-        } else {
-            path.trim_end_matches("/detail")
-        };
         let project = self.project(ctx, None)?;
-        let url = Url::parse(&format!(
-            "{}/{singular}/{id}",
-            self.scoped_base(&base, project)
-        ))
-        .map_err(|e| config_error(e.to_string()))?;
+        let url = Self::item_url(&self.scoped_base(&base, project), path, id)?;
         if let Err(error) = self.request_json(ctx, Method::DELETE, url, None).await {
             self.persist_failed_operation(ctx, "delete", resource_type, Some(id), &error)
                 .await?;
@@ -1681,6 +1687,126 @@ fn map_status(status: StatusCode, value: &Value) -> ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::matchers::{method, path as request_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn detail_and_delete_urls_preserve_api_prefix_and_escape_resource_id() {
+        let cases = [
+            (
+                "https://neutron.example/",
+                "v2.0/networks",
+                "network?include=all",
+                "https://neutron.example/v2.0/networks/network%3Finclude=all",
+            ),
+            (
+                "https://glance.example",
+                "v2/images",
+                "image-1",
+                "https://glance.example/v2/images/image-1",
+            ),
+            (
+                "https://nova.example/v2.1",
+                "servers/detail",
+                "server-1",
+                "https://nova.example/v2.1/servers/server-1",
+            ),
+            (
+                "https://cinder.example/v3/project-1",
+                "volumes/detail",
+                "volume-1",
+                "https://cinder.example/v3/project-1/volumes/volume-1",
+            ),
+        ];
+
+        for (base, path, id, expected) in cases {
+            assert_eq!(
+                OpenStackAdapter::item_url(base, path, id)
+                    .expect("valid item URL")
+                    .as_str(),
+                expected
+            );
+        }
+        assert_eq!(
+            OpenStackAdapter::item_action_url(
+                "https://nova.example/v2.1",
+                "servers",
+                "server-1",
+                "action"
+            )
+            .expect("valid action URL")
+            .as_str(),
+            "https://nova.example/v2.1/servers/server-1/action"
+        );
+        assert!(matches!(
+            OpenStackAdapter::item_url("https://neutron.example", "v2.0/networks", "../other"),
+            Err(ApiError::NotFound)
+        ));
+    }
+
+    #[tokio::test]
+    async fn neutron_detail_and_delete_use_the_authoritative_v20_paths() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(request_path("/v3/auth/catalog"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"catalog": []})))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(request_path("/v2.0/networks/network-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "network": {
+                    "id": "network-1",
+                    "name": "support-test",
+                    "status": "ACTIVE",
+                    "project_id": "project-1"
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(request_path("/v2.0/networks/network-1"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let adapter = OpenStackAdapter::new(
+            "tenant-bff",
+            OpenStackClientConfig {
+                auth_url: format!("{}/v3", server.uri()),
+                token: Some("synthetic-test-token".into()),
+                username: None,
+                password: None,
+                user_domain: "Default".into(),
+                project_name: None,
+                project_id: Some("project-1".into()),
+                region: None,
+                compute_url: None,
+                image_url: None,
+                network_url: Some(server.uri()),
+                volume_url: None,
+                object_storage_url: None,
+            },
+        )
+        .expect("adapter");
+        let ctx = RequestContext::new(
+            "request".into(),
+            "correlation".into(),
+            Arc::new(crate::request::SessionState::fixture("tenant-bff")),
+        );
+
+        let resource = adapter
+            .get_resource(&ctx, "network.network", "network-1")
+            .await
+            .expect("Neutron detail succeeds");
+        assert_eq!(resource.id, "network-1");
+        adapter
+            .delete_resource(&ctx, "network.network", "network-1")
+            .await
+            .expect("Neutron delete succeeds");
+    }
 
     #[test]
     fn resource_mapping_preserves_provider_fields_without_making_them_identity() {

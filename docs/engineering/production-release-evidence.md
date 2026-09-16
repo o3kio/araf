@@ -258,18 +258,35 @@ The following are release-gate findings, not hidden limitations:
 5. **BOUNDED —** stable-release multi-node O3K HA/resilience certification is
    intentionally excluded and remains gated by #106.
 
+### Post-RC2 source remediation status (not RC2 artifact evidence)
+
+After the exact-digest run, this PR's source was updated to remove the
+`strict-dynamic` CSP incompatibility and to preserve complete OpenStack
+collection paths for detail/delete URLs, including Neutron's `/v2.0` prefix;
+resource and action IDs are also validated and appended as escaped URL path
+segments. Regression tests cover CSP compatibility and Neutron item URLs.
+These edits are not present in the published RC2 digests above. No corrected
+candidate image was built or published for this run, and the source changes
+do not close any RC2 release finding or receive artifact-acceptance credit.
+
+The next candidate must use newly published digests from a new source SHA;
+the HTTPS/OIDC harness, UI bootstrap, Neutron mutation/reconciliation, soak,
+failure/recovery and security gates must then be repeated against those exact
+digests. RC2 remains the only live-artifact evidence recorded here.
+
 ## Review convergence
 
 Earlier reviews fixed the release-gate portability issue, frontend runtime
 security source, read-only nginx mounts, candidate identity, and stale
 packaging/evidence statements. The exact RC2 run on this head identified the
-remaining BLOCKER/HIGH/MEDIUM findings above. This evidence change resets
-review convergence to zero. The current acceptance assessment is
-`B1/H2/M1/L0`; clean pass #1 and clean pass #2 are both not achieved. Further
-reviews of this immutable RC2 candidate cannot be clean until a corrected
-candidate is built and the exact replacement digests are re-tested. Neither
-the release findings nor the review count may be waived to promote this
-candidate.
+remaining BLOCKER/HIGH/MEDIUM findings above. The source and evidence changes
+reset review convergence to zero. The exact RC2 acceptance assessment
+remains `B1/H2/M1/L0`; clean pass #1 and clean pass #2 are both not achieved.
+Code-level tests of the unbuilt source edits cannot clear findings on the
+immutable RC2 artifacts. Release review can only converge after a corrected
+candidate is published and the exact replacement digests are re-tested.
+Neither the release findings nor the review count may be waived to promote
+this candidate.
 
 ### Verdict
 
