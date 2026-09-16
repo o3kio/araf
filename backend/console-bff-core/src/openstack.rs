@@ -55,18 +55,7 @@ impl OpenStackClientConfig {
     pub fn from_env() -> Result<Self, ApiError> {
         let auth_url = std::env::var("OPENSTACK_AUTH_URL")
             .map_err(|_| config_error("OPENSTACK_AUTH_URL is required"))?;
-        let parsed = Url::parse(auth_url.trim())
-            .map_err(|_| config_error("OPENSTACK_AUTH_URL must be an absolute URL"))?;
-        if parsed.host_str().is_none()
-            || !parsed.username().is_empty()
-            || parsed.password().is_some()
-            || parsed.query().is_some()
-            || parsed.fragment().is_some()
-        {
-            return Err(config_error(
-                "OPENSTACK_AUTH_URL must be credential-free and host-qualified",
-            ));
-        }
+        let required_scheme = auth_url_scheme(&auth_url)?;
         Ok(Self {
             auth_url: auth_url.trim().trim_end_matches('/').to_owned(),
             token: std::env::var("OPENSTACK_TOKEN")
@@ -89,32 +78,64 @@ impl OpenStackClientConfig {
             region: std::env::var("OPENSTACK_REGION")
                 .ok()
                 .filter(|v| !v.trim().is_empty()),
-            compute_url: env_url("OPENSTACK_COMPUTE_URL")?,
-            image_url: env_url("OPENSTACK_IMAGE_URL")?,
-            network_url: env_url("OPENSTACK_NETWORK_URL")?,
-            volume_url: env_url("OPENSTACK_VOLUME_URL")?,
-            object_storage_url: env_url("OPENSTACK_OBJECT_STORAGE_URL")?,
+            compute_url: env_url("OPENSTACK_COMPUTE_URL", &required_scheme)?,
+            image_url: env_url("OPENSTACK_IMAGE_URL", &required_scheme)?,
+            network_url: env_url("OPENSTACK_NETWORK_URL", &required_scheme)?,
+            volume_url: env_url("OPENSTACK_VOLUME_URL", &required_scheme)?,
+            object_storage_url: env_url("OPENSTACK_OBJECT_STORAGE_URL", &required_scheme)?,
         })
     }
 }
 
-fn env_url(name: &str) -> Result<Option<String>, ApiError> {
-    let Some(value) = std::env::var(name).ok().filter(|v| !v.trim().is_empty()) else {
-        return Ok(None);
-    };
+fn auth_url_scheme(value: &str) -> Result<String, ApiError> {
     let parsed = Url::parse(value.trim())
-        .map_err(|_| config_error(format!("{name} must be an absolute URL")))?;
+        .map_err(|_| config_error("OPENSTACK_AUTH_URL must be an absolute URL"))?;
     if parsed.host_str().is_none()
         || !parsed.username().is_empty()
         || parsed.password().is_some()
         || parsed.query().is_some()
         || parsed.fragment().is_some()
+        || !matches!(parsed.scheme(), "http" | "https")
     {
-        return Err(config_error(format!(
-            "{name} must be credential-free and host-qualified"
-        )));
+        return Err(config_error(
+            "OPENSTACK_AUTH_URL must be a credential-free HTTP(S) URL",
+        ));
     }
-    Ok(Some(value.trim().trim_end_matches('/').to_owned()))
+    Ok(parsed.scheme().to_owned())
+}
+
+fn validate_service_endpoint(value: &str, required_scheme: &str) -> Option<String> {
+    // Keystone catalog URLs may contain the legacy tenant placeholder. Replace
+    // only that known template while validating; `scoped_base` expands it after
+    // the request's project has been authorized.
+    let candidate = value
+        .trim()
+        .replace("%(tenant_id)s", "araf-project-placeholder");
+    let parsed = Url::parse(&candidate).ok()?;
+    if parsed.scheme() != required_scheme
+        || !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return None;
+    }
+    Some(value.trim().trim_end_matches('/').to_owned())
+}
+
+fn env_url(name: &str, required_scheme: &str) -> Result<Option<String>, ApiError> {
+    let Some(value) = std::env::var(name).ok().filter(|v| !v.trim().is_empty()) else {
+        return Ok(None);
+    };
+    validate_service_endpoint(value.trim(), required_scheme)
+        .map(Some)
+        .ok_or_else(|| {
+            config_error(format!(
+                "{name} must be a credential-free {required_scheme} service URL"
+            ))
+        })
 }
 
 fn config_error(message: impl Into<String>) -> ApiError {
@@ -158,6 +179,9 @@ impl OpenStackAdapter {
     ) -> Result<Self, ApiError> {
         let client = Client::builder()
             .timeout(HTTP_TIMEOUT)
+            // Never forward Keystone credentials or scoped tokens through an
+            // endpoint-controlled redirect to another origin.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| config_error(e.to_string()))?;
         Ok(Self {
@@ -322,6 +346,7 @@ impl OpenStackAdapter {
     }
 
     fn update_catalog(&self, value: &Value) {
+        let required_scheme = auth_url_scheme(&self.config.auth_url).unwrap_or_default();
         let mut discovered = HashMap::new();
         if let Some(entries) = value.get("catalog").and_then(Value::as_array) {
             for entry in entries {
@@ -331,18 +356,26 @@ impl OpenStackAdapter {
                 let Some(endpoints) = entry.get("endpoints").and_then(Value::as_array) else {
                     continue;
                 };
+                let is_usable = |endpoint: &&Value| {
+                    self.config.region.as_deref().is_none_or(|region| {
+                        endpoint.get("region").and_then(Value::as_str) == Some(region)
+                    }) && endpoint
+                        .get("url")
+                        .and_then(Value::as_str)
+                        .and_then(|url| validate_service_endpoint(url, &required_scheme))
+                        .is_some()
+                };
                 let selected = endpoints
                     .iter()
+                    .filter(|endpoint| is_usable(endpoint))
                     .find(|endpoint| {
                         endpoint.get("interface").and_then(Value::as_str) == Some("public")
-                            && self.config.region.as_deref().is_none_or(|region| {
-                                endpoint.get("region").and_then(Value::as_str) == Some(region)
-                            })
                     })
-                    .or_else(|| endpoints.first());
+                    .or_else(|| endpoints.iter().find(|endpoint| is_usable(endpoint)));
                 if let Some(url) = selected
                     .and_then(|endpoint| endpoint.get("url"))
                     .and_then(Value::as_str)
+                    .and_then(|url| validate_service_endpoint(url, &required_scheme))
                 {
                     let key = match kind {
                         "compute" => "compute",
@@ -1692,6 +1725,118 @@ mod tests {
     use super::*;
     use wiremock::matchers::{method, path as request_path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn service_endpoint_must_match_keystone_scheme_and_be_credential_free() {
+        assert_eq!(
+            validate_service_endpoint("https://neutron.example/v2.0/%(tenant_id)s", "https"),
+            Some("https://neutron.example/v2.0/%(tenant_id)s".into())
+        );
+        for unsafe_endpoint in [
+            "http://neutron.example/v2.0",
+            "https://user:password@neutron.example/v2.0",
+            "https://neutron.example/v2.0?redirect=https://evil.example",
+            "https://neutron.example/v2.0#fragment",
+            "file:///etc/passwd",
+        ] {
+            assert!(validate_service_endpoint(unsafe_endpoint, "https").is_none());
+        }
+        assert!(validate_service_endpoint("http://neutron.example/v2.0", "http").is_some());
+    }
+
+    #[test]
+    fn catalog_ignores_insecure_or_credentialed_service_endpoints() {
+        let adapter = OpenStackAdapter::new(
+            "tenant-bff",
+            OpenStackClientConfig {
+                auth_url: "https://keystone.example/v3".into(),
+                token: Some("synthetic-test-token".into()),
+                username: None,
+                password: None,
+                user_domain: "Default".into(),
+                project_name: None,
+                project_id: None,
+                region: None,
+                compute_url: None,
+                image_url: None,
+                network_url: None,
+                volume_url: None,
+                object_storage_url: None,
+            },
+        )
+        .expect("adapter");
+        adapter.update_catalog(&json!({
+            "catalog": [
+                {"type":"network","endpoints":[
+                    {"interface":"public","url":"http://neutron.example/v2.0"},
+                    {"interface":"internal","url":"https://neutron.example/v2.0"}
+                ]},
+                {"type":"compute","endpoints":[
+                    {"interface":"public","url":"https://user:secret@nova.example/v2.1"},
+                    {"interface":"internal","url":"https://nova.example/v2.1"}
+                ]},
+                {"type":"image","endpoints":[
+                    {"interface":"public","url":"https://glance.example/v2?next=https://evil.example"}
+                ]}
+            ]
+        }));
+
+        assert_eq!(
+            adapter.endpoint("network.network").map(|entry| entry.0),
+            Some("https://neutron.example/v2.0".into())
+        );
+        assert_eq!(
+            adapter.endpoint("compute.server").map(|entry| entry.0),
+            Some("https://nova.example/v2.1".into())
+        );
+        assert!(adapter.endpoint("image.image").is_none());
+    }
+
+    #[tokio::test]
+    async fn openstack_client_does_not_follow_credentialed_redirects() {
+        let keystone = MockServer::start().await;
+        let redirect_target = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(request_path("/v3/auth/catalog"))
+            .respond_with(
+                ResponseTemplate::new(307)
+                    .insert_header("Location", format!("{}/capture", redirect_target.uri())),
+            )
+            .expect(1)
+            .mount(&keystone)
+            .await;
+        let adapter = OpenStackAdapter::new(
+            "tenant-bff",
+            OpenStackClientConfig {
+                auth_url: format!("{}/v3", keystone.uri()),
+                token: Some("synthetic-test-token".into()),
+                username: None,
+                password: None,
+                user_domain: "Default".into(),
+                project_name: None,
+                project_id: None,
+                region: None,
+                compute_url: None,
+                image_url: None,
+                network_url: None,
+                volume_url: None,
+                object_storage_url: None,
+            },
+        )
+        .expect("adapter");
+        let ctx = RequestContext::new(
+            "request".into(),
+            "correlation".into(),
+            Arc::new(crate::request::SessionState::fixture("tenant-bff")),
+        );
+
+        assert!(adapter.discover_catalog(&ctx).await.is_err());
+        assert!(redirect_target
+            .received_requests()
+            .await
+            .unwrap_or_default()
+            .is_empty());
+    }
 
     #[test]
     fn detail_and_delete_urls_preserve_api_prefix_and_escape_resource_id() {
