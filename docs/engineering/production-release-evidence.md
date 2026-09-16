@@ -68,13 +68,13 @@ browser SPKI pin, so this proves HTTPS application behavior, not public-CA
 trust or production certificate lifecycle. This run used direct containers,
 not Helm; it does not add Helm-install evidence.
 
-The release artifacts reported the expected RC2 version and source SHA from
-`/version`; Tenant and Operator `/healthz`, `/readyz`, `/version`, and `/metrics`
-were reachable. FixtureBackend was not selected. Both OIDC callback flows
-completed over HTTPS; session cookies were distinct, `Secure`, and
-`HttpOnly`. Keystone scope discovery and project selection succeeded. A
-Tenant session presented to an Operator API returned 401. Request and
-correlation IDs were present. The browser made zero direct OpenStack API
+The Tenant and Operator BFF `/version` endpoints reported the expected RC2
+version and source SHA; both BFF surfaces' `/healthz`, `/readyz`, `/version`,
+and `/metrics` endpoints were reachable. FixtureBackend was not selected. Both
+OIDC callback flows completed over HTTPS; session cookies were distinct,
+`Secure`, and `HttpOnly`. Keystone scope discovery and project selection
+succeeded. A Tenant session presented to an Operator API returned 401. Request
+and correlation IDs were present. The browser made zero direct OpenStack API
 requests and held zero localStorage/sessionStorage keys in the observed
 journeys.
 
