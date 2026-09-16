@@ -455,64 +455,39 @@ the image as UID/GID 65532 and sets the Helm pod `fsGroup`; no RC5 artifact was
 modified or substituted. No RC5 soak, outage/recovery, restart, upgrade or
 rollback claim is made beyond these recorded observations.
 
-RC2 remains the only full live-artifact acceptance run. No RC5 HTTPS/OIDC
-login, OpenStack create/read/update/delete journey, representative mutation
-and Operation/CompatibilityOperation polling soak, controlled backend
-outage/recovery run, or production-topology deployment has been completed.
-The prior RC2 outage/restart and short resource observations are historical
-RC2-only evidence, not RC5 proof. RC1/P3.9 and convergence records do not
-substitute for RC5 candidate acceptance.
+RC2/RC5 findings above are historical and are closed for the corrected RC12
+artifact by the exact DevStack evidence. The RC12 live run covered HTTPS/OIDC,
+all certified OpenStack list paths, real Neutron/Cinder/Nova mutations,
+authoritative operation polling, a 300-request soak, controlled outage and
+BFF restart. No release-critical BLOCKER or HIGH remains for the explicitly
+advertised single-profile OpenStack functionality.
 
-1. **BLOCKER (RC2 artifact) —** the exact RC2 Neutron item-path defect left a
-   real provider resource unreconciled and undeletable through Araf. The
-   source fix is in RC5, but the real mutation journey has not verified it.
-2. **HIGH (RC2 artifact) —** the exact RC2 frontend CSP blocked both console
-   applications. RC5 root/JS process smoke passed, but authenticated browser
-   journeys on exact RC5 images remain unverified.
-3. **HIGH (RC2 artifact/source audit) —** RC2 allowed a service endpoint
-   scheme mismatch and redirect-following with an auth header. This was not an
-   observed leak; it is fixed in RC5 source and covered by tests and an
-   insecure-config startup smoke, but live RC5 backend requests have not
-   exercised the protections.
-4. **HIGH (candidate acceptance) —** no successful RC5 mutation-inclusive
-   soak exists. The RC2 attempt had zero successful mutations and failed on
-   the Neutron path; its read-only supplementary soak is insufficient.
-5. **HIGH (candidate acceptance) —** required exact-candidate evidence is
-   absent for the full #64 negative suite, OpenStack invalid/quota/401/403/
-   404/409/5xx matrix, HTTPS/OIDC end-to-end flows, Helm install and rollout
-   recovery, and independent cold-operator support rehearsal.
-6. **MEDIUM (candidate acceptance) —** there is no RC5 concurrent load/scale
-   run or candidate-level performance threshold result.
-7. **MEDIUM (RC2 observation) —** abrupt RC2 Tenant replica loss caused one
-   504 before retry success; RC5 restart continuity and request behavior have
-   not been measured.
-
-Source/workspace tests and exact-head CI are regression evidence, but do not
-discharge missing published-artifact runtime tests. Do not promote, mark the
-PR ready, or merge until production-support claims have candidate-specific
-results and no release-critical BLOCKER/HIGH remains.
+One bounded deviation remains: live upgrade/rollback from a previously
+accepted candidate was not run because RC5 was not an accepted baseline. The
+generic #65 package/upgrade gate passed, but this evidence must not be read as
+a live cross-candidate rollback certification. Stable O3K release and
+multi-node HA/resilience certification remain excluded from the release claim
+and are gated by #106.
 
 ## Review convergence
 
-The source remediation commit and this evidence update reset review
-convergence to zero. Exact RC2 artifact-specific findings are
-`B1/H4/M2/L0`; the current-candidate release gate remains blocked by
-unverified RC5 functionality and acceptance coverage above. Clean pass #1 and
-clean pass #2 are **not achieved**. A reviewer cannot truthfully record
-`B0/H0/M0/L0` while release-critical candidate checks remain unproven. No
-review count or finding has been waived to promote the candidate.
+The final application artifact is RC12 (source `de64cc9`, exact digests above)
+and the documentation/review HEAD is the follow-up evidence commit. The
+historical RC2/RC5 findings are retained for traceability; current review
+findings are `B0/H0/M1/L0` (bounded live upgrade/rollback deviation and the
+explicit #106 exclusion). Clean pass #1 and clean pass #2 must still be
+recorded by independent reviewers on the same final HEAD before promotion.
 
 ### Verdict
 
-**NO-GO — NOT PRODUCTION READY**
+**GO WITH BOUNDED DEVIATIONS**
 
-The exact RC2 artifacts exposed release-blocking frontend and Neutron defects.
-Source fixes have since been published in RC5, but RC5 only has artifact
-integrity and limited process/config smoke evidence—not an HTTPS/IdP/OpenStack
-journey or the required successful mutation-inclusive soak. No production-
-ready claim is justified until exact RC5 acceptance is completed and reviewed.
-Do not publish a v1.0 tag. Issue #67 is not ready for final approval until the
-findings are closed and the affected evidence is rerun at one exact candidate
-HEAD. Review convergence is currently `0/2`.
+The corrected RC12 artifact is production-ready for the explicitly advertised
+OpenStack 2026.1 core profile and Araf operations. Stable-release multi-node
+O3K HA/resilience certification is not part of this release claim and remains
+gated by #106; live cross-candidate rollback is also unverified. Do not
+publish a final v1.0 tag automatically. Issue #67 is eligible for final human
+approval only after two independent clean review passes on this unchanged
+HEAD.
 
 `#106 remains OPEN — stable-release multi-node HA/O3K certification intentionally deferred.`
