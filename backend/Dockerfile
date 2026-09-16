@@ -41,7 +41,7 @@ ENV ARAF_VERSION=$ARAF_VERSION ARAF_GIT_SHA=$ARAF_GIT_SHA
 # non-root BFF (UID 65532) to initialize sessions and the compatibility
 # journal without a privileged post-start repair.
 USER root
-RUN mkdir -p /var/lib/araf && chown 65532:65532 /var/lib/araf
+RUN ["/busybox/sh", "-c", "mkdir -p /var/lib/araf && chown 65532:65532 /var/lib/araf"]
 USER 65532:65532
 
 # Clear the debug distroless shell entrypoint so Compose commands execute the
