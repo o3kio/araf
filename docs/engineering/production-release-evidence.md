@@ -5,7 +5,7 @@ results below were collected on 2026-09-15. Exact published RC2 OCI digests
 were pulled and exercised in an isolated HTTPS/IdP/OpenStack harness on
 2026-09-16; that evidence is recorded separately below. Later RC4/RC5
 artifacts have build-integrity and narrowly scoped process-smoke evidence only;
-they have not received the RC2 live acceptance workload. The corrected RC11
+they have not received the RC2 live acceptance workload. The corrected RC12
 candidate below is the first exact published candidate with a live
 mutation-inclusive DevStack run; RC1 and partial RC5 checks do not close
 candidate acceptance criteria.
@@ -146,19 +146,19 @@ the test report.
 No RC2 O3K journey was run in this harness. Existing O3K convergence evidence
 is not substituted for RC2 OpenStack results or #106.
 
-## Corrected RC11 exact DevStack acceptance — 2026-09-16
+## Corrected RC12 exact DevStack acceptance — 2026-09-16
 
-RC11 is the candidate published from the source correction that repairs
+RC12 is the candidate published from the source correction that repairs
 status-less Neutron create reconciliation and initializes the non-root BFF
-state directory in the image. The exact source is `ca419280604f088ec1fd3752c695d7ff833d8e41`;
+state directory in the image. The exact source is `de64cc9193085116fa30ad51c04ccab24a013dd0`;
 the release workflow was run successfully and all images were pulled by their
 published digests (no local rebuild or substitution):
 
 | Artifact | Exact digest |
 | --- | --- |
-| BFF | `ghcr.io/o3kio/araf-bff@sha256:545b434c60f4f3aca450ec29f8ea579d18aa907e0c98711b9e2077daea00bd9a` |
-| Tenant console | `ghcr.io/o3kio/araf-tenant-console@sha256:cd679597f6d7a6e1608e79e7b8a4b0d9cbef40d7376fcb246e6cf75e209f1a72` |
-| Operator console | `ghcr.io/o3kio/araf-operator-console@sha256:cc1196a04a7539ee32a200d3a9b2d1758f114fc6a02ac035a52e8036c9e01726` |
+| BFF | `ghcr.io/o3kio/araf-bff@sha256:bc717ecdbbbf3ea673efe168c90419936677d644aa0ae25af4eb84906cd744ba` |
+| Tenant console | `ghcr.io/o3kio/araf-tenant-console@sha256:25f5fe41927f68db3dafd49597c6b8cb4520bca2dd45ec131d1372474ef3e5e5` |
+| Operator console | `ghcr.io/o3kio/araf-operator-console@sha256:cbbad76033eced4d4290c9848e0665a23c30bd4a7c647077ba0cf03150666b18` |
 
 The isolated acceptance cloud was the disposable libvirt VM
 `p14-openstack-source`: Ubuntu 24.04.4, 8 vCPU, 20 GiB RAM, 130 GiB qcow2,
@@ -174,7 +174,7 @@ quotas of 4 instances, 4 vCPU, 8,192 MiB RAM, 4 networks, 8 subnets, 32 ports,
 4 volumes and 20 GiB. Passwords and tokens were held only in mode-0600 local
 secret files and are not part of this record.
 
-The exact RC11 HTTPS harness used Keycloak 26.3.5 and a short-lived local TLS
+The exact RC12 HTTPS harness used Keycloak 26.3.5 and a short-lived local TLS
 CA. Tenant login, session/context discovery and the separate Operator surface
 completed over HTTPS; cookies were Secure, HttpOnly where appropriate and
 surface-specific. Browser storage held no provider credentials. The BFFs
@@ -183,7 +183,7 @@ and `/metrics` were reachable. A Tenant request to an Operator route was
 denied server-side (404), CSRF without its token was denied (403), and a
 foreign resource read was denied (404).
 
-The mandatory Neutron regression passed with the exact RC11 images: Network create
+The mandatory Neutron regression passed with the exact RC12 images: Network create
 returned a durable CompatibilityOperation and reconciled to `succeeded` from
 authoritative `ACTIVE`; Subnet create reconciled to `succeeded` with the
 explicit event `Observed authoritative resource: PRESENT`; both resources
@@ -194,10 +194,10 @@ provider states. A Nova reboot also eventually reconciled to `succeeded` after
 the DevStack guest completed its long QEMU reboot; the operation was polled
 for up to three minutes, and no mutation was replayed.
 
-A 62.9-second exact-candidate soak executed 300 meaningful requests: repeated
+A 64.0-second exact-candidate soak executed 300 meaningful requests: repeated
 session/context/service and bounded resource reads, 25 real Network
 create/read/delete cycles and CompatibilityOperation polling. All 300
-requests completed successfully (p50 139.8 ms, p95 687.3 ms, p99 726.1 ms).
+requests completed successfully (p50 140.9 ms, p95 689.1 ms, p99 887.4 ms).
 An injected Neutron API stop produced bounded HTTP 502 responses, and
 restarting the service restored the same list request to HTTP 200. Restarting
 the Tenant BFF after durable state existed retained the session and journal;
@@ -206,13 +206,13 @@ Tenant BFF RSS was approximately 15 MiB before and after the soak, with 13
 file descriptors; the journal and session files grew only with the expected
 operation/session records and showed no unexplained monotonic growth.
 
-The initial RC11 run exposed a harness configuration issue: Keystone’s public
+The initial RC12 run exposed a harness configuration issue: Keystone’s public
 catalog used HTTP while the HTTPS-only Araf client correctly rejected mixed
 schemes. Explicit HTTPS service URLs were then supplied for the isolated
 proxy (compute, image, networking and volume); no application source or image
 was changed. This is recorded as harness setup, not a product defect.
 
-RC11 has not been promoted. Live upgrade/rollback from a previously accepted
+RC12 has not been promoted. Live upgrade/rollback from a previously accepted
 candidate was not completed because the prior RC5 candidate had known
 release-blocking defects; generic #65 package/upgrade checks are not being
 represented as this live gate. Stable O3K release and multi-node HA evidence
