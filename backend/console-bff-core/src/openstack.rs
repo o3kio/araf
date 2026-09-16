@@ -588,7 +588,13 @@ impl OpenStackAdapter {
                 message: record
                     .observed_status
                     .as_deref()
-                    .map(|status| format!("Observed OpenStack status: {status}"))
+                    .map(|status| {
+                        if status == "PRESENT" {
+                            format!("Observed authoritative resource: {status}")
+                        } else {
+                            format!("Observed OpenStack status: {status}")
+                        }
+                    })
                     .unwrap_or_else(|| "Awaiting authoritative OpenStack state".into()),
                 correlation_id: record.correlation_id.clone(),
             }],
@@ -617,14 +623,33 @@ impl OpenStackAdapter {
             .await
         {
             Ok(resource) => {
-                let status = resource
+                let provider_status = resource
                     .properties
                     .as_ref()
                     .and_then(|properties| properties.get("status"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("UNKNOWN");
-                let state = Self::derive_operation_state(&record.action, resource.status, status);
-                (state, status.to_owned())
+                    .and_then(Value::as_str);
+                let state = Self::derive_operation_state(
+                    &record.action,
+                    &record.resource_type,
+                    resource.status,
+                    provider_status,
+                );
+                // Some authoritative Neutron resources (notably subnets and
+                // security groups) have no lifecycle `status` field. A
+                // successful detail read proves that a create completed for
+                // these status-less resource types; keep that observation
+                // distinct from an explicit/unknown provider status.
+                let observed_status = provider_status.unwrap_or({
+                    if matches!(
+                        record.resource_type.as_str(),
+                        "network.subnet" | "network.security-group"
+                    ) {
+                        "PRESENT"
+                    } else {
+                        "UNKNOWN"
+                    }
+                });
+                (state, observed_status.to_owned())
             }
             Err(ApiError::NotFound) if record.action == "delete" => {
                 (OperationState::Succeeded, "DELETED".into())
@@ -662,8 +687,9 @@ impl OpenStackAdapter {
 
     fn derive_operation_state(
         action: &str,
+        resource_type: &str,
         resource_status: ResourceStatus,
-        provider_status: &str,
+        provider_status: Option<&str>,
     ) -> OperationState {
         match action {
             "delete" => OperationState::Running,
@@ -672,7 +698,19 @@ impl OpenStackAdapter {
             }
             // Nova reports SHUTOFF as a terminal state. BUILD, ACTIVE, and
             // transitional power states must remain running.
-            "stop" if provider_status.eq_ignore_ascii_case("SHUTOFF") => OperationState::Succeeded,
+            "stop"
+                if provider_status.is_some_and(|status| status.eq_ignore_ascii_case("SHUTOFF")) =>
+            {
+                OperationState::Succeeded
+            }
+            // Neutron subnets and security groups are identified by their
+            // authoritative existence rather than a lifecycle status field.
+            "create"
+                if matches!(resource_type, "network.subnet" | "network.security-group")
+                    && provider_status.is_none() =>
+            {
+                OperationState::Succeeded
+            }
             "create" if resource_status == ResourceStatus::Error => OperationState::Failed,
             "create" if resource_status == ResourceStatus::Ready => OperationState::Succeeded,
             _ if resource_status == ResourceStatus::Error => OperationState::Failed,
@@ -1962,6 +2000,108 @@ mod tests {
             .expect("Neutron delete succeeds");
     }
 
+    #[tokio::test]
+    async fn subnet_create_operation_succeeds_when_neutron_has_no_status_field() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(request_path("/v3/auth/catalog"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"catalog": []})))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(request_path("/v2.0/subnets"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+                "subnet": {
+                    "id": "subnet-1",
+                    "name": "support-test-subnet",
+                    "network_id": "network-1",
+                    "cidr": "10.240.0.0/24",
+                    "ip_version": 4,
+                    "project_id": "project-1"
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(request_path("/v2.0/subnets/subnet-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "subnet": {
+                    "id": "subnet-1",
+                    "name": "support-test-subnet",
+                    "network_id": "network-1",
+                    "cidr": "10.240.0.0/24",
+                    "ip_version": 4,
+                    "project_id": "project-1"
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let journal_path =
+            std::env::temp_dir().join(format!("araf-compat-subnet-{}.json", Uuid::new_v4()));
+        let journal = Arc::new(RwLock::new(
+            CompatibilityJournal::open(&journal_path).expect("compatibility journal"),
+        ));
+        let adapter = OpenStackAdapter::new_with_journal(
+            "tenant-bff",
+            OpenStackClientConfig {
+                auth_url: format!("{}/v3", server.uri()),
+                token: Some("synthetic-test-token".into()),
+                username: None,
+                password: None,
+                user_domain: "Default".into(),
+                project_name: None,
+                project_id: Some("project-1".into()),
+                region: None,
+                compute_url: None,
+                image_url: None,
+                network_url: Some(server.uri()),
+                volume_url: None,
+                object_storage_url: None,
+            },
+            Some(journal),
+        )
+        .expect("adapter");
+        let ctx = RequestContext::new(
+            "request".into(),
+            "correlation".into(),
+            Arc::new(crate::request::SessionState::fixture("tenant-bff")),
+        );
+
+        let accepted = adapter
+            .create_resource(
+                &ctx,
+                "network.subnet",
+                crate::model::CreateResourceRequest {
+                    payload: json!({
+                        "name": "support-test-subnet",
+                        "network_id": "network-1",
+                        "cidr": "10.240.0.0/24",
+                        "ip_version": 4
+                    }),
+                },
+            )
+            .await
+            .expect("Neutron accepts subnet create");
+        assert_eq!(accepted.state, OperationState::Running);
+
+        let reconciled = adapter
+            .get_operation(&ctx, &accepted.id)
+            .await
+            .expect("operation lookup");
+        assert_eq!(reconciled.state, OperationState::Succeeded);
+        assert_eq!(
+            reconciled.events[0].message,
+            "Observed authoritative resource: PRESENT"
+        );
+
+        drop(adapter);
+        let _ = std::fs::remove_file(&journal_path);
+        let _ = std::fs::remove_file(journal_path.with_extension("lock"));
+    }
+
     #[test]
     fn resource_mapping_preserves_provider_fields_without_making_them_identity() {
         let resource = OpenStackAdapter::map_resource(
@@ -2047,12 +2187,62 @@ mod tests {
     #[test]
     fn stop_reconciliation_waits_for_nova_shutoff() {
         assert_eq!(
-            OpenStackAdapter::derive_operation_state("stop", ResourceStatus::Ready, "ACTIVE"),
+            OpenStackAdapter::derive_operation_state(
+                "stop",
+                "compute.server",
+                ResourceStatus::Ready,
+                Some("ACTIVE")
+            ),
             OperationState::Running
         );
         assert_eq!(
-            OpenStackAdapter::derive_operation_state("stop", ResourceStatus::Busy, "SHUTOFF"),
+            OpenStackAdapter::derive_operation_state(
+                "stop",
+                "compute.server",
+                ResourceStatus::Busy,
+                Some("SHUTOFF")
+            ),
             OperationState::Succeeded
+        );
+    }
+
+    #[test]
+    fn statusless_neutron_create_uses_authoritative_existence_only() {
+        assert_eq!(
+            OpenStackAdapter::derive_operation_state(
+                "create",
+                "network.subnet",
+                ResourceStatus::Unknown,
+                None
+            ),
+            OperationState::Succeeded
+        );
+        assert_eq!(
+            OpenStackAdapter::derive_operation_state(
+                "create",
+                "network.security-group",
+                ResourceStatus::Unknown,
+                None
+            ),
+            OperationState::Succeeded
+        );
+        assert_eq!(
+            OpenStackAdapter::derive_operation_state(
+                "create",
+                "compute.server",
+                ResourceStatus::Unknown,
+                None
+            ),
+            OperationState::Running
+        );
+        assert_eq!(
+            OpenStackAdapter::derive_operation_state(
+                "create",
+                "network.subnet",
+                ResourceStatus::Unknown,
+                Some("UNKNOWN")
+            ),
+            OperationState::Running
         );
     }
 
