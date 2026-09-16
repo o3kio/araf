@@ -1,17 +1,17 @@
 # Araf P4.7 production-release evidence
 
 This record is the source of truth for the P4.7 decision. The live functional
-run below was performed on 2026-09-15; the reviewed release head subsequently
-changed when the frontend runtime security base was refreshed, so the affected
-candidate artifacts and acceptance evidence are explicitly separated below.
+run below was performed on 2026-09-15 against `1.0.0-rc.1`. The reviewed
+`1.0.0-rc.2` artifacts were built after the frontend runtime security base was
+refreshed. RC1 live results are not evidence that the RC2 frontend artifacts
+were exercised; the two candidate identities and evidence are separated below.
 
 ## Candidate identity
 
 | Item | Candidate |
 | --- | --- |
-| Functional-test source SHA | `a8d0d0e8fd2e7f5b34a6355c2674bd26c2aa6f7d` |
+| RC1 functional-test source SHA | `a8d0d0e8fd2e7f5b34a6355c2674bd26c2aa6f7d` |
 | Candidate build source SHA | `c5af7cb0f2ad943774b42466c8c3617dfc64f9c0` |
-| Documentation/review HEAD | Documentation-only commits after the candidate build (final SHA is recorded in the handoff report) |
 | Candidate version | `1.0.0-rc.2` |
 | BFF image | `ghcr.io/o3kio/araf-bff@sha256:72081d8c634b9ca3a16b9de558ce0e56b1fd9d77603e5e235819c706409b24cf` |
 | Tenant console image | `ghcr.io/o3kio/araf-tenant-console@sha256:13f6b50a19430d069c9138aa1ee1e149ef6722c6b6c79ce5ee932fd8a96c80ec` |
@@ -20,16 +20,19 @@ candidate artifacts and acceptance evidence are explicitly separated below.
 | Registry | GitHub Container Registry (`ghcr.io/o3kio`) |
 | Build metadata | OCI revision labels on all three images match `c5af7cb` and `1.0.0-rc.2` |
 
-The live functional run used the original test SHA and local digests. The
-attested rc.2 images were built from the corrected candidate SHA above; all
+The live functional run used the RC1 source SHA and local RC1 digests. The
+attested RC2 images were built from the corrected candidate SHA above; all
 three published digests passed the pinned Trivy HIGH/CRITICAL scan, BuildKit
 SBOM generation and GitHub OIDC provenance attestation. Subsequent commits only
 update evidence text and do not alter those image inputs. The base nginx image
 was smoke-tested read-only with the mounted generated-config directory, and
-the packaging gate verifies the equivalent Helm/Compose mounts. A live
-Prometheus/frontend attachment against the private rc.2 digests is still
-required before exact-head approval; the prior live results are not silently
-substituted.
+the packaging gate verifies the equivalent Helm/Compose mounts. A local
+rebuild of the RC2 tenant frontend source started read-only and served the
+console with the expected security headers, but its image digest was
+`sha256:2fc2e328811337daee6f40a9306a15fa1318021c2f5152292052edb9bebd1e45`,
+not the attested RC2 digest above. It is source-level smoke evidence only. The
+published RC2 frontend digests remain unexercised in the live HTTPS harness;
+the RC1 live results are not substituted for them.
 
 ## Release contract
 
@@ -48,34 +51,35 @@ state, not an OpenStack authority.
 
 ## Install and authentication
 
-The candidate was started from the digest-pinned local OCI artifact, without
-building source in the target runtime. Four non-root, read-only BFF
+The RC1 live deployment was started from digest-pinned local OCI artifacts,
+without building source in the target runtime. Four non-root, read-only BFF
 containers (two Tenant and two Operator) shared encrypted durable session and
 CompatibilityOperation paths. The deployment used an HTTPS reverse proxy and
 Keycloak 26.3 (`araf-p28`) as the real IdP.
 
 `/healthz`, `/readyz`, `/version` and `/metrics` returned successfully on both
-surfaces. The original live deployment reported `1.0.0-rc.1`; the attested
-candidate identity for approval is `1.0.0-rc.2` and the exact source SHA above.
-Tenant and Operator OIDC login, callback, logout/session cookies and re-login
-were exercised over HTTPS. No provider token was present in browser-visible
-responses.
+surfaces. The live deployment reported `1.0.0-rc.1`. Tenant and Operator OIDC
+login, callback, logout/session cookies and re-login were exercised over
+HTTPS. No provider token was present in browser-visible responses. The
+attested `1.0.0-rc.2` frontend digests have not completed this install/auth
+journey; only the local source rebuild smoke noted above was run.
 
 ## Functional journeys
 
-The Tenant session discovered 30 capabilities, listed Keystone/Nova/Glance/
-Neutron/Cinder resources and selected the server-authoritative project scope.
+On RC1, the Tenant session discovered 30 capabilities, listed
+Keystone/Nova/Glance/Neutron/Cinder resources and selected the
+server-authoritative project scope.
 A real OpenStack network create returned a durable CompatibilityOperation and
 the resulting network was verified in authoritative Neutron before cleanup.
 An invalid compute create was rejected with a bounded error. The deferred
 `object.storage.bucket` capability returned HTTP 501 and did not expand the
 support contract.
 
-The Operator session authenticated independently. A Tenant cookie sent to an
-Operator route returned HTTP 401. Requests alternated across both replicas;
-session and scope continuity remained intact after killing and restarting one
-Tenant replica. This is Araf/OpenStack replica evidence only, not O3K HA
-certification.
+On RC1, the Operator session authenticated independently. A Tenant cookie
+sent to an Operator route returned HTTP 401. Requests alternated across both
+replicas; session and scope continuity remained intact after killing and
+restarting one Tenant replica. This is Araf/OpenStack replica evidence only,
+not O3K HA certification.
 
 Existing matched-profile evidence remains in
 [`openstack-2026.1-p3.9-evidence.md`](openstack-2026.1-p3.9-evidence.md) and
@@ -97,26 +101,29 @@ represented as a stable O3K release or as #106 evidence.
 - Invalid mutation returned a bounded problem response with correlation data;
   no automatic replay was attempted.
 - HTTPS, OIDC state/PKCE, CSRF and cookie separation were exercised in the
-  live candidate path. Existing release security negatives are recorded in
-  [`security-release-evidence.md`](security-release-evidence.md).
+  RC1 live path. Existing release security negatives are recorded in
+  [`security-release-evidence.md`](security-release-evidence.md); they were not
+  all repeated against the RC2 frontend digests.
 - `/healthz`, `/readyz`, `/version`, `/metrics`, request IDs and correlation
   IDs were collected. The support path is browser → BFF → adapter →
   CompatibilityOperation/authoritative OpenStack resource.
 - `tests/support-bundle-security.sh` passed with synthetic OIDC token-like,
-  bearer, session-key and password markers. A live candidate bundle contained
+  bearer, session-key and password markers. The RC1 live bundle contained
   only version, readiness, metrics, environment names and a redaction notice;
   it contained no credentials, cookies, keys or tokens.
 
 ## Performance and pilot/soak
 
-The exact candidate ran a 45-second two-Tenant/two-Operator authenticated
+The RC1 deployment ran a 45-second two-Tenant/two-Operator authenticated
 soak: 72 requests, zero failures, repeated context/service/resource/metrics
-reads, and successful OIDC sessions. Tenant RSS remained approximately
+reads, and successful OIDC sessions. It did not include mutations, Operation
+polling, or an injected backend outage/recovery within the soak workload.
+Tenant RSS remained approximately
 4.69–4.73 MiB and 4.80–4.81 MiB across replicas; the session store remained
 bounded at 4,356 bytes and the compatibility journal remained empty because
-the workload was read-only. This is a bounded development-host soak, not an
-independently operated production pilot. The reusable OpenStack and fixture
-baselines remain in [`performance-evidence.md`](performance-evidence.md).
+the workload was read-only. This is a bounded development-host soak. The
+reusable OpenStack and fixture baselines remain in
+[`performance-evidence.md`](performance-evidence.md).
 
 ## Upgrade, rollback and failed rollout
 
@@ -133,37 +140,45 @@ it is not a claim for untested state formats or external Helm orchestration.
 The following deviations are release-gate findings, not hidden limitations:
 
 1. **HIGH —** the frontend runtime security fix changed the source after the
-   live functional run; exact-head frontend acceptance has not yet been rerun
-   against the published digests.
-2. **MEDIUM —** the candidate soak was bounded to 45 seconds on the
-   development host and was not an independently operated production pilot.
-   Exact-candidate restart, rollback and failed-readiness recovery did pass.
+   RC1 live functional run. The published RC2 frontend digests have not been
+   installed or exercised in the live HTTPS harness. The locally rebuilt
+   tenant image is a different digest and does not close this finding. Pulling
+   the published digest returned `unauthorized` because this environment's
+   credential lacks package-read access; no registry permissions or
+   credentials were changed to work around that restriction.
+2. **MEDIUM —** the 45-second RC1 soak was read-heavy and did not cover the
+   required mutation, Operation-polling, or injected backend-failure/recovery
+   workload in the soak itself. Separate restart, rollback and failed-readiness
+   checks passed, but they do not substitute for that representative workload.
 3. **BOUNDED —** stable-release multi-node O3K HA/resilience certification is
    intentionally excluded and remains gated by #106.
 
 ## Review convergence
 
-Five comprehensive reviews were performed. The final review included the
-release-gate portability fix, the frontend runtime security and read-only nginx
-mount fixes, the rc.2 artifact identity refresh, and a stale historical
-packaging statement that was corrected. No unresolved B0/M0/L0 implementation
-or documentation defect remains. The runtime change still invalidated the
-prior frontend candidate evidence, and the private attested frontend digests
-have not been exercised in the live harness. Exact-head clean pass #1 and
-clean pass #2 (`B0/H0/M0/L0`) were therefore **not achieved**; the PR must not
-be merged as a production release until the affected live gate is rerun and
-the remaining pilot limitation is accepted or resolved.
+Six comprehensive reviews have been performed through 2026-09-16. This latest
+review found that several RC1 live results were described as candidate/RC2
+results; the evidence above now labels those runs as RC1 and records the
+different-digest RC2 source smoke separately. It also identifies the soak's
+missing mutation, Operation-polling and backend-failure/recovery workload.
+Earlier reviews fixed the release-gate portability issue, frontend runtime
+security and read-only nginx mounts, candidate identity, and a stale
+packaging statement. The remaining HIGH and MEDIUM release findings are
+listed above. No clean pass #1 or #2 (`B0/H0/M0/L0`) has occurred on this
+corrected evidence head; CI and review convergence must restart after this
+change. The PR must not be merged as a production release until the candidate
+artifact and representative soak gates are completed and reviewed.
 
 ### Verdict
 
 **NO-GO — NOT PRODUCTION READY**
 
-The original candidate is operationally demonstrable against the live
-certified OpenStack/IdP profile, but the reviewed head still lacks exact-head
-frontend acceptance and trusted artifact evidence; the lack of an
-independently operated production pilot also remains. These findings prohibit
-a production-ready claim. Do not publish a v1.0 tag. Issue #67 is not ready
-for final approval until the findings are closed and the affected evidence is
-rerun at one exact candidate HEAD.
+RC1 is operationally demonstrable against the live certified OpenStack/IdP
+profile, but RC2 still lacks live acceptance of its exact frontend artifacts.
+The bounded read-heavy soak also lacks the required mutation, Operation-polling
+and backend-failure/recovery coverage. These findings prohibit a
+production-ready claim.
+Do not publish a v1.0 tag. Issue #67 is not ready for final approval until the
+findings are closed and the affected evidence is rerun at one exact candidate
+HEAD.
 
 `#106 remains OPEN — stable-release multi-node HA/O3K certification intentionally deferred.`
