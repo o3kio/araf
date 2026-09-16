@@ -40,7 +40,9 @@ ENV ARAF_VERSION=$ARAF_VERSION ARAF_GIT_SHA=$ARAF_GIT_SHA
 # directory metadata into a newly-created named volume, allowing the
 # non-root BFF (UID 65532) to initialize sessions and the compatibility
 # journal without a privileged post-start repair.
+USER root
 RUN mkdir -p /var/lib/araf && chown 65532:65532 /var/lib/araf
+USER 65532:65532
 
 # Clear the debug distroless shell entrypoint so Compose commands execute the
 # selected BFF binary directly.
