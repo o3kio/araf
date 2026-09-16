@@ -55,18 +55,7 @@ impl OpenStackClientConfig {
     pub fn from_env() -> Result<Self, ApiError> {
         let auth_url = std::env::var("OPENSTACK_AUTH_URL")
             .map_err(|_| config_error("OPENSTACK_AUTH_URL is required"))?;
-        let parsed = Url::parse(auth_url.trim())
-            .map_err(|_| config_error("OPENSTACK_AUTH_URL must be an absolute URL"))?;
-        if parsed.host_str().is_none()
-            || !parsed.username().is_empty()
-            || parsed.password().is_some()
-            || parsed.query().is_some()
-            || parsed.fragment().is_some()
-        {
-            return Err(config_error(
-                "OPENSTACK_AUTH_URL must be credential-free and host-qualified",
-            ));
-        }
+        let required_scheme = auth_url_scheme(&auth_url)?;
         Ok(Self {
             auth_url: auth_url.trim().trim_end_matches('/').to_owned(),
             token: std::env::var("OPENSTACK_TOKEN")
@@ -89,32 +78,64 @@ impl OpenStackClientConfig {
             region: std::env::var("OPENSTACK_REGION")
                 .ok()
                 .filter(|v| !v.trim().is_empty()),
-            compute_url: env_url("OPENSTACK_COMPUTE_URL")?,
-            image_url: env_url("OPENSTACK_IMAGE_URL")?,
-            network_url: env_url("OPENSTACK_NETWORK_URL")?,
-            volume_url: env_url("OPENSTACK_VOLUME_URL")?,
-            object_storage_url: env_url("OPENSTACK_OBJECT_STORAGE_URL")?,
+            compute_url: env_url("OPENSTACK_COMPUTE_URL", &required_scheme)?,
+            image_url: env_url("OPENSTACK_IMAGE_URL", &required_scheme)?,
+            network_url: env_url("OPENSTACK_NETWORK_URL", &required_scheme)?,
+            volume_url: env_url("OPENSTACK_VOLUME_URL", &required_scheme)?,
+            object_storage_url: env_url("OPENSTACK_OBJECT_STORAGE_URL", &required_scheme)?,
         })
     }
 }
 
-fn env_url(name: &str) -> Result<Option<String>, ApiError> {
-    let Some(value) = std::env::var(name).ok().filter(|v| !v.trim().is_empty()) else {
-        return Ok(None);
-    };
+fn auth_url_scheme(value: &str) -> Result<String, ApiError> {
     let parsed = Url::parse(value.trim())
-        .map_err(|_| config_error(format!("{name} must be an absolute URL")))?;
+        .map_err(|_| config_error("OPENSTACK_AUTH_URL must be an absolute URL"))?;
     if parsed.host_str().is_none()
         || !parsed.username().is_empty()
         || parsed.password().is_some()
         || parsed.query().is_some()
         || parsed.fragment().is_some()
+        || !matches!(parsed.scheme(), "http" | "https")
     {
-        return Err(config_error(format!(
-            "{name} must be credential-free and host-qualified"
-        )));
+        return Err(config_error(
+            "OPENSTACK_AUTH_URL must be a credential-free HTTP(S) URL",
+        ));
     }
-    Ok(Some(value.trim().trim_end_matches('/').to_owned()))
+    Ok(parsed.scheme().to_owned())
+}
+
+fn validate_service_endpoint(value: &str, required_scheme: &str) -> Option<String> {
+    // Keystone catalog URLs may contain the legacy tenant placeholder. Replace
+    // only that known template while validating; `scoped_base` expands it after
+    // the request's project has been authorized.
+    let candidate = value
+        .trim()
+        .replace("%(tenant_id)s", "araf-project-placeholder");
+    let parsed = Url::parse(&candidate).ok()?;
+    if parsed.scheme() != required_scheme
+        || !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return None;
+    }
+    Some(value.trim().trim_end_matches('/').to_owned())
+}
+
+fn env_url(name: &str, required_scheme: &str) -> Result<Option<String>, ApiError> {
+    let Some(value) = std::env::var(name).ok().filter(|v| !v.trim().is_empty()) else {
+        return Ok(None);
+    };
+    validate_service_endpoint(value.trim(), required_scheme)
+        .map(Some)
+        .ok_or_else(|| {
+            config_error(format!(
+                "{name} must be a credential-free {required_scheme} service URL"
+            ))
+        })
 }
 
 fn config_error(message: impl Into<String>) -> ApiError {
@@ -158,6 +179,9 @@ impl OpenStackAdapter {
     ) -> Result<Self, ApiError> {
         let client = Client::builder()
             .timeout(HTTP_TIMEOUT)
+            // Never forward Keystone credentials or scoped tokens through an
+            // endpoint-controlled redirect to another origin.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| config_error(e.to_string()))?;
         Ok(Self {
@@ -322,6 +346,7 @@ impl OpenStackAdapter {
     }
 
     fn update_catalog(&self, value: &Value) {
+        let required_scheme = auth_url_scheme(&self.config.auth_url).unwrap_or_default();
         let mut discovered = HashMap::new();
         if let Some(entries) = value.get("catalog").and_then(Value::as_array) {
             for entry in entries {
@@ -331,18 +356,26 @@ impl OpenStackAdapter {
                 let Some(endpoints) = entry.get("endpoints").and_then(Value::as_array) else {
                     continue;
                 };
+                let is_usable = |endpoint: &&Value| {
+                    self.config.region.as_deref().is_none_or(|region| {
+                        endpoint.get("region").and_then(Value::as_str) == Some(region)
+                    }) && endpoint
+                        .get("url")
+                        .and_then(Value::as_str)
+                        .and_then(|url| validate_service_endpoint(url, &required_scheme))
+                        .is_some()
+                };
                 let selected = endpoints
                     .iter()
+                    .filter(|endpoint| is_usable(endpoint))
                     .find(|endpoint| {
                         endpoint.get("interface").and_then(Value::as_str) == Some("public")
-                            && self.config.region.as_deref().is_none_or(|region| {
-                                endpoint.get("region").and_then(Value::as_str) == Some(region)
-                            })
                     })
-                    .or_else(|| endpoints.first());
+                    .or_else(|| endpoints.iter().find(|endpoint| is_usable(endpoint)));
                 if let Some(url) = selected
                     .and_then(|endpoint| endpoint.get("url"))
                     .and_then(Value::as_str)
+                    .and_then(|url| validate_service_endpoint(url, &required_scheme))
                 {
                     let key = match kind {
                         "compute" => "compute",
@@ -376,6 +409,43 @@ impl OpenStackAdapter {
         } else {
             base.to_owned()
         }
+    }
+
+    fn validate_resource_id(id: &str) -> Result<(), ApiError> {
+        // The URL crate normalizes `.` and `..` path segments while building
+        // the request URL. Treat these as invalid IDs so malformed input can
+        // never turn an item request into a collection/root request.
+        if id.is_empty() || id.len() > 256 || id.contains('/') || matches!(id, "." | "..") {
+            return Err(ApiError::NotFound);
+        }
+        Ok(())
+    }
+
+    fn item_url(base: &str, path: &str, id: &str) -> Result<Url, ApiError> {
+        Self::validate_resource_id(id)?;
+        // Keep the complete service path from the catalog endpoint (for
+        // example `v2.0/networks` or `v2/images`) when deriving detail/delete
+        // URLs. Only Nova/Cinder-style `collection/detail` paths need the
+        // detail suffix removed.
+        let collection_path = path.trim_end_matches("/detail");
+        let mut url = Url::parse(&format!(
+            "{}/{}",
+            base.trim_end_matches('/'),
+            collection_path
+        ))
+        .map_err(|e| config_error(e.to_string()))?;
+        url.path_segments_mut()
+            .map_err(|_| config_error("upstream service URL cannot accept a resource path"))?
+            .push(id);
+        Ok(url)
+    }
+
+    fn item_action_url(base: &str, path: &str, id: &str, action: &str) -> Result<Url, ApiError> {
+        let mut url = Self::item_url(base, path, id)?;
+        url.path_segments_mut()
+            .map_err(|_| config_error("upstream service URL cannot accept an action path"))?
+            .push(action);
+        Ok(url)
     }
 
     async fn discover_catalog(&self, ctx: &RequestContext) -> Result<(), ApiError> {
@@ -518,7 +588,13 @@ impl OpenStackAdapter {
                 message: record
                     .observed_status
                     .as_deref()
-                    .map(|status| format!("Observed OpenStack status: {status}"))
+                    .map(|status| {
+                        if status == "PRESENT" {
+                            format!("Observed authoritative resource: {status}")
+                        } else {
+                            format!("Observed OpenStack status: {status}")
+                        }
+                    })
                     .unwrap_or_else(|| "Awaiting authoritative OpenStack state".into()),
                 correlation_id: record.correlation_id.clone(),
             }],
@@ -547,14 +623,33 @@ impl OpenStackAdapter {
             .await
         {
             Ok(resource) => {
-                let status = resource
+                let provider_status = resource
                     .properties
                     .as_ref()
                     .and_then(|properties| properties.get("status"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("UNKNOWN");
-                let state = Self::derive_operation_state(&record.action, resource.status, status);
-                (state, status.to_owned())
+                    .and_then(Value::as_str);
+                let state = Self::derive_operation_state(
+                    &record.action,
+                    &record.resource_type,
+                    resource.status,
+                    provider_status,
+                );
+                // Some authoritative Neutron resources (notably subnets and
+                // security groups) have no lifecycle `status` field. A
+                // successful detail read proves that a create completed for
+                // these status-less resource types; keep that observation
+                // distinct from an explicit/unknown provider status.
+                let observed_status = provider_status.unwrap_or({
+                    if matches!(
+                        record.resource_type.as_str(),
+                        "network.subnet" | "network.security-group"
+                    ) {
+                        "PRESENT"
+                    } else {
+                        "UNKNOWN"
+                    }
+                });
+                (state, observed_status.to_owned())
             }
             Err(ApiError::NotFound) if record.action == "delete" => {
                 (OperationState::Succeeded, "DELETED".into())
@@ -592,8 +687,9 @@ impl OpenStackAdapter {
 
     fn derive_operation_state(
         action: &str,
+        resource_type: &str,
         resource_status: ResourceStatus,
-        provider_status: &str,
+        provider_status: Option<&str>,
     ) -> OperationState {
         match action {
             "delete" => OperationState::Running,
@@ -602,7 +698,19 @@ impl OpenStackAdapter {
             }
             // Nova reports SHUTOFF as a terminal state. BUILD, ACTIVE, and
             // transitional power states must remain running.
-            "stop" if provider_status.eq_ignore_ascii_case("SHUTOFF") => OperationState::Succeeded,
+            "stop"
+                if provider_status.is_some_and(|status| status.eq_ignore_ascii_case("SHUTOFF")) =>
+            {
+                OperationState::Succeeded
+            }
+            // Neutron subnets and security groups are identified by their
+            // authoritative existence rather than a lifecycle status field.
+            "create"
+                if matches!(resource_type, "network.subnet" | "network.security-group")
+                    && provider_status.is_none() =>
+            {
+                OperationState::Succeeded
+            }
             "create" if resource_status == ResourceStatus::Error => OperationState::Failed,
             "create" if resource_status == ResourceStatus::Ready => OperationState::Succeeded,
             _ if resource_status == ResourceStatus::Error => OperationState::Failed,
@@ -1356,9 +1464,7 @@ impl Upstream for OpenStackAdapter {
         resource_type: &str,
         id: &str,
     ) -> Result<Resource, ApiError> {
-        if id.is_empty() || id.len() > 256 || id.contains('/') {
-            return Err(ApiError::NotFound);
-        }
+        Self::validate_resource_id(id)?;
         let _ = self.discover_catalog(ctx).await;
         let (base, path) = self.endpoint(resource_type).ok_or_else(|| {
             ApiError::NotImplemented(format!(
@@ -1387,11 +1493,7 @@ impl Upstream for OpenStackAdapter {
             path.trim_end_matches("/detail")
         };
         let project = self.project(ctx, None)?;
-        let url = Url::parse(&format!(
-            "{}/{singular}/{id}",
-            self.scoped_base(&base, project)
-        ))
-        .map_err(|e| config_error(e.to_string()))?;
+        let url = Self::item_url(&self.scoped_base(&base, project), path, id)?;
         let (_, body) = self.request_json(ctx, Method::GET, url, None).await?;
         let value = body
             .get(match resource_type {
@@ -1484,6 +1586,7 @@ impl Upstream for OpenStackAdapter {
         id: &str,
         request: ActionRequest,
     ) -> Result<Operation, ApiError> {
+        Self::validate_resource_id(id)?;
         if resource_type != "compute.server"
             || !matches!(request.action_id.as_str(), "start" | "stop" | "reboot")
         {
@@ -1504,11 +1607,8 @@ impl Upstream for OpenStackAdapter {
             _ => unreachable!(),
         };
         let project = self.project(ctx, None)?;
-        let url = Url::parse(&format!(
-            "{}/servers/{id}/action",
-            self.scoped_base(&base, project)
-        ))
-        .map_err(|e| config_error(e.to_string()))?;
+        let url =
+            Self::item_action_url(&self.scoped_base(&base, project), "servers", id, "action")?;
         if let Err(error) = self
             .request_json(ctx, Method::POST, url, Some(action_body))
             .await
@@ -1535,35 +1635,15 @@ impl Upstream for OpenStackAdapter {
         resource_type: &str,
         id: &str,
     ) -> Result<Operation, ApiError> {
+        Self::validate_resource_id(id)?;
         let _ = self.discover_catalog(ctx).await;
         let (base, path) = self.endpoint(resource_type).ok_or_else(|| {
             ApiError::NotImplemented(format!(
                 "OpenStack capability is unavailable for {resource_type}"
             ))
         })?;
-        let singular = if resource_type == "compute.server" {
-            "servers"
-        } else if resource_type == "block.volume" {
-            "volumes"
-        } else if resource_type == "object.storage.bucket" {
-            "containers"
-        } else if resource_type == "network.network" {
-            "networks"
-        } else if resource_type == "network.subnet" {
-            "subnets"
-        } else if resource_type == "network.port" {
-            "ports"
-        } else if resource_type == "network.security-group" {
-            "security-groups"
-        } else {
-            path.trim_end_matches("/detail")
-        };
         let project = self.project(ctx, None)?;
-        let url = Url::parse(&format!(
-            "{}/{singular}/{id}",
-            self.scoped_base(&base, project)
-        ))
-        .map_err(|e| config_error(e.to_string()))?;
+        let url = Self::item_url(&self.scoped_base(&base, project), path, id)?;
         if let Err(error) = self.request_json(ctx, Method::DELETE, url, None).await {
             self.persist_failed_operation(ctx, "delete", resource_type, Some(id), &error)
                 .await?;
@@ -1681,6 +1761,346 @@ fn map_status(status: StatusCode, value: &Value) -> ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::matchers::{method, path as request_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn service_endpoint_must_match_keystone_scheme_and_be_credential_free() {
+        assert_eq!(
+            validate_service_endpoint("https://neutron.example/v2.0/%(tenant_id)s", "https"),
+            Some("https://neutron.example/v2.0/%(tenant_id)s".into())
+        );
+        for unsafe_endpoint in [
+            "http://neutron.example/v2.0",
+            "https://user:password@neutron.example/v2.0",
+            "https://neutron.example/v2.0?redirect=https://evil.example",
+            "https://neutron.example/v2.0#fragment",
+            "file:///etc/passwd",
+        ] {
+            assert!(validate_service_endpoint(unsafe_endpoint, "https").is_none());
+        }
+        assert!(validate_service_endpoint("http://neutron.example/v2.0", "http").is_some());
+    }
+
+    #[test]
+    fn catalog_ignores_insecure_or_credentialed_service_endpoints() {
+        let adapter = OpenStackAdapter::new(
+            "tenant-bff",
+            OpenStackClientConfig {
+                auth_url: "https://keystone.example/v3".into(),
+                token: Some("synthetic-test-token".into()),
+                username: None,
+                password: None,
+                user_domain: "Default".into(),
+                project_name: None,
+                project_id: None,
+                region: None,
+                compute_url: None,
+                image_url: None,
+                network_url: None,
+                volume_url: None,
+                object_storage_url: None,
+            },
+        )
+        .expect("adapter");
+        adapter.update_catalog(&json!({
+            "catalog": [
+                {"type":"network","endpoints":[
+                    {"interface":"public","url":"http://neutron.example/v2.0"},
+                    {"interface":"internal","url":"https://neutron.example/v2.0"}
+                ]},
+                {"type":"compute","endpoints":[
+                    {"interface":"public","url":"https://user:secret@nova.example/v2.1"},
+                    {"interface":"internal","url":"https://nova.example/v2.1"}
+                ]},
+                {"type":"image","endpoints":[
+                    {"interface":"public","url":"https://glance.example/v2?next=https://evil.example"}
+                ]}
+            ]
+        }));
+
+        assert_eq!(
+            adapter.endpoint("network.network").map(|entry| entry.0),
+            Some("https://neutron.example/v2.0".into())
+        );
+        assert_eq!(
+            adapter.endpoint("compute.server").map(|entry| entry.0),
+            Some("https://nova.example/v2.1".into())
+        );
+        assert!(adapter.endpoint("image.image").is_none());
+    }
+
+    #[tokio::test]
+    async fn openstack_client_does_not_follow_credentialed_redirects() {
+        let keystone = MockServer::start().await;
+        let redirect_target = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(request_path("/v3/auth/catalog"))
+            .respond_with(
+                ResponseTemplate::new(307)
+                    .insert_header("Location", format!("{}/capture", redirect_target.uri())),
+            )
+            .expect(1)
+            .mount(&keystone)
+            .await;
+        let adapter = OpenStackAdapter::new(
+            "tenant-bff",
+            OpenStackClientConfig {
+                auth_url: format!("{}/v3", keystone.uri()),
+                token: Some("synthetic-test-token".into()),
+                username: None,
+                password: None,
+                user_domain: "Default".into(),
+                project_name: None,
+                project_id: None,
+                region: None,
+                compute_url: None,
+                image_url: None,
+                network_url: None,
+                volume_url: None,
+                object_storage_url: None,
+            },
+        )
+        .expect("adapter");
+        let ctx = RequestContext::new(
+            "request".into(),
+            "correlation".into(),
+            Arc::new(crate::request::SessionState::fixture("tenant-bff")),
+        );
+
+        assert!(adapter.discover_catalog(&ctx).await.is_err());
+        assert!(redirect_target
+            .received_requests()
+            .await
+            .unwrap_or_default()
+            .is_empty());
+    }
+
+    #[test]
+    fn detail_and_delete_urls_preserve_api_prefix_and_escape_resource_id() {
+        let cases = [
+            (
+                "https://neutron.example/",
+                "v2.0/networks",
+                "network?include=all",
+                "https://neutron.example/v2.0/networks/network%3Finclude=all",
+            ),
+            (
+                "https://glance.example",
+                "v2/images",
+                "image-1",
+                "https://glance.example/v2/images/image-1",
+            ),
+            (
+                "https://nova.example/v2.1",
+                "servers/detail",
+                "server-1",
+                "https://nova.example/v2.1/servers/server-1",
+            ),
+            (
+                "https://cinder.example/v3/project-1",
+                "volumes/detail",
+                "volume-1",
+                "https://cinder.example/v3/project-1/volumes/volume-1",
+            ),
+        ];
+
+        for (base, path, id, expected) in cases {
+            assert_eq!(
+                OpenStackAdapter::item_url(base, path, id)
+                    .expect("valid item URL")
+                    .as_str(),
+                expected
+            );
+        }
+        assert_eq!(
+            OpenStackAdapter::item_action_url(
+                "https://nova.example/v2.1",
+                "servers",
+                "server-1",
+                "action"
+            )
+            .expect("valid action URL")
+            .as_str(),
+            "https://nova.example/v2.1/servers/server-1/action"
+        );
+        assert!(matches!(
+            OpenStackAdapter::item_url("https://neutron.example", "v2.0/networks", "../other"),
+            Err(ApiError::NotFound)
+        ));
+        for invalid_id in [".", ".."] {
+            assert!(matches!(
+                OpenStackAdapter::item_url("https://neutron.example", "v2.0/networks", invalid_id),
+                Err(ApiError::NotFound)
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn neutron_detail_and_delete_use_the_authoritative_v20_paths() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(request_path("/v3/auth/catalog"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"catalog": []})))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(request_path("/v2.0/networks/network-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "network": {
+                    "id": "network-1",
+                    "name": "support-test",
+                    "status": "ACTIVE",
+                    "project_id": "project-1"
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(request_path("/v2.0/networks/network-1"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let adapter = OpenStackAdapter::new(
+            "tenant-bff",
+            OpenStackClientConfig {
+                auth_url: format!("{}/v3", server.uri()),
+                token: Some("synthetic-test-token".into()),
+                username: None,
+                password: None,
+                user_domain: "Default".into(),
+                project_name: None,
+                project_id: Some("project-1".into()),
+                region: None,
+                compute_url: None,
+                image_url: None,
+                network_url: Some(server.uri()),
+                volume_url: None,
+                object_storage_url: None,
+            },
+        )
+        .expect("adapter");
+        let ctx = RequestContext::new(
+            "request".into(),
+            "correlation".into(),
+            Arc::new(crate::request::SessionState::fixture("tenant-bff")),
+        );
+
+        let resource = adapter
+            .get_resource(&ctx, "network.network", "network-1")
+            .await
+            .expect("Neutron detail succeeds");
+        assert_eq!(resource.id, "network-1");
+        adapter
+            .delete_resource(&ctx, "network.network", "network-1")
+            .await
+            .expect("Neutron delete succeeds");
+    }
+
+    #[tokio::test]
+    async fn subnet_create_operation_succeeds_when_neutron_has_no_status_field() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(request_path("/v3/auth/catalog"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"catalog": []})))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(request_path("/v2.0/subnets"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+                "subnet": {
+                    "id": "subnet-1",
+                    "name": "support-test-subnet",
+                    "network_id": "network-1",
+                    "cidr": "10.240.0.0/24",
+                    "ip_version": 4,
+                    "project_id": "project-1"
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(request_path("/v2.0/subnets/subnet-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "subnet": {
+                    "id": "subnet-1",
+                    "name": "support-test-subnet",
+                    "network_id": "network-1",
+                    "cidr": "10.240.0.0/24",
+                    "ip_version": 4,
+                    "project_id": "project-1"
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let journal_path =
+            std::env::temp_dir().join(format!("araf-compat-subnet-{}.json", Uuid::new_v4()));
+        let journal = Arc::new(RwLock::new(
+            CompatibilityJournal::open(&journal_path).expect("compatibility journal"),
+        ));
+        let adapter = OpenStackAdapter::new_with_journal(
+            "tenant-bff",
+            OpenStackClientConfig {
+                auth_url: format!("{}/v3", server.uri()),
+                token: Some("synthetic-test-token".into()),
+                username: None,
+                password: None,
+                user_domain: "Default".into(),
+                project_name: None,
+                project_id: Some("project-1".into()),
+                region: None,
+                compute_url: None,
+                image_url: None,
+                network_url: Some(server.uri()),
+                volume_url: None,
+                object_storage_url: None,
+            },
+            Some(journal),
+        )
+        .expect("adapter");
+        let ctx = RequestContext::new(
+            "request".into(),
+            "correlation".into(),
+            Arc::new(crate::request::SessionState::fixture("tenant-bff")),
+        );
+
+        let accepted = adapter
+            .create_resource(
+                &ctx,
+                "network.subnet",
+                crate::model::CreateResourceRequest {
+                    payload: json!({
+                        "name": "support-test-subnet",
+                        "network_id": "network-1",
+                        "cidr": "10.240.0.0/24",
+                        "ip_version": 4
+                    }),
+                },
+            )
+            .await
+            .expect("Neutron accepts subnet create");
+        assert_eq!(accepted.state, OperationState::Running);
+
+        let reconciled = adapter
+            .get_operation(&ctx, &accepted.id)
+            .await
+            .expect("operation lookup");
+        assert_eq!(reconciled.state, OperationState::Succeeded);
+        assert_eq!(
+            reconciled.events[0].message,
+            "Observed authoritative resource: PRESENT"
+        );
+
+        drop(adapter);
+        let _ = std::fs::remove_file(&journal_path);
+        let _ = std::fs::remove_file(journal_path.with_extension("lock"));
+    }
 
     #[test]
     fn resource_mapping_preserves_provider_fields_without_making_them_identity() {
@@ -1767,12 +2187,62 @@ mod tests {
     #[test]
     fn stop_reconciliation_waits_for_nova_shutoff() {
         assert_eq!(
-            OpenStackAdapter::derive_operation_state("stop", ResourceStatus::Ready, "ACTIVE"),
+            OpenStackAdapter::derive_operation_state(
+                "stop",
+                "compute.server",
+                ResourceStatus::Ready,
+                Some("ACTIVE")
+            ),
             OperationState::Running
         );
         assert_eq!(
-            OpenStackAdapter::derive_operation_state("stop", ResourceStatus::Busy, "SHUTOFF"),
+            OpenStackAdapter::derive_operation_state(
+                "stop",
+                "compute.server",
+                ResourceStatus::Busy,
+                Some("SHUTOFF")
+            ),
             OperationState::Succeeded
+        );
+    }
+
+    #[test]
+    fn statusless_neutron_create_uses_authoritative_existence_only() {
+        assert_eq!(
+            OpenStackAdapter::derive_operation_state(
+                "create",
+                "network.subnet",
+                ResourceStatus::Unknown,
+                None
+            ),
+            OperationState::Succeeded
+        );
+        assert_eq!(
+            OpenStackAdapter::derive_operation_state(
+                "create",
+                "network.security-group",
+                ResourceStatus::Unknown,
+                None
+            ),
+            OperationState::Succeeded
+        );
+        assert_eq!(
+            OpenStackAdapter::derive_operation_state(
+                "create",
+                "compute.server",
+                ResourceStatus::Unknown,
+                None
+            ),
+            OperationState::Running
+        );
+        assert_eq!(
+            OpenStackAdapter::derive_operation_state(
+                "create",
+                "network.subnet",
+                ResourceStatus::Unknown,
+                Some("UNKNOWN")
+            ),
+            OperationState::Running
         );
     }
 

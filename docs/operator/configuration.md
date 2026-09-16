@@ -36,7 +36,10 @@ omitted.
 | `ARAF_OPERATOR_BFF_PORT` | no | `8081` | Operator BFF | yes | Container listener; expose only through private service/ingress. |
 | `RUST_LOG` | no | subscriber default | both | no | Use an allowlisted level; structured logs never include secrets. |
 
-All endpoint URLs are absolute and credential-free. `ARAF_TRUSTED_ORIGINS`
-must contain origins, not callback paths. Changing any setting requires a
-controlled restart/rollout; changing the session key without restoring the
-matching old key invalidates encrypted sessions.
+All endpoint URLs are absolute and credential-free. In production, every
+explicit OpenStack service URL and every selected Keystone catalog endpoint
+must use the same HTTPS scheme as `OPENSTACK_AUTH_URL`; invalid/insecure
+catalog entries are ignored, and the adapter does not follow HTTP redirects.
+`ARAF_TRUSTED_ORIGINS` must contain origins, not callback paths. Changing any
+setting requires a controlled restart/rollout; changing the session key
+without restoring the matching old key invalidates encrypted sessions.

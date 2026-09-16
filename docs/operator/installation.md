@@ -17,6 +17,13 @@ install.
 - For more than one replica, a shared, encrypted, lock-safe RWX/session
   authority. A local filesystem is not multi-replica HA evidence.
 
+The BFF image seeds `/var/lib/araf` for its non-root UID (65532), and the Helm
+chart sets the pod `fsGroup` to the same UID. This is required for a fresh
+session PVC or Compose named volume to initialize without a privileged manual
+`chown`. If an existing volume was provisioned with incompatible ownership,
+stop the rollout and correct the storage provisioner or restore a reviewed
+volume snapshot; do not make the BFF run as root.
+
 ## Verify and stage artifacts
 
 Record the release version, source SHA, image digests, SBOM and CI provenance
@@ -70,6 +77,12 @@ docker compose --env-file .env -f deploy/docker-compose.release.yml ps
 Compose is a reference container contract. It does not provide TLS,
 secret-manager protection, a shared multi-host filesystem or a load balancer;
 add those at the deployment boundary.
+
+The release Compose and Helm references keep console image roots read-only.
+They provide only ephemeral writable mounts for nginx-generated configuration
+(`/etc/nginx/conf.d`) and nginx runtime paths. Preserve those mounts when
+translating the manifests to another orchestrator; without them the console
+entrypoint fails closed before readiness.
 
 ## First verification
 

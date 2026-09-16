@@ -21,8 +21,8 @@ configuration remains fail-closed: production requires an explicit adapter,
 HTTPS public/trusted origins, upstream credentials/endpoints and
 `ARAF_SESSION_STORE_PATH` and `ARAF_SESSION_STORE_KEY`.
 
-Development-host OCI evidence for RC `0.1.0-rc` is available in the local
-registry. The current images were rebuilt from Araf
+Historical development-host OCI evidence for RC `0.1.0-rc` is available in the
+local registry. Those images were built from Araf
 `24a8b691a7c447ce001271519713d5b322757eb8` with bounded contexts and exact
 labels:
 
@@ -30,14 +30,14 @@ labels:
 - Tenant console: `sha256:5fbdf4c6bf33c58cfff5597fc7f29af0c2c4a5bb03c10f59b5f04d0fc42132cf`
 - Operator console: `sha256:9475659bb370a15d355d2310a325e513f6ce6ac69ec6921afd7515315eec78ee`
 
-These are development-host artifacts, not the publishable release: trusted
-CI keyless provenance and external install/upgrade/rollback evidence remain
-required.
+These are development-host artifacts, not the P4.7 release candidate. The
+attested rc.2 candidate and its exact install/upgrade/rollback status are
+recorded in [`production-release-evidence.md`](production-release-evidence.md).
 
-The images build with bounded contexts and include OCI labels. Local cosign
-signatures and CycloneDX SBOM attestations verify against the development
-public key; publication remains blocked until CI attaches the trusted keyless
-provenance identity and external install/upgrade evidence is attached.
+The historical images build with bounded contexts and include OCI labels.
+Local cosign signatures and CycloneDX SBOM attestations verify against the
+development public key. They are retained as packaging-mechanics evidence;
+release publication decisions use the attested candidate record linked above.
 
 Local clean-install smoke (2026-09-13) also exercised the BFF digest in a
 non-root, read-only container behind HTTPS with a durable encrypted session
@@ -69,9 +69,13 @@ Container contract: BFFs listen on 8080 (Tenant) or 8081 (Operator), expose
 `/healthz`, `/readyz` and `/version`, and write only to the mounted durable
 session/journal path plus temporary storage. Console images listen on 8080 and
 require `BFF_UPSTREAM`; an unset upstream makes nginx reject its configuration.
-The release Compose file supplies all four digest-pinned images and external
-runtime configuration, while Helm requires both BFF and per-surface frontend
-digests.
+Because the nginx entrypoint renders that value at startup, both release
+references mount `/etc/nginx/conf.d` as an ephemeral uid-101 writable volume
+while keeping the remaining image root read-only. `/var/cache/nginx`,
+`/var/run` and `/tmp` are likewise ephemeral. The release Compose file supplies
+all four digest-pinned images and external runtime configuration, while Helm
+requires both BFF and per-surface frontend digests and preserves the same
+read-only-root contract.
 
 An upgrade/rollback test must deploy release N, create a session and pending
 compatibility operation, replace images with N+1, verify `/version`, session

@@ -68,6 +68,29 @@ if ! grep -Eq 'npm install -g pnpm@[0-9]+\.[0-9]+\.[0-9]+' "$root_dir/Dockerfile
   exit 1
 fi
 
+# The shipped SPA has external same-origin module bundles and embeds a font as
+# a data URL. Without a nonce/hash, strict-dynamic disables the same-origin
+# script allow-list in CSP3 browsers; keep the policy compatible with assets.
+check_static_console_csp() {
+  local file=$1 expected_count=$2 policy_line
+  local -a policy_lines=()
+  mapfile -t policy_lines < <(grep -F 'add_header Content-Security-Policy' "$file" || true)
+  if [[ ${#policy_lines[@]} -ne $expected_count ]]; then
+    echo "security gate: expected $expected_count CSP header(s) in ${file#"$root_dir/"}" >&2
+    exit 1
+  fi
+  for policy_line in "${policy_lines[@]}"; do
+    if [[ $policy_line == *"'strict-dynamic'"* ]] \
+      || [[ $policy_line != *"script-src 'self';"* ]] \
+      || [[ $policy_line != *"font-src 'self' data:;"* ]]; then
+      echo "security gate: CSP is incompatible with the static console assets in ${file#"$root_dir/"}" >&2
+      exit 1
+    fi
+  done
+}
+check_static_console_csp "$root_dir/deploy/nginx-default.conf.template" 2
+check_static_console_csp "$root_dir/deploy/nginx-production.conf.example" 1
+
 # Fail closed on the two highest-risk classes that can be checked without
 # credentials: browser token persistence and committed private keys.
 token_pattern='(localStorage|sessionStorage)\.(setItem|getItem).*([Tt]oken|[Ss]ession)|Bearer[[:space:]]+[A-Za-z0-9._-]{24,}'

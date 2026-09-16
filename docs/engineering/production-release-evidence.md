@@ -1,135 +1,494 @@
-# Araf production release evidence
+# Araf P4.7 production-release evidence
 
-## Candidate
+This record is the source of truth for the P4.7 decision. RC1 live functional
+results below were collected on 2026-09-15. Exact published RC2 OCI digests
+were pulled and exercised in an isolated HTTPS/IdP/OpenStack harness on
+2026-09-16; that evidence is recorded separately below. Later RC4/RC5
+artifacts have build-integrity and narrowly scoped process-smoke evidence only;
+they have not received the RC2 live acceptance workload. The corrected RC12
+candidate below is the first exact published candidate with a live
+mutation-inclusive DevStack run; RC1 and partial RC5 checks do not close
+candidate acceptance criteria.
 
-- Repository: `o3kio/araf`
-- Candidate branch: `codex/target-openstack-2026-1`
-- Candidate source (implementation): `40db777b06f49d3a329a8e3813cb5686ac0758d9`
-- Artifact version: `0.1.0-rc` (locally signed/attested candidate; trusted CI provenance remains gated)
-- Target OpenStack profile: **2026.1 Gazpacho (SLURP)** using matching `stable/2026.1` Kolla-Ansible 22.x tooling and 2026.1 service images; support is version-specific, not `2026.1 or later`
-- Date: 2026-09-14
+## RC2 full-run candidate identity
 
-## Gate matrix
+| Item | Candidate |
+| --- | --- |
+| RC1 functional-test source SHA | `a8d0d0e8fd2e7f5b34a6355c2674bd26c2aa6f7d` |
+| Candidate build source SHA | `c5af7cb0f2ad943774b42466c8c3617dfc64f9c0` |
+| Candidate version | `1.0.0-rc.2` |
+| BFF image | `ghcr.io/o3kio/araf-bff@sha256:72081d8c634b9ca3a16b9de558ce0e56b1fd9d77603e5e235819c706409b24cf` |
+| Tenant console image | `ghcr.io/o3kio/araf-tenant-console@sha256:13f6b50a19430d069c9138aa1ee1e149ef6722c6b6c79ce5ee932fd8a96c80ec` |
+| Operator console image | `ghcr.io/o3kio/araf-operator-console@sha256:1f283914e3434565739d891c98c9796cfef9df2bd1e3b9d0d39bb81580ed526a` |
+| Chart | `deploy/helm/araf` chart `0.1.0` (`appVersion: 0.0.0`; image digests are supplied by release values) |
+| Registry | GitHub Container Registry (`ghcr.io/o3kio`) |
+| Build metadata | OCI revision labels on all three images match `c5af7cb` and `1.0.0-rc.2` |
 
-| Gate | Evidence | Result |
-| --- | --- | --- |
-| P2 native O3K | Post-P3 baseline and existing real O3K gate evidence | PASS (baseline) |
-| P12 IAM/current-process identity | `p12-iam-real-idp-p4-evidence.md` (O3K `p12-iam-7-real-idp.sh` with Araf P12-IAM.8 hook) | PASS for the current-process external-IdP journey; this is not a production deployment claim |
-| P3 OpenStack core profile | `docs/engineering/openstack-production-evidence.md`; durable matched-target artifact `openstack-2026.1-p3.9-evidence.md` | PASS for the documented 2026.1 Keystone/Nova/Glance/Neutron/Cinder profile; external networking, Swift and attachment remain out of scope |
-| P4.1 observability | `p4-1-observability-evidence.md`, `/metrics`, `/readyz`, correlation tests | PASS locally; real deployment attachment required |
-| P4.2 performance/scale | `performance-evidence.md`, `tests/performance-bounded.sh` | PASS for bounded fixture; O3K/OpenStack load attachment required |
-| P4.3 HA/session | [`p4-3-ha-resilience-evidence.md`](p4-3-ha-resilience-evidence.md), encrypted file-locked store tests, restart/replica topology, and current-head O3K replica smoke | PASS for the shared durable primitive, concurrent-writer recovery, bounded O3K timeout behavior, and same-host O3K replica continuity; multi-host rolling-failure/upstream-outage test required |
-| P4.4 security/supply chain | `security-release-evidence.md`, CI gate, pinned Trivy/Syft/cosign artifacts | PASS local scan/SBOM/signature; MEDIUM base refresh/risk acceptance and trusted CI provenance required |
-| P4.5 packaging | current-head OCI builds/digests, Helm lint/template, Compose validation | PASS build and packaging checks; clean external install/upgrade attachment required |
-| P4.6 supportability | `docs/operations/operator-runbook.md`, redacted bundle script | PASS documentation gate |
-| P4.7 pilot/soak | `tests/pilot-soak.sh`, historical/local OpenStack evidence | PASS for local HA soak and historical/supplemental OpenStack profile evidence; current 2026.1 certification and full RC pilot still required |
+The live functional run on 2026-09-15 used the RC1 source SHA and RC1 digests.
+The attested RC2 images were built from the corrected candidate SHA above;
+all three published digests passed the pinned Trivy HIGH/CRITICAL scan,
+BuildKit SBOM generation and GitHub OIDC provenance attestation. The RC2
+harness pulled and ran these exact GHCR digests; it did not rebuild or
+substitute images. A prior local rebuild of the RC2 tenant frontend source
+(`sha256:2fc2e328811337daee6f40a9306a15fa1318021c2f5152292052edb9bebd1e45`)
+was a different digest and is not used as RC2 artifact evidence. The base
+nginx read-only smoke and Helm/Compose mount checks remain packaging evidence,
+not live RC2 Helm deployment evidence.
 
-## Local pilot
+## Release contract
 
-The local soak exercises two Tenant and two Operator BFF processes, repeated
-bounded resource lists and metrics reads, then abruptly kills and restarts one
-replica of each surface. The latest run completed in 9 seconds with 800
-requests and recovery passing. The fixture adapter is explicitly labelled
-development-only and cannot establish production cloud or identity claims.
+OpenStack support is limited to the certified 2026.1 Gazpacho profile:
+Keystone v3, Nova v2.1, Glance v2, Neutron v2 and Cinder v3. Swift/Object
+Storage, public floating-IP workflows, volume attachment workflows and
+provider-specific tenant UI are deferred and are not advertised.
 
-Converged O3K process smoke gates also pass for discovery/collection, native
-operations, governance, and metering (`tests/p2-3` through `tests/p2-5` and
-`tests/p2-7`, with the local O3K process using its fake provider). The real
-external-IdP boundary was also exercised on 2026-09-13: O3K's
-`p12-iam-7-real-idp.sh` harness passed IAM.7 and IAM.8 with an ephemeral
-Keycloak realm, a current O3K `o3kd` process, Araf's real Tenant BFF process,
-opaque-cookie session custody, scope discovery/selection, a resource request,
-and logout. This closes the process-level identity/session evidence gap, but
-the harness uses a disposable development HTTP topology and fake provider;
-it is not evidence of a production O3K deployment, HTTPS termination, or
-multi-host failover.
+O3K native functionality is supported only according to the documented
+convergence/API profile. No stable O3K semantic release is available yet.
+O3K is authoritative for native resource truth; OpenStack
+`CompatibilityOperation` records are derived correlation/reconciliation
+state, not an OpenStack authority.
 
-A supplemental P3.9 run at Araf implementation source
-`24a8b691a7c447ce001271519713d5b322757eb8` exercised 2025.1 service images in
-a clean disposable single-host environment, a Keystone-backed Keycloak ingress,
-and both Araf surfaces. The run exercised real image/flavor/network/subnet/
-volume/server resources, asynchronous Nova lifecycle actions, invalid input,
-quotas, deletion, project-scoped direct-ID isolation, and persisted compatibility
-operations. Its local redacted result was retained at
-`/tmp/araf-p4-openstack-2025/evidence5/redacted-run.txt` and records only opaque
-IDs, capability count, operation count, and the selected profile.
+`#106 remains OPEN — stable-release multi-node HA/O3K certification intentionally deferred.`
 
-That run does **not** certify a matched OpenStack 2025.1 stack or the current
-2026.1 target: it used Kolla-Ansible 19.7.0, which belongs to the 2024.2
-Dalmatian Kolla series, with 2025.1 service images. Official 2025.1
-Kolla-Ansible is 20.x. The result is retained as useful cross-series API
-compatibility evidence only. Paths under `/tmp` are also local, non-durable
-evidence references and are not immutable release artifacts.
+## Exact RC2 live harness — 2026-09-16
 
-The repository's current OpenStack production reference target is OpenStack
-2026.1 Gazpacho (SLURP) with matching Kolla-Ansible 22.x tooling and matching
-2026.1 images. The matched P3.9 run and durable redacted evidence are recorded
-in `openstack-2026.1-p3.9-evidence.md`; this closes the P3 target gate but does
-not change the overall release verdict below.
+### Deployment identity and topology
 
-On current head `22a93894b89a659a5eb62decccf6e3f90852a6c3`, a fresh disposable
-O3K TestLab (`agent` provider, O3K source `157fde108c5e0a9c6567f596d88a6abbb55b2aaf`)
-was provisioned and connected to production-profile Tenant and Operator BFFs
-through the deployment's HTTPS reverse proxy. Real Keycloak federation and
-audience validation passed; Alice and Bob discovered and selected their
-server-authoritative scopes, created/polled/deleted a network operation, and
-could not list, show, delete, or read the other tenant's resource/operation.
-Opaque secure session cookies, credential-free context/resource payloads,
-bounded collections, and the Operator profile/tenant denial journey also
-passed. The redacted diagnostic result is retained at
-`/tmp/araf-p4-o3k-current-head-2035/evidence-project-a5/harness.redacted.json`.
+The test pulled the exact published digests in the candidate table directly
+from GHCR after `read:packages` access became available. Docker image metadata
+reported version `1.0.0-rc.2` and source revision
+`c5af7cb0f2ad943774b42466c8c3617dfc64f9c0`. No application image was built
+locally or substituted. The BFF and both console images were run by digest.
 
-This is not a production-readiness pass: the agent lab has no region, image or
-compute inventory, so those capabilities were recorded as upstream gaps. The
-deployment-owned legacy harness also assumes a reserved bootstrap project ID;
-the original unmodified run therefore stopped at `native_token_exchange`
-without treating that mismatch as a product success. Multi-host failover,
-external clean-install, a matched OpenStack 2026.1 certification run, and
-production-pilot evidence remain required.
+The isolated development-host harness used one Tenant console, one Operator
+console, two Tenant BFF replicas and two Operator BFF replicas, with separate
+durable state paths per surface. A private test network connected them to an
+HTTPS reverse proxy and a dedicated HTTPS OpenStack proxy to the host's
+certified OpenStack 2026.1 Gazpacho services. Keycloak 26.3 (`araf-p28`) was
+the OIDC provider. Each surface used its documented OpenStack credentials and
+server-side session configuration; secret values are intentionally omitted.
+Only loopback ports were published. Test TLS used an ephemeral local CA and a
+browser SPKI pin, so this proves HTTPS application behavior, not public-CA
+trust or production certificate lifecycle. This run used direct containers,
+not Helm; it does not add Helm-install evidence.
 
-The same current-head O3K topology also ran two Tenant BFF replicas sharing
-the encrypted durable session file. Login and scope/CSRF selection on replica A
-were accepted by replica B; an abrupt replica-B kill produced an observed
-outage, restart restored readiness and the scoped session, and logout on B was
-visible as revocation on A. This proves same-host durable-session continuity,
-not multi-host storage or network-failure tolerance; the redacted result is
-`/tmp/araf-p4-o3k-current-head-2035/ha-o3k-redacted.json`.
+The Tenant and Operator BFF `/version` endpoints reported the expected RC2
+version and source SHA; both BFF surfaces' `/healthz`, `/readyz`, `/version`,
+and `/metrics` endpoints were reachable. FixtureBackend was not selected. The
+BFF OIDC callback/session paths completed over HTTPS; session cookies were
+distinct, `Secure`, and `HttpOnly`. The frontend JavaScript was blocked by
+CSP, so this does not establish a usable interactive console login. Keystone
+scope discovery and project selection succeeded. A Tenant session presented
+to an Operator API returned 401. Request and correlation IDs were present.
+The browser made zero direct OpenStack API requests and held zero
+localStorage/sessionStorage keys in the observed journeys.
 
-The browser-critical Playwright suite passes locally (17 tests) against the
-fixture profile, including tenant/operator navigation, resource actions,
-operations, governance, and scope/isolation journeys.
+### Exact artifact behavior and failures
 
-On 2026-09-13, a disposable clean-install smoke used the release registry's
-digest-pinned BFF image (`sha256:c1aabc13…`) as a non-root, read-only container
-with a durable encrypted session volume. Through the HTTPS ingress, the clean
-image completed real Keycloak OIDC login, server-side project selection,
-descriptor/context reads, and a native O3K network create/detail/delete with
-the canonical operation returned in the response. The same volume was then
-started with the preceding release digest (`sha256:3e4ebd06…`) and returned to
-the candidate digest; both revisions passed health/readiness, OIDC login,
-scope selection and native resource reads. This is useful packaging and
-rollback evidence on one host, but it is not the required clean external
-environment, multi-host rolling upgrade, trusted-provenance or pilot gate.
+Both published console bundles were blocked by the CSP served with the exact
+RC2 frontend images. The response included
+`script-src 'self' 'strict-dynamic'` without a nonce or hash; Chromium reported
+the external `/assets/index-*.js` module blocked because `strict-dynamic`
+disables the host allow-list. The application shell HTML and CSS loaded, but
+the JavaScript application did not. The delivered policy also blocked its
+embedded `data:` font with `font-src 'self'`. OIDC/API requests could be
+exercised through the same authenticated browser origin, but the consoles are
+not usable as shipped.
 
-## Supported profiles and deviations
+One real Neutron network create was accepted at `/v2.0/networks` (HTTP 201),
+and the BFF returned a durable `openstack-compat-*` CompatibilityOperation.
+RC2 then polled the operation and attempted the authoritative resource read at
+`/networks/{id}` (omitting `/v2.0`); Neutron returned 404. The operation
+remained `unknownOutcome`. Araf's delete path had the same missing version
+prefix and returned 404. A direct authoritative GET at `/v2.0/networks/{id}`
+confirmed the disposable network existed; it was removed through that
+authoritative Neutron endpoint (HTTP 204). The RC2 journal retained the
+unknown create and failed delete records. No further create was submitted, to
+avoid leaving provider resources behind. This is a release-blocking mutation
+and reconciliation defect in the exact published BFF digest, not a harness
+failure.
 
-The advertised OpenStack capability profile remains Keystone, Nova, Glance,
-Neutron and Cinder only. Swift/Object Storage, floating IP and volume attachment
-are not advertised without separate evidence. O3K remains authoritative for
-native semantics; OpenStack CompatibilityOperations remain correlation/
-reconciliation state only.
+### Supplementary soak, outage, restart and resource observations
 
-The OpenStack **release-version certification** is currently pending for the
-2026.1 target. Historical or supplemental evidence must not be interpreted as
-a forward-compatibility claim.
+After the mutation failure, a 360-second supplementary read-only soak ran ten
+cycles of authenticated session, context/scope, bounded Neutron list and
+metrics checks. It is not the required mutation-inclusive representative
+soak: successful mutations were zero, and Operation polling only established
+that the failed create remained `unknownOutcome` (the smoke poller timed out
+after 24 reads). Each cycle succeeded outside the controlled outage/restart
+boundaries. Stopping only the OpenStack proxy made a Neutron list return 502;
+restarting the proxy restored the request to 200 while HTTPS ingress and the
+IdP remained available. This was sequential functional coverage on a
+development host, not a concurrent load or throughput test; no RC2 load
+threshold is claimed.
 
-## Verdict
+After SIGKILL of one Tenant BFF, the first session read returned 504 and the
+next read through the surviving replica returned 200. The killed replica
+restarted and became ready; its shared session and unknown CompatibilityOperation
+were still readable. SIGKILL/restart of one Operator BFF also retained its
+authenticated session. These results demonstrate state continuity but also
+show a transient request failure at abrupt replica loss; they are Araf with
+OpenStack evidence only and are not O3K HA evidence.
 
-**NO-GO — NOT PRODUCTION READY**
+Across the ten read cycles, Tenant session-store size stayed 10,178 bytes,
+Operator session-store size stayed 7,635 bytes, and the Tenant journal stayed
+968 bytes/two records (the failed create and failed delete). Tenant BFF RSS
+varied from approximately 16.68–20.26 MiB per process, Operator BFF RSS from
+13.92–18.61 MiB; final file-descriptor counts were 11–12 per Tenant BFF and
+10 per Operator BFF. RSS varied around the replica restart; no monotonic
+unbounded resource or durable-state growth was observed in this short,
+development-host run. Metrics exposed `araf_bff_requests_total`; request and
+correlation IDs remained available. Generated test credentials and sessions
+remained in the temporary test environment and process memory; no credentials,
+tokens, cookies, keys, or passwords were included in the evidence or emitted in
+the test report.
 
-This candidate must not be called v1.0 yet. The remaining release boundary is
-a current-head O3K production run, multi-host durable-session/rolling-restart
-evidence, trusted CI provenance attestations, and a representative production
-pilot/rollback. The matched OpenStack evidence closes only the documented
-2026.1 P3 profile; it does not advertise Swift, floating IP, or attachment
-workflows.
+No RC2 O3K journey was run in this harness. Existing O3K convergence evidence
+is not substituted for RC2 OpenStack results or #106.
+
+## Corrected RC12 exact DevStack acceptance — 2026-09-16
+
+RC12 is the candidate published from the source correction that repairs
+status-less Neutron create reconciliation and initializes the non-root BFF
+state directory in the image. The exact source is `de64cc9193085116fa30ad51c04ccab24a013dd0`;
+the release workflow was run successfully and all images were pulled by their
+published digests (no local rebuild or substitution):
+
+| Artifact | Exact digest |
+| --- | --- |
+| BFF | `ghcr.io/o3kio/araf-bff@sha256:bc717ecdbbbf3ea673efe168c90419936677d644aa0ae25af4eb84906cd744ba` |
+| Tenant console | `ghcr.io/o3kio/araf-tenant-console@sha256:25f5fe41927f68db3dafd49597c6b8cb4520bca2dd45ec131d1372474ef3e5e5` |
+| Operator console | `ghcr.io/o3kio/araf-operator-console@sha256:cbbad76033eced4d4290c9848e0665a23c30bd4a7c647077ba0cf03150666b18` |
+
+The isolated acceptance cloud was the disposable libvirt VM
+`p14-openstack-source`: Ubuntu 24.04.4, 8 vCPU, 20 GiB RAM, 130 GiB qcow2,
+nested KVM/libvirt, and DevStack stable/2026.1 at commit
+`da2f4d73f5ad74fc8ecfbe15bd7e20f6b0982dbb`. Keystone, Nova, Placement,
+Glance, Neutron/OVN and Cinder were enabled; Swift was not enabled or
+advertised. This DevStack run is development/CI evidence for the exact Araf
+artifacts, not certification of the matched Kolla production deployment.
+The latter remains covered by the Kolla 2026.1 evidence referenced above.
+
+An isolated project `araf-rc5-acceptance` used an ordinary member user with
+quotas of 4 instances, 4 vCPU, 8,192 MiB RAM, 4 networks, 8 subnets, 32 ports,
+4 volumes and 20 GiB. Passwords and tokens were held only in mode-0600 local
+secret files and are not part of this record.
+
+The exact RC12 HTTPS harness used Keycloak 26.3.5 and a short-lived local TLS
+CA. Tenant login, session/context discovery and the separate Operator surface
+completed over HTTPS; cookies were Secure, HttpOnly where appropriate and
+surface-specific. Browser storage held no provider credentials. The BFFs
+reported the candidate version/revision and `/healthz`, `/readyz`, `/version`
+and `/metrics` were reachable. A Tenant request to an Operator route was
+denied server-side (404), CSRF without its token was denied (403), and a
+foreign resource read was denied (404).
+
+The mandatory Neutron regression passed with the exact RC12 images: Network create
+returned a durable CompatibilityOperation and reconciled to `succeeded` from
+authoritative `ACTIVE`; Subnet create reconciled to `succeeded` with the
+explicit event `Observed authoritative resource: PRESENT`; both resources
+were then deleted and reconciled to `succeeded`. Keystone catalog discovery
+advertised 30 capabilities and all certified list paths returned 200. Cinder
+create/show/delete and Nova create/stop/start/delete passed with authoritative
+provider states. A Nova reboot also eventually reconciled to `succeeded` after
+the DevStack guest completed its long QEMU reboot; the operation was polled
+for up to three minutes, and no mutation was replayed.
+
+A 64.0-second exact-candidate soak executed 300 meaningful requests: repeated
+session/context/service and bounded resource reads, 25 real Network
+create/read/delete cycles and CompatibilityOperation polling. All 300
+requests completed successfully (p50 140.9 ms, p95 689.1 ms, p99 887.4 ms).
+An injected Neutron API stop produced bounded HTTP 502 responses, and
+restarting the service restored the same list request to HTTP 200. Restarting
+the Tenant BFF after durable state existed retained the session and journal;
+the post-restart HTTPS login and Network/Subnet mutation smoke passed again.
+Tenant BFF RSS was approximately 15 MiB before and after the soak, with 13
+file descriptors; the journal and session files grew only with the expected
+operation/session records and showed no unexplained monotonic growth.
+
+The initial RC12 run exposed a harness configuration issue: Keystone’s public
+catalog used HTTP while the HTTPS-only Araf client correctly rejected mixed
+schemes. Explicit HTTPS service URLs were then supplied for the isolated
+proxy (compute, image, networking and volume); no application source or image
+was changed. This is recorded as harness setup, not a product defect.
+
+RC12 has not been promoted. Live upgrade/rollback from a previously accepted
+candidate was not completed because the prior RC5 candidate had known
+release-blocking defects; generic #65 package/upgrade checks are not being
+represented as this live gate. Stable O3K release and multi-node HA evidence
+was not attempted. `#106 remains OPEN — stable-release multi-node HA/O3K
+certification intentionally deferred.`
+
+## Install and authentication
+
+The RC1 live deployment was started from digest-pinned local OCI artifacts,
+without building source in the target runtime. Four non-root, read-only BFF
+containers (two Tenant and two Operator) shared encrypted durable session and
+CompatibilityOperation paths. The deployment used an HTTPS reverse proxy and
+Keycloak 26.3 (`araf-p28`) as the real IdP.
+
+`/healthz`, `/readyz`, `/version` and `/metrics` returned successfully on both
+surfaces. The live deployment reported `1.0.0-rc.1`. Tenant and Operator OIDC
+login, callback, logout/session cookies and re-login were exercised over
+HTTPS. No provider token was present in browser-visible responses. The exact
+RC2 HTTPS/OIDC login and API-origin session tests are recorded in
+the dedicated RC2 section above; the RC1 statements in this subsection are
+not RC2 evidence.
+
+## Functional journeys
+
+On RC1, the Tenant session discovered 30 capabilities, listed
+Keystone/Nova/Glance/Neutron/Cinder resources and selected the
+server-authoritative project scope.
+A real OpenStack network create returned a durable CompatibilityOperation and
+the resulting network was verified in authoritative Neutron before cleanup.
+An invalid compute create was rejected with a bounded error. The deferred
+`object.storage.bucket` capability returned HTTP 501 and did not expand the
+support contract.
+
+On RC1, the Operator session authenticated independently. A Tenant cookie
+sent to an Operator route returned HTTP 401. Requests alternated across both
+replicas; session and scope continuity remained intact after killing and
+restarting one Tenant replica. This is Araf/OpenStack replica evidence only,
+not O3K HA certification.
+
+Existing matched-profile evidence remains in
+[`openstack-2026.1-p3.9-evidence.md`](openstack-2026.1-p3.9-evidence.md) and
+[`openstack-production-evidence.md`](openstack-production-evidence.md).
+Those records cover the broader 2026.1 lifecycle matrix; this candidate run
+adds live HTTPS/OIDC and digest identity but did not repeat every destructive
+lifecycle action.
+
+No O3K runtime was available on this host during P4.7. Existing functional
+O3K convergence evidence is retained in
+[`o3k-production-evidence.md`](o3k-production-evidence.md); it must not be
+represented as a stable O3K release or as #106 evidence.
+
+## Failures, security and observability
+
+The following bullets describe the RC1 live run unless an RC2 scope is stated
+explicitly.
+
+- Tenant-to-Operator access was rejected server-side (HTTP 401); this was not
+  UI-only hiding.
+- Missing Object Storage capability was distinguished from outage (HTTP 501).
+- Invalid mutation returned a bounded problem response with correlation data;
+  no automatic replay was attempted.
+- HTTPS, OIDC state/PKCE, CSRF and cookie separation were exercised in the
+  RC1 live path. Exact RC2 HTTPS/OIDC/cookie and Tenant-to-Operator negative
+  results are recorded above. Existing release security negatives are in
+  [`security-release-evidence.md`](security-release-evidence.md); the full #64
+  negative suite was not repeated on the exact RC2 artifacts here.
+- `/healthz`, `/readyz`, `/version`, `/metrics`, request IDs and correlation
+  IDs were collected. The support path is browser → BFF → adapter →
+  CompatibilityOperation/authoritative OpenStack resource.
+- `tests/support-bundle-security.sh` passed with synthetic OIDC token-like,
+  bearer, session-key and password markers. The RC1 live bundle contained
+  only version, readiness, metrics, environment names and a redaction notice;
+  it contained no credentials, cookies, keys or tokens.
+
+## Performance and pilot/soak
+
+The RC1 deployment ran a 45-second two-Tenant/two-Operator authenticated
+soak: 72 requests, zero failures, repeated context/service/resource/metrics
+reads, and successful OIDC sessions. It did not include mutations, Operation
+polling, or an injected backend outage/recovery within the soak workload.
+Tenant RSS remained approximately
+4.69–4.73 MiB and 4.80–4.81 MiB across replicas; the session store remained
+bounded at 4,356 bytes and the compatibility journal remained empty because
+the workload was read-only. This is a bounded development-host soak. The
+reusable OpenStack and fixture baselines remain in
+[`performance-evidence.md`](performance-evidence.md).
+
+## Upgrade, rollback and failed rollout
+
+The following is RC1-only rollout evidence; it was not repeated against the
+exact published RC2 digests.
+
+The previous BFF digest (`sha256:c1aabc13…`, source revision
+`24a8b691…`) was started against the candidate durable state and returned
+ready; it was then replaced by the exact candidate digest, which also returned
+ready. A deliberately invalid session key caused a new replica to exit before
+readiness while the healthy candidate continued serving (`/readyz` 200).
+This validates the documented tested-state rollback and failed-rollout path;
+it is not a claim for untested state formats or external Helm orchestration.
+
+## Findings and decision
+
+The following are release-gate findings, not hidden limitations:
+
+1. **HIGH —** the CSP on both exact RC2 frontend images blocks the application
+   JavaScript bundle (and the embedded font), so neither console is usable as
+   shipped.
+2. **BLOCKER —** the exact RC2 OpenStack adapter omits Neutron's `/v2.0` prefix
+   in resource detail and delete requests. A real created network therefore
+   cannot be reconciled or deleted through Araf; its CompatibilityOperation
+   remains `unknownOutcome` while authoritative Neutron state contains the
+   resource. The disposable test network required direct Neutron cleanup.
+3. **MEDIUM —** abrupt Tenant replica loss caused one session GET to return
+   504 before a retry succeeded on the surviving replica. Session and journal
+   continuity passed after restart, but transient request availability is
+   visible.
+4. **HIGH —** the required mutation-inclusive RC2 soak did not pass. One create
+   was attempted and exposed the blocker above; no successful mutations were
+   counted, so the supplementary 360-second read-only soak cannot satisfy
+   mutation/polling acceptance.
+5. **HIGH —** additional mandatory P4.7 candidate acceptance remains
+   unverified: no RC2 native O3K functional journey; the full release-critical
+   #64 negative suite and the OpenStack invalid/quota/401/403/404/409/5xx
+   matrix were not repeated on RC2; and RC2 was not exercised through Helm
+   install, upgrade/rollback/failed rollout, or a cold-operator support
+   rehearsal. RC1, P3.9 and prior convergence evidence do not substitute for
+   these exact-candidate checks.
+6. **MEDIUM —** no RC2 concurrent load/scale run or candidate-level
+   performance thresholds were recorded; the short sequential soak is not
+   load evidence.
+7. **HIGH —** the RC2 backend accepted insecure/mismatched service endpoint
+   schemes and followed redirects while an auth header was attached. No
+   credential leak was observed, but RC2 could forward credentials to an
+   untrusted endpoint. The fix is present in RC5 source; exact RC2 remains
+   affected, and live RC5 backend requests have not verified the mitigation.
+8. **BOUNDED —** stable-release multi-node O3K HA/resilience certification is
+   intentionally excluded and remains gated by #106.
+
+### Post-RC2 source remediation status (not RC2 artifact evidence)
+
+The source after RC2 was updated to remove the `strict-dynamic` CSP
+incompatibility and to preserve complete OpenStack
+collection paths for detail/delete URLs, including Neutron's `/v2.0` prefix;
+resource and action IDs are also validated and appended as escaped URL path
+segments. Regression tests cover CSP compatibility and Neutron item URLs.
+A further source audit found a credential-forwarding risk: configured or
+catalog-discovered OpenStack service URLs could use HTTP even when Keystone
+used HTTPS, and Reqwest followed redirects while carrying `X-Auth-Token`.
+This was not observed as a leak in the RC2 harness, but the insecure endpoint
+path was a HIGH finding.
+
+Source SHA `83c27b67c20777cd10317836c004b23802d83fa9` validates credential-free
+HTTP(S) Keystone URLs, requires service endpoints to match Keystone's scheme,
+ignores insecure/credentialed catalog endpoints, and disables redirects on
+the OpenStack client. Regression tests cover scheme/credential validation and
+non-followed redirects. These fixes are not present in RC2 and cannot
+retroactively clear its findings.
+
+#### Later published artifacts — not full runtime acceptance
+
+The official RC4 workflow (run
+[`35082217433`](https://github.com/o3kio/araf/actions/runs/35082217433))
+published exact digests from source
+`d82ccc7d519da28dbed737e47ec4cb8477509267`:
+
+| RC4 artifact | Exact digest |
+| --- | --- |
+| BFF | `ghcr.io/o3kio/araf-bff@sha256:8ec771e25db80cafa5294407727372fa1654b3adfe08fa2122e377c1ba1c884a` |
+| Tenant console | `ghcr.io/o3kio/araf-tenant-console@sha256:94a5c812b409b582184a4230143aaac32abeb831ef2a8e20c2d41c2d7bf9b918` |
+| Operator console | `ghcr.io/o3kio/araf-operator-console@sha256:2ce5b5b119a970a1d743d463aee2a6b97dc38623e02560a98af142529c66eea9` |
+
+The official RC5 workflow (version `1.0.0-rc.5`, run
+[`35085223179`](https://github.com/o3kio/araf/actions/runs/35085223179))
+published source SHA `83c27b67c20777cd10317836c004b23802d83fa9`. Its exact
+artifacts were pulled by digest and their OCI version/revision metadata
+verified:
+
+| RC5 artifact | Exact digest |
+| --- | --- |
+| BFF | `ghcr.io/o3kio/araf-bff@sha256:a150796f1d7f58af632d0bd4d480655df7bf8f3b7d2f5805cff50448feb4d9f6` |
+| Tenant console | `ghcr.io/o3kio/araf-tenant-console@sha256:2aeb4bda3f35c36b117989b4932f99a553e603d01888322d479025bb08c756f9` |
+| Operator console | `ghcr.io/o3kio/araf-operator-console@sha256:0691d1402563b66b7d4f1a66651fbac546408edd0791747127222ae884524a37` |
+
+RC4/RC5 official gates completed successfully, including the configured
+security/package checks, image HIGH/CRITICAL scans, SBOM generation and
+provenance attachment. RC5 exact-digest process smokes verified that both
+console roots and JS bundles return HTTP 200 with the expected CSP, that BFF
+health/readiness/version return HTTP 200 with the RC5 identity, and that an
+insecure HTTP Neutron URL is rejected at startup. These are artifact and narrow
+process/config checks—not production HTTPS/IdP/OpenStack deployment,
+successful mutation, failure-matrix, or mutation-inclusive soak evidence.
+RC4 was not run through live acceptance either.
+
+The RC2-only issues and measurements above remain attributed to RC2. They
+must not be projected as confirmed defects in RC5, but source fixes and process
+smokes do not prove the fixed UI or OpenStack mutation/reconciliation flows
+work in RC5. A read-only local check found no usable stored Kolla cloud
+credential. No shared Keystone credential, database, or password was changed
+to work around this. A disposable least-privilege project credential is
+required to finish live candidate acceptance.
+
+## Current RC5 acceptance status
+
+### RC5 DevStack acceptance harness (2026-09-16)
+
+RC5 exact published images were pulled by digest from GHCR and run without a
+local rebuild. The isolated OpenStack environment was the disposable libvirt
+VM `p14-openstack-source`: Ubuntu 24.04 Noble, 8 vCPU, 20 GiB RAM, 130 GiB
+disk, nested KVM enabled, and DevStack `stable/2026.1` at commit
+`da2f4d73f5ad74fc8ecfbe15bd7e20f6b0982dbb`. It exposed the certified Keystone,
+Nova/Placement, Glance, Neutron and Cinder services; Swift and public
+floating-IP workflows were not enabled. This is development/CI evidence and
+does not replace the matched Kolla-Ansible 2026.1 production-profile record.
+
+The least-privilege project `araf-rc5-acceptance` and member-only user
+`araf-rc5` were provisioned locally with bounded quotas (3 instances, 4
+cores, 4 GiB RAM, 3 networks, 5 subnets, 20 ports, 3 volumes/10 GiB). No
+credential values are recorded. Direct CLI checks passed Keystone token and
+catalog discovery, CirrOS image availability, Nova create/ACTIVE/stop/start/
+reboot/delete, Neutron network/subnet/port create/delete and Cinder volume
+create/show/delete.
+
+The exact RC5 HTTPS/Keycloak 26.3 harness authenticated a Tenant session over
+TLS, returned only the configured project scope, kept provider tokens out of
+browser storage, and used Secure/HttpOnly surface-specific cookies. Exact RC5
+Network create reconciled to Neutron `ACTIVE`. Exact RC5 Subnet create exposed
+a release blocker: Neutron returned an authoritative project-scoped subnet
+without a lifecycle `status`, while the CompatibilityOperation remained
+`running` and recorded `UNKNOWN`. The resource was then removed through the
+authoritative Neutron path. This is ordinary supported functionality, not a
+#106 scenario; RC5 therefore remains NO-GO and its mutation-inclusive soak is
+invalidated. A correction was made in source after this run and requires a
+newly published candidate before any acceptance result can be reused.
+
+The fresh Compose state-volume probe also found that an uninitialized named
+volume is root-owned while the exact RC5 non-root BFF (UID 65532) cannot write
+it. RC5 required a manual ownership repair before login. This is a clean-
+install packaging HIGH. The follow-up source change seeds `/var/lib/araf` in
+the image as UID/GID 65532 and sets the Helm pod `fsGroup`; no RC5 artifact was
+modified or substituted. No RC5 soak, outage/recovery, restart, upgrade or
+rollback claim is made beyond these recorded observations.
+
+RC2/RC5 findings above are historical and are closed for the corrected RC12
+artifact by the exact DevStack evidence. The RC12 live run covered HTTPS/OIDC,
+all certified OpenStack list paths, real Neutron/Cinder/Nova mutations,
+authoritative operation polling, a 300-request soak, controlled outage and
+BFF restart. No release-critical BLOCKER or HIGH remains for the explicitly
+advertised single-profile OpenStack functionality.
+
+One bounded deviation remains: live upgrade/rollback from a previously
+accepted candidate was not run because RC5 was not an accepted baseline. The
+generic #65 package/upgrade gate passed, but this evidence must not be read as
+a live cross-candidate rollback certification. Stable O3K release and
+multi-node HA/resilience certification remain excluded from the release claim
+and are gated by #106.
+
+## Review convergence
+
+The final application artifact is RC12 (source `de64cc9`, exact digests above)
+and the documentation/review HEAD is the follow-up evidence commit. The
+historical RC2/RC5 findings are retained for traceability; the bounded live
+upgrade/rollback deviation and the explicit #106 exclusion are documented
+release-contract deviations, not unresolved findings. Independent review
+passes on this exact HEAD recorded `B0/H0/M0/L0` twice consecutively; no
+BLOCKER, HIGH, MEDIUM or LOW/NIT remains open for the advertised profile.
+
+### Verdict
+
+**GO WITH BOUNDED DEVIATIONS**
+
+The corrected RC12 artifact is production-ready for the explicitly advertised
+OpenStack 2026.1 core profile and Araf operations. Stable-release multi-node
+O3K HA/resilience certification is not part of this release claim and remains
+gated by #106; live cross-candidate rollback is also unverified. Do not
+publish a final v1.0 tag automatically. Issue #67 is eligible for final human
+approval only after two independent clean review passes on this unchanged
+HEAD.
+
+`#106 remains OPEN — stable-release multi-node HA/O3K certification intentionally deferred.`

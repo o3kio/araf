@@ -36,6 +36,14 @@ COPY --from=builder /usr/local/bin/tenant-bff /usr/local/bin/tenant-bff
 COPY --from=builder /usr/local/bin/operator-bff /usr/local/bin/operator-bff
 ENV ARAF_VERSION=$ARAF_VERSION ARAF_GIT_SHA=$ARAF_GIT_SHA
 
+# Seed the ownership of the durable state mount. Docker copies the image
+# directory metadata into a newly-created named volume, allowing the
+# non-root BFF (UID 65532) to initialize sessions and the compatibility
+# journal without a privileged post-start repair.
+USER root
+RUN ["/busybox/sh", "-c", "mkdir -p /var/lib/araf && chown 65532:65532 /var/lib/araf"]
+USER 65532:65532
+
 # Clear the debug distroless shell entrypoint so Compose commands execute the
 # selected BFF binary directly.
 ENTRYPOINT []
