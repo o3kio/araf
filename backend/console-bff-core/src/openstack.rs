@@ -379,7 +379,10 @@ impl OpenStackAdapter {
     }
 
     fn validate_resource_id(id: &str) -> Result<(), ApiError> {
-        if id.is_empty() || id.len() > 256 || id.contains('/') {
+        // The URL crate normalizes `.` and `..` path segments while building
+        // the request URL. Treat these as invalid IDs so malformed input can
+        // never turn an item request into a collection/root request.
+        if id.is_empty() || id.len() > 256 || id.contains('/') || matches!(id, "." | "..") {
             return Err(ApiError::NotFound);
         }
         Ok(())
@@ -1742,6 +1745,12 @@ mod tests {
             OpenStackAdapter::item_url("https://neutron.example", "v2.0/networks", "../other"),
             Err(ApiError::NotFound)
         ));
+        for invalid_id in [".", ".."] {
+            assert!(matches!(
+                OpenStackAdapter::item_url("https://neutron.example", "v2.0/networks", invalid_id),
+                Err(ApiError::NotFound)
+            ));
+        }
     }
 
     #[tokio::test]
