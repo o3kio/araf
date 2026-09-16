@@ -16,6 +16,10 @@ resources:
   requests: { cpu: 100m, memory: 128Mi }
   limits: { cpu: 500m, memory: 512Mi }
 podSecurityContext:
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  fsGroupChangePolicy: OnRootMismatch
   runAsNonRoot: true
   seccompProfile: { type: RuntimeDefault }
 service:
