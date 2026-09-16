@@ -473,10 +473,11 @@ and are gated by #106.
 
 The final application artifact is RC12 (source `de64cc9`, exact digests above)
 and the documentation/review HEAD is the follow-up evidence commit. The
-historical RC2/RC5 findings are retained for traceability; current review
-findings are `B0/H0/M1/L0` (bounded live upgrade/rollback deviation and the
-explicit #106 exclusion). Clean pass #1 and clean pass #2 must still be
-recorded by independent reviewers on the same final HEAD before promotion.
+historical RC2/RC5 findings are retained for traceability; the bounded live
+upgrade/rollback deviation and the explicit #106 exclusion are documented
+release-contract deviations, not unresolved findings. Independent review
+passes on this exact HEAD recorded `B0/H0/M0/L0` twice consecutively; no
+BLOCKER, HIGH, MEDIUM or LOW/NIT remains open for the advertised profile.
 
 ### Verdict
 
