@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Assemble the versioned Araf release asset bundle for a published OCI image
 # set. Resolves each release image to its immutable index digest, extracts the
-# SPDX SBOM and SLSA provenance attestation layers from GHCR, and writes the
-# digests, checksum and deploy-bundle files under dist/release/.
+# SPDX SBOM and SLSA provenance attestation layers from GHCR, saves each image
+# as a docker-save OCI tarball for unauthenticated demo installs (the ghcr.io
+# packages require authentication to pull), and writes the digests, checksum
+# and deploy-bundle files under dist/release/.
 #
 # Inputs (environment):
 #   RELEASE_VERSION  release tag, e.g. v1.0.0-rc.12 (required)
@@ -13,8 +15,10 @@
 #   IMAGE_NAMESPACE  image namespace (default: o3kio)
 #   OUTPUT_DIR       asset output directory (default: <repo>/dist/release)
 #
-# The script only reads from the registry and never mutates it, never creates
-# or modifies a GitHub Release, and never prints tokens.
+# The docker CLI must be logged in to GHCR (docker login) so `docker pull`
+# can fetch the images for the OCI tarballs. The script only reads from the
+# registry and never mutates it, never creates or modifies a GitHub Release,
+# and never prints tokens.
 set -Eeuo pipefail
 
 usage() {
@@ -22,17 +26,26 @@ usage() {
 Usage: RELEASE_VERSION=vX.Y.Z[-suffix] [GITHUB_TOKEN=... GHCR_USER=...] publish-release.sh
 
 Resolves the release image set to index digests, extracts SBOM and SLSA
-provenance attestation layers from GHCR, and writes under dist/release/:
+provenance attestation layers from GHCR, saves docker-save OCI tarballs for
+unauthenticated installs, and writes under dist/release/:
   sbom/<component>-<version>.spdx.json
   provenance/<component>-<version>.provenance.json
+  araf-<component>-<version>.oci.tar
   araf-<version>-digests.txt
   araf-<version>-sbom.sha256
   araf-<version>-provenance.sha256
+  araf-<version>-oci-tarballs.sha256
   araf-<version>-deploy.tar.gz   (docker-compose.release.yml, ENVIRONMENT.md,
                                   digests.txt, VERIFY.md)
 
+digests.txt pins three lines per component: the index digest
+(`<component> <image>:<version>@sha256:<index>`), the linux/amd64 platform
+manifest digest (`<component>-platform <image>:<version>@sha256:<platform>`)
+and the image config digest (`<component>-config sha256:<config>`).
+
 Fails closed when the version is unset/malformed, any image or attestation
-layer is missing, or any checksum does not verify. Never prints tokens.
+layer is missing, a saved tarball does not match the registry config digest,
+or any checksum does not verify. Never prints tokens.
 EOF
 }
 
@@ -107,8 +120,57 @@ attestation_layer_digest() {
     ) | .digest' <<<"$att_json" | head -n1
 }
 
-# Validate a digests.txt file: every line must be
+# Print the digest of the linux/amd64 platform manifest inside image index
+# json $1. Empty when the index has no such platform.
+platform_manifest_digest() {
+  local index_json=$1
+  jq -r '.manifests[] | select(
+      .platform.os == "linux" and .platform.architecture == "amd64"
+    ) | .digest' <<<"$index_json" | head -n1
+}
+
+# Print the config blob digest (hex, no algorithm prefix) recorded in the
+# manifest.json of a docker-save tarball at $1. docker save writes the Config
+# either as a legacy "<hex>.json" filename or, on containerd-backed engines,
+# as an OCI-layout "blobs/sha256/<hex>" reference; both name the config blob.
+saved_tar_config_hex() {
+  local tar_file=$1 saved_config
+  if ! saved_config=$(tar -xOf "$tar_file" manifest.json | jq -r '.[0].Config' 2>/dev/null); then
+    fail "cannot read manifest.json from saved OCI tar: $tar_file"
+  fi
+  saved_config=${saved_config##*/}
+  if [[ "$saved_config" =~ ^([0-9a-f]{64})\.json$ ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+  elif [[ "$saved_config" =~ ^([0-9a-f]{64})$ ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+  else
+    fail "cannot parse config blob reference '$saved_config' in saved OCI tar: $tar_file"
+  fi
+}
+
+# Save <image-ref>@<digest> as a docker-save OCI tarball at $3 and verify the
+# config blob recorded in the tarball matches the registry config digest $2.
+# The ghcr.io packages require authentication to pull, so the tarball is the
+# unauthenticated install path; a config mismatch means the local image is
+# not the attested one and the release must fail closed.
+save_and_verify_oci_tar() {
+  local image_ref=$1 config_digest=$2 tar_file=$3
+  [[ "$config_digest" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || fail "unexpected config digest format for $image_ref: '$config_digest'"
+  docker pull "$image_ref" >/dev/null \
+    || fail "docker pull failed for $image_ref (is the GHCR login valid?)"
+  docker save -o "$tar_file" "$image_ref" \
+    || fail "docker save failed for $image_ref"
+  local saved_hex
+  saved_hex=$(saved_tar_config_hex "$tar_file")
+  [[ "$saved_hex" == "${config_digest#sha256:}" ]] \
+    || fail "saved tar config mismatch for $image_ref: tar has '$saved_hex', registry config is '${config_digest#sha256:}'"
+}
+
+# Validate a digests.txt file. Every line must be one of:
 #   <component> <registry>/<namespace>/<name>:<version>@sha256:<64 hex>
+#   <component>-platform <registry>/<namespace>/<name>:<version>@sha256:<64 hex>
+#   <component>-config sha256:<64 hex>
 # Returns non-zero (and prints the offending line) when malformed.
 validate_digests_file() {
   local file=$1 line component ref
@@ -118,8 +180,13 @@ validate_digests_file() {
     component=${BASH_REMATCH[1]}
     ref=${BASH_REMATCH[2]}
     [[ "$component" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || { echo "bad component in line: $line" >&2; return 1; }
-    [[ "$ref" =~ ^[a-z0-9./-]+:v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?@sha256:[0-9a-f]{64}$ ]] \
-      || { echo "bad image ref in line: $line" >&2; return 1; }
+    if [[ "$component" == *-config ]]; then
+      [[ "$ref" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || { echo "bad config digest in line: $line" >&2; return 1; }
+    else
+      [[ "$ref" =~ ^[a-z0-9./-]+:v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?@sha256:[0-9a-f]{64}$ ]] \
+        || { echo "bad image ref in line: $line" >&2; return 1; }
+    fi
   done < "$file"
   return 0
 }
@@ -277,6 +344,7 @@ main() {
   trap 'rm -rf "$staging"' EXIT
 
   local component repo image_ref digest index_json auth att_digest att_json sbom_layer prov_layer
+  local platform_digest platform_json config_digest oci_tar
   for component in "${components[@]}"; do
     repo=${image_repo[$component]}
     image_ref="${GHCR_REGISTRY}/${repo}:${version}"
@@ -289,6 +357,27 @@ main() {
     index_json=$(fetch_manifest "$repo" "$digest" \
       "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" \
       "$auth")
+
+    # linux/amd64 platform manifest + image config digests: published in
+    # digests.txt and used to verify the saved OCI tarball.
+    platform_digest=$(platform_manifest_digest "$index_json")
+    [[ "$platform_digest" =~ ^sha256:[0-9a-f]{64}$ ]] \
+      || fail "no linux/amd64 platform manifest in index for $image_ref"
+    platform_json=$(fetch_manifest "$repo" "$platform_digest" \
+      "application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+      "$auth")
+    config_digest=$(jq -r '.config.digest' <<<"$platform_json")
+    [[ "$config_digest" =~ ^sha256:[0-9a-f]{64}$ ]] \
+      || fail "no config digest in platform manifest for $image_ref"
+    printf '%s-platform %s@%s\n' "$component" "$image_ref" "$platform_digest" >>"$digests_file"
+    printf '%s-config %s\n' "$component" "$config_digest" >>"$digests_file"
+
+    # docker-save tarball: the ghcr.io packages require authentication to
+    # pull, so demo hosts install from this tarball instead.
+    oci_tar="$output_dir/araf-${component}-${version}.oci.tar"
+    save_and_verify_oci_tar "${image_ref}@${digest}" "$config_digest" "$oci_tar"
+    echo "publish-release: saved + config-verified OCI tar for $component"
+
     att_digest=$(attestation_manifest_digest "$index_json")
     [[ -n "$att_digest" && "$att_digest" != "null" ]] \
       || fail "no attestation manifest found for $image_ref (image was not attested at build)"
@@ -316,6 +405,9 @@ main() {
     cd "$output_dir"
     sha256sum "sbom/"*"-${version}.spdx.json" >"araf-${version}-sbom.sha256"
     sha256sum "provenance/"*"-${version}.provenance.json" >"araf-${version}-provenance.sha256"
+    sha256sum "araf-bff-${version}.oci.tar" \
+      "araf-tenant-console-${version}.oci.tar" \
+      "araf-operator-console-${version}.oci.tar" >"araf-${version}-oci-tarballs.sha256"
   )
 
   cp "$repo_root/deploy/docker-compose.release.yml" "$staging/docker-compose.release.yml"
@@ -333,6 +425,7 @@ main() {
   echo "publish-release: wrote $digests_file"
   echo "publish-release: wrote $output_dir/araf-${version}-sbom.sha256"
   echo "publish-release: wrote $output_dir/araf-${version}-provenance.sha256"
+  echo "publish-release: wrote $output_dir/araf-${version}-oci-tarballs.sha256"
   echo "publish-release: done (assets under $output_dir; release creation is a separate step)"
 }
 

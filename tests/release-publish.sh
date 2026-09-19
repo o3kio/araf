@@ -107,6 +107,43 @@ if validate_digests_file "$work/digests-empty.txt" 2>/dev/null; then
   fail "empty digests file must fail validation"
 fi
 
+# Extended format: platform manifest and config digest lines per component.
+extended="$work/digests-extended.txt"
+cat >"$extended" <<'EOF'
+bff ghcr.io/o3kio/araf-bff:v1.0.0-rc.12@sha256:bc717ecdbbbf3ea673efe168c90419936677d644aa0ae25af4eb84906cd744ba
+bff-platform ghcr.io/o3kio/araf-bff:v1.0.0-rc.12@sha256:37ad02cfbd5c3eed7effba01525ddd0d3eb8b852c73e54c7fbc701fb082ef051
+bff-config sha256:a22458df7ced503bbda9e69e45ec559b5881a63d8f8849ef24721bb8918c5edc
+tenant-console ghcr.io/o3kio/araf-tenant-console:v1.0.0-rc.12@sha256:25f5fe41927f68db3dafd49597c6b8cb4520bca2dd45ec131d1372474ef3e5e5
+tenant-console-platform ghcr.io/o3kio/araf-tenant-console:v1.0.0-rc.12@sha256:824932fe7cf8bbeefea9061d54ac7b0a0e338427b7d4487b844ba41f63d68d48
+tenant-console-config sha256:34901700540686c1a5ff13c7b02ba96180170d4c83f9bf170def7917df2eb068
+operator-console ghcr.io/o3kio/araf-operator-console:v1.0.0-rc.12@sha256:cbbad76033eced4d4290c9848e0665a23c30bd4a7c647077ba0cf03150666b18
+operator-console-platform ghcr.io/o3kio/araf-operator-console:v1.0.0-rc.12@sha256:d2d2bef4edaf836ecd6001113d50526fc9b14bc764abb6254dfc87c5cf7bb34e
+operator-console-config sha256:c9b4c88b56293e12bb569ced7020da3eda349d094351a3944c881888147cac9b
+EOF
+validate_digests_file "$extended" || fail "extended digests file (platform/config lines) must pass validation"
+
+bad_platform="$work/digests-bad-platform.txt"
+sed 's/bff-platform .*/bff-platform ghcr.io\/o3kio\/araf-bff:v1.0.0-rc.12@sha256:zz/' "$extended" >"$bad_platform"
+if validate_digests_file "$bad_platform" 2>"$work/stderr"; then
+  fail "platform line with a malformed digest must fail validation"
+fi
+grep -q "bad image ref" "$work/stderr" \
+  || fail "bad platform validation must explain the failure"
+
+bad_config_ref="$work/digests-bad-config-ref.txt"
+sed 's|^bff-config .*|bff-config ghcr.io/o3kio/araf-bff:v1.0.0-rc.12@sha256:a22458df7ced503bbda9e69e45ec559b5881a63d8f8849ef24721bb8918c5edc|' "$extended" >"$bad_config_ref"
+if validate_digests_file "$bad_config_ref" 2>"$work/stderr"; then
+  fail "config line carrying an image ref instead of a bare sha256 must fail validation"
+fi
+grep -q "bad config digest" "$work/stderr" \
+  || fail "bad config validation must explain the failure"
+
+bad_config_hex="$work/digests-bad-config-hex.txt"
+sed 's|^bff-config .*|bff-config sha256:nothex|' "$extended" >"$bad_config_hex"
+if validate_digests_file "$bad_config_hex" 2>/dev/null; then
+  fail "config line with a non-hex digest must fail validation"
+fi
+
 # ---------------------------------------------------------------- workflow pinning style
 workflow="$root_dir/.github/workflows/release-publish.yml"
 [[ -s "$workflow" ]] || fail "release-publish workflow is missing"
@@ -119,5 +156,20 @@ grep -q -- "--verify-tag" "$workflow" \
 if grep -qE 'gh release (create|edit|delete).*(--force|--clobber|--latest=false)' "$workflow"; then
   fail "workflow must never force/recreate a release"
 fi
+# OCI tarballs are the unauthenticated install path and must ship as assets.
+# (single quotes are intentional: the workflow YAML carries the literal
+#  ${RELEASE_VERSION} expression, so shellcheck SC2016 is a false positive)
+# shellcheck disable=SC2016
+grep -q 'araf-bff-${RELEASE_VERSION}.oci.tar' "$workflow" \
+  || fail "workflow must upload the bff OCI tarball asset"
+# shellcheck disable=SC2016
+grep -q 'araf-tenant-console-${RELEASE_VERSION}.oci.tar' "$workflow" \
+  || fail "workflow must upload the tenant-console OCI tarball asset"
+# shellcheck disable=SC2016
+grep -q 'araf-operator-console-${RELEASE_VERSION}.oci.tar' "$workflow" \
+  || fail "workflow must upload the operator-console OCI tarball asset"
+# shellcheck disable=SC2016
+grep -q 'araf-${RELEASE_VERSION}-oci-tarballs.sha256' "$workflow" \
+  || fail "workflow must upload the OCI tarball checksum manifest"
 
 echo "release-publish guard-rail tests: PASS"

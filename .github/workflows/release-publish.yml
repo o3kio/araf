@@ -87,6 +87,7 @@ jobs:
             echo "- \`araf-${RELEASE_VERSION}-digests.txt\` — immutable image digest pins."
             echo "- \`*.spdx.json\` / \`araf-${RELEASE_VERSION}-sbom.sha256\` — SPDX SBOMs extracted from the image attestation manifests."
             echo "- \`*.provenance.json\` / \`araf-${RELEASE_VERSION}-provenance.sha256\` — SLSA v1 provenance extracted from the image attestation manifests."
+            echo "- \`araf-*-${RELEASE_VERSION}.oci.tar\` / \`araf-${RELEASE_VERSION}-oci-tarballs.sha256\` — docker-save OCI tarballs for unauthenticated installs (the ghcr.io packages require authentication to pull)."
             echo
             echo "Release notes: [\`docs/releases/${RELEASE_VERSION}.md\`](https://github.com/${{ github.repository }}/blob/main/docs/releases/${RELEASE_VERSION}.md)."
           } > "$body"
@@ -105,6 +106,10 @@ jobs:
             "dist/release/araf-${RELEASE_VERSION}-digests.txt"
             "dist/release/araf-${RELEASE_VERSION}-sbom.sha256"
             "dist/release/araf-${RELEASE_VERSION}-provenance.sha256"
+            "dist/release/araf-${RELEASE_VERSION}-oci-tarballs.sha256"
+            "dist/release/araf-bff-${RELEASE_VERSION}.oci.tar"
+            "dist/release/araf-tenant-console-${RELEASE_VERSION}.oci.tar"
+            "dist/release/araf-operator-console-${RELEASE_VERSION}.oci.tar"
           )
           assets+=( dist/release/sbom/*-"${RELEASE_VERSION}".spdx.json )
           assets+=( dist/release/provenance/*-"${RELEASE_VERSION}".provenance.json )
