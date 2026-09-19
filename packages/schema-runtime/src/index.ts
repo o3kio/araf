@@ -8,6 +8,7 @@
  */
 
 import Ajv from "ajv";
+import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
 export interface ValidationError {
@@ -106,6 +107,25 @@ function formatErrors(errors: Ajv["errors"]): ValidationError[] {
 }
 
 /**
+ * Pick the Ajv dialect implementation for a schema.
+ *
+ * Ajv's default export compiles draft-07 and *rejects* a schema that declares
+ * `$schema: https://json-schema.org/draft/2020-12/schema` ("no schema with key
+ * or ref"), which is the dialect O3K's native resource contracts publish. The
+ * 2020-12 entry point compiles those; schemas that do not declare a dialect
+ * keep the previous default behaviour.
+ */
+function newValidatorForSchema(schema: unknown): Ajv {
+  const declaredDialect =
+    isPlainObject(schema) && typeof schema.$schema === "string" ? schema.$schema : "";
+  const AjvClass = declaredDialect.includes("2020-12") ? Ajv2020 : Ajv;
+  const ajv = new AjvClass({ strict: true, allErrors: true });
+  ajv.addKeyword("x-araf");
+  addFormats(ajv);
+  return ajv;
+}
+
+/**
  * Create a synchronous, local JSON Schema 2020-12 validator.
  *
  * Limitations (M5):
@@ -132,9 +152,7 @@ export function createSchemaValidator(schema: unknown): SchemaValidator {
     };
   }
 
-  const ajv = new Ajv({ strict: true, allErrors: true });
-  ajv.addKeyword("x-araf");
-  addFormats(ajv);
+  const ajv = newValidatorForSchema(schema);
 
   let validateFn: ReturnType<typeof ajv.compile>;
   try {
