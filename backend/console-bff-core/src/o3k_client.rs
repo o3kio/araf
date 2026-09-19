@@ -545,6 +545,7 @@ impl O3kClient {
             // the client never replays mutations on transport failure.
             http: reqwest::Client::builder()
                 .timeout(O3K_HTTP_TIMEOUT)
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .expect("valid O3K HTTP client configuration"),
             base_url: config.base_url.trim_end_matches('/').to_owned(),
@@ -1372,6 +1373,27 @@ mod tests {
             .await
             .expect("exchange");
         assert_eq!(token.token.id, "native-project-a");
+    }
+
+    #[tokio::test]
+    async fn upstream_redirect_is_not_followed_with_credentials() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/o3k/v1/services"))
+            .respond_with(ResponseTemplate::new(307).insert_header("Location", "/credential-sink"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(path("/credential-sink"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let client = O3kClient::new(O3kClientConfig {
+            base_url: server.uri(),
+            token: "test-only-credential".into(),
+        });
+        assert!(client.list_services().await.is_err());
     }
 
     #[tokio::test]

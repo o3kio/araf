@@ -12,12 +12,14 @@ omitted.
 | `ARAF_UPSTREAM_ADAPTER` | yes | `o3k` or `openstack` | both | yes | No implicit fallback. |
 | `ARAF_VERSION` | no | package version | both | yes | Release metadata only. |
 | `ARAF_GIT_SHA` | no | unset | both | yes | Release metadata only. |
+| `ARAF_O3K_API_CONTRACT` | when adapter=`o3k` | `o3k.io/v1` | both | yes | Required by the release profile; a mismatch stops startup. |
 | `ARAF_PUBLIC_URL` | yes | HTTPS absolute URL | matching surface | yes | No credentials/query/fragment. |
 | `ARAF_TRUSTED_ORIGINS` | yes | comma-separated HTTPS origins | matching surface | yes | Origins have no path/query/fragment; controls CORS/CSRF trust. |
 | `ARAF_SESSION_STORE_PATH` | yes | writable durable path | matching surface | yes | Must be persistent; local-only storage is not HA-safe. |
 | `ARAF_SESSION_STORE_KEY` | yes | base64-encoded exactly 32-byte AES key | matching surface | yes | Secret-manager only; losing it makes encrypted state unreadable. |
-| `O3K_URL` | when adapter=`o3k` | HTTPS host-qualified URL | both | yes | No credentials/query/fragment. |
+| `O3K_URL` | when adapter=`o3k` | HTTPS host-qualified URL | matching surface | yes | Compose maps this from the separate tenant/operator upstream settings; no credentials/query/fragment. |
 | `O3K_TOKEN` | optional | server-side bootstrap token | both | yes | Development fallback; authenticated production requests use the server-side session token. Never browser-visible. |
+| `SSL_CERT_FILE` | when private CA is needed | readable PEM bundle | both | yes | Explicit trust bundle for upstream TLS; verification is never disabled. |
 | `OPENSTACK_AUTH_URL` | when adapter=`openstack` | HTTPS Keystone URL | both | yes | Credential-free, host-qualified. |
 | `OPENSTACK_TOKEN` | one auth mode | server-side Keystone token | both | yes | Mutually sufficient with username/password; never browser-visible. |
 | `OPENSTACK_USERNAME` + `OPENSTACK_PASSWORD` | one auth mode | non-empty pair | both | yes | Password is never persisted or logged; prefer token/federated deployment. |

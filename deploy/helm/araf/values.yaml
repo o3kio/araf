@@ -43,6 +43,7 @@ sessionStore:
   storageClass: ""
 backend:
   o3kUrl: ""
+  o3kApiContract: ""
   openstackAuthUrl: ""
 oidc:
   tenantIssuerUrl: ""

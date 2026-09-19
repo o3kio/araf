@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/o3kio/araf/releases/release-contract.schema.json",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "backend_modes",
+    "o3k",
+    "openstack",
+    "tenant_api",
+    "operator_api",
+    "auth_session",
+    "deployment",
+    "fixture_mode_allowed"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "backend_modes": { "type": "array", "items": { "enum": ["o3k", "openstack"] }, "minItems": 1 },
+    "o3k": {
+      "type": "object",
+      "required": ["api_contract", "authority", "stable_release_range", "ha_gate"]
+    },
+    "openstack": { "type": "object", "required": ["profile", "apis"] },
+    "tenant_api": { "type": "string" },
+    "operator_api": { "type": "string" },
+    "auth_session": { "type": "string" },
+    "deployment": { "type": "string" },
+    "fixture_mode_allowed": { "const": false }
+  },
+  "additionalProperties": true
+}

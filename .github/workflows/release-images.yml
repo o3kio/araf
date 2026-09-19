@@ -1,12 +1,6 @@
 name: release-images
 
 on:
-  workflow_dispatch:
-    inputs:
-      release_version:
-        description: "Candidate version to embed in image metadata (defaults to ref name)"
-        required: false
-        type: string
   push:
     tags: ["v*"]
 
@@ -22,9 +16,56 @@ env:
   NODE_VERSION: "22.23.2"
   PNPM_VERSION: "10.14.0"
   RUST_TOOLCHAIN: "1.95.0"
-  RELEASE_VERSION: ${{ inputs.release_version || github.ref_name }}
+  RELEASE_VERSION: ${{ github.ref_name }}
+
+  # A release tag is the only version authority. Failed candidates consume a
+  # version; reruns must use a successor tag.
 
 jobs:
+  release-preflight:
+    name: Release identity and immutability preflight
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Reject mutable or non-prerelease identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "${{ github.ref_type }}" = tag
+          test "$RELEASE_VERSION" = "${{ github.ref_name }}"
+          # RC-only identity gate: only vX.Y.Z-rc.N tags may publish. When a
+          # stable v1.0.0 tag is eventually allowed past this regex, the
+          # hard-coded --prerelease in the release-assets job below must
+          # become version-derived (policy: ^v[0-9]+\.[0-9]+\.[0-9]+-(rc|
+          # alpha|beta)\.[0-9]+$, case-insensitive) like
+          # .github/workflows/release-publish.yml, so stable releases are not
+          # marked as prereleases. Do not weaken this gate in the meantime.
+          [[ "$RELEASE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]
+          test "$(tr -d '\\n' < backend/RELEASE_VERSION)" = "$RELEASE_VERSION"
+          test "$(git rev-parse HEAD)" = "$(git rev-list -n1 "$RELEASE_VERSION")"
+          if gh release view "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release already exists" >&2
+            exit 1
+          fi
+          for image in araf-bff araf-tenant-console araf-operator-console; do
+            if docker buildx imagetools inspect "ghcr.io/o3kio/$image:$RELEASE_VERSION" >/dev/null 2>&1; then
+              echo "OCI image tag already exists: $image:$RELEASE_VERSION" >&2
+              exit 1
+            fi
+          done
+      - name: Validate release contracts
+        run: ./tests/release-contract-gate.sh
   security-gate:
     name: Release security and supply-chain gate
     runs-on: ubuntu-24.04
@@ -68,7 +109,7 @@ jobs:
 
   images:
     name: Build, scan and attest OCI images
-    needs: security-gate
+    needs: [release-preflight, security-gate]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -115,6 +156,7 @@ jobs:
           build-args: |
             ARAF_VERSION=${{ env.RELEASE_VERSION }}
             ARAF_GIT_SHA=${{ github.sha }}
+            ARAF_RELEASE_BUILD=1
             APP=${{ matrix.app }}
           provenance: mode=max
           sbom: true
@@ -135,3 +177,60 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.name }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
+  release-assets:
+    name: Verify published artifacts and build release manifest
+    needs: images
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: read
+      id-token: write
+      attestations: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 1
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Resolve immutable indexes and verify labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for pair in BFF:araf-bff TENANT_CONSOLE:araf-tenant-console OPERATOR_CONSOLE:araf-operator-console; do
+            key=${pair%%:*}; image=${pair##*:}
+            digest=$(docker buildx imagetools inspect "ghcr.io/o3kio/$image:$RELEASE_VERSION" | awk '/Digest:/ {print $2; exit}')
+            [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+            echo "ARAF_${key}_DIGEST=$digest" >> "$GITHUB_ENV"
+            docker pull "ghcr.io/o3kio/$image@$digest" >/dev/null
+            docker buildx imagetools inspect "ghcr.io/o3kio/$image@$digest" | tee "/tmp/$image-attestations.txt"
+            grep -q 'attestation-manifest' "/tmp/$image-attestations.txt"
+            labels=$(docker image inspect "ghcr.io/o3kio/$image@$digest" --format '{{index .Config.Labels "org.opencontainers.image.version"}} {{index .Config.Labels "org.opencontainers.image.revision"}}')
+            test "$labels" = "$RELEASE_VERSION $GITHUB_SHA"
+          done
+      - name: Generate and validate manifest
+        run: |
+          ARAF_MANIFEST_PATH=release/manifest.json ARAF_MANIFEST_SHA_PATH=release/manifest.sha256 \
+            node scripts/generate-release-manifest.mjs
+          node scripts/validate-release-manifest.mjs release/manifest.json
+      - name: Publish immutable GitHub prerelease
+        # --prerelease is hard-coded because the preflight regex admits
+        # RC-only tags. When stable tags are eventually allowed, derive this
+        # flag from the version policy exactly like
+        # .github/workflows/release-publish.yml (see the note in the
+        # release-preflight job).
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_VERSION" \
+            --repo "$GITHUB_REPOSITORY" --prerelease --verify-tag \
+            --title "Araf $RELEASE_VERSION — Release Candidate" \
+            --notes-file release/README.md \
+            release/manifest.json release/manifest.sha256 \
+            release/manifest.schema.json release/release-contract.schema.json \
+            deploy/docker-compose.release.yml deploy/helm/araf/Chart.yaml

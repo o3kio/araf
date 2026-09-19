@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/o3kio/araf/releases/manifest.schema.json",
+  "type": "object",
+  "required": ["schema_version", "release", "artifacts", "deployment", "contracts", "security"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "release": {
+      "type": "object",
+      "required": ["version", "source_sha", "tag"],
+      "properties": {
+        "version": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+-rc\\.[0-9]+$" },
+        "source_sha": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "tag": { "type": "string" },
+        "prerelease": { "const": true }
+      },
+      "additionalProperties": true
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["tenant_console", "operator_console", "tenant_bff", "operator_bff"],
+      "patternProperties": {
+        "^(tenant_console|operator_console|tenant_bff|operator_bff)$": {
+          "type": "object",
+          "required": [
+            "image",
+            "digest",
+            "source_sha",
+            "version",
+            "platform",
+            "sbom",
+            "provenance"
+          ],
+          "properties": {
+            "image": { "type": "string", "pattern": "^ghcr\\.io/o3kio/araf-[a-z-]+$" },
+            "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+            "source_sha": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+            "version": { "type": "string" },
+            "platform": { "type": "string" },
+            "sbom": { "type": "string" },
+            "provenance": { "type": "string" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "deployment": {
+      "type": "object",
+      "required": ["compose", "runtime", "source_build_required"],
+      "properties": {
+        "compose": { "type": "string" },
+        "helm": { "type": "string" },
+        "runtime": { "type": "string" },
+        "source_build_required": { "const": false }
+      }
+    },
+    "contracts": {
+      "type": "object",
+      "required": ["tenant_api", "operator_api", "backend_adapter", "auth_session", "deployment"],
+      "additionalProperties": { "type": "string" }
+    },
+    "security": {
+      "type": "object",
+      "required": ["fixture_mode_allowed", "provenance_required", "sbom_required"],
+      "properties": {
+        "fixture_mode_allowed": { "const": false },
+        "provenance_required": { "const": true },
+        "sbom_required": { "const": true }
+      }
+    }
+  },
+  "additionalProperties": false
+}

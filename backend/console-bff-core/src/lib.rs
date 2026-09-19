@@ -21,6 +21,7 @@ pub mod model;
 pub mod o3k_adapter;
 pub mod o3k_client;
 pub mod openstack;
+pub mod release;
 pub mod request;
 pub mod session;
 pub mod upstream;
@@ -269,6 +270,7 @@ impl BffConfig {
     /// development/test profile and an explicit `fixture` adapter.
     pub fn from_env(surface: &'static str) -> Result<Self, ApiError> {
         let profile = RuntimeProfile::from_env()?;
+        release::validate(profile)?;
         let raw_adapter = std::env::var("ARAF_UPSTREAM_ADAPTER").map_err(|_| {
             config_error("ARAF_UPSTREAM_ADAPTER is required; select o3k or explicitly select fixture in development/test")
         })?;

@@ -79,6 +79,7 @@ jobs:
         run: |
           ./tests/docs-check.sh
           ./tests/support-bundle-security.sh
+          ./tests/release-contract-gate.sh
 
   rust:
     name: rust (fmt, clippy, check, test)

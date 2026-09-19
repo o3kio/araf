@@ -116,6 +116,18 @@ export default tseslint.config(
   {
     files: ["**/*.{mjs,cjs,js}"],
     ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      globals: globals.node,
+      parserOptions: {
+        projectService: false,
+      },
+    },
+  },
+  {
+    files: ["tests/check-frontend-licenses.mjs"],
+    rules: {
+      "no-redeclare": "off",
+    },
   },
   {
     files: ["**/*.config.{ts,mjs}", "eslint.config.mjs"],
