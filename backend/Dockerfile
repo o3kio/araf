@@ -15,8 +15,12 @@ WORKDIR /build
 # Copy the entire backend workspace (Cargo.toml, Cargo.lock, all crates)
 COPY . .
 
-# Build both binaries
-RUN cargo build --release --bin tenant-bff --bin operator-bff && \
+# Build identity is compiled into both binaries; runtime cannot replace it.
+ARG ARAF_VERSION=0.0.0-dev
+ARG ARAF_GIT_SHA=unknown
+ARG ARAF_RELEASE_BUILD=0
+RUN ARAF_VERSION="$ARAF_VERSION" ARAF_GIT_SHA="$ARAF_GIT_SHA" ARAF_RELEASE_BUILD="$ARAF_RELEASE_BUILD" \
+    cargo build --locked --release --bin tenant-bff --bin operator-bff && \
     cp target/release/tenant-bff /usr/local/bin/tenant-bff && \
     cp target/release/operator-bff /usr/local/bin/operator-bff
 

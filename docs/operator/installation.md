@@ -53,7 +53,8 @@ attestation before rollout.
    helm lint deploy/helm/araf \
      --set image.digest=sha256:<bff-digest> \
      --set frontendImage.tenant.digest=sha256:<tenant-digest> \
-     --set frontendImage.operator.digest=sha256:<operator-digest>
+     --set frontendImage.operator.digest=sha256:<operator-digest> \
+     --set backend.o3kApiContract=o3k.io/v1
    helm upgrade --install araf deploy/helm/araf \
      --namespace araf --create-namespace --values values.production.yaml
    ```

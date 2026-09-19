@@ -6,6 +6,24 @@ Araf is one tenant/operator console product with a shared generic UX and a serve
 
 Araf is **not** a Horizon fork and does not implement a Horizon compatibility protocol. It is intended as a modern successor to Horizon's role for the supported OpenStack profile while remaining the native console for O3K. Each backend remains authoritative for its own cloud resource state.
 
+## Release status
+
+The repository is preparing a versioned prerelease for O3K PP.3 consumption.
+The release candidate is an independently deployable artifact: Tenant Console,
+Operator Console, Tenant BFF and Operator BFF are published as digest-pinned
+OCI references and described by a machine-readable manifest. Compose is the
+primary single-host release path; Helm remains maintained. A release target
+does not build Araf source and production configuration rejects fixture mode.
+
+This status is distinct from implementation and test completion. A release
+candidate is not production certification, high-availability certification or
+GA. Stable-release multi-node O3K acceptance remains explicitly gated by
+[#106](https://github.com/o3kio/araf/issues/106); live cross-candidate upgrade
+and rollback remains tracked separately. Araf never owns O3K resource,
+topology, placement, operation or readiness truth. See the [release contract](release/README.md),
+[phase-0 audit](docs/engineering/o3k-pp3-release-audit.md), and
+[production limitations](docs/operator/limitations.md).
+
 ![Araf, O3K and OpenStack architecture](docs/architecture/araf-o3k-openstack-architecture.svg)
 
 For the full architecture, authority boundaries, compatibility paths, current support evidence, and claim limits, see [Araf, O3K and OpenStack architecture](docs/architecture/araf-o3k-openstack.md).

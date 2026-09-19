@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "backend_modes": ["o3k", "openstack"],
+  "o3k": {
+    "api_contract": "o3k.io/v1",
+    "api_path": "/o3k/v1",
+    "profile": "native-p2-convergence",
+    "historical_tested_source_sha": "21fe687c387a04f107b6e87fac04060b1c28e449",
+    "candidate_real_backend_tested": false,
+    "stable_release_range": null,
+    "authority": "O3K",
+    "ha_gate": "https://github.com/o3kio/araf/issues/106"
+  },
+  "openstack": {
+    "profile": "2026.1-core",
+    "apis": { "keystone": "v3", "nova": "v2.1", "glance": "v2", "neutron": "v2", "cinder": "v3" },
+    "excluded": ["swift", "public-floating-ip", "volume-attachment"],
+    "candidate_real_backend_tested": false
+  },
+  "tenant_api": "araf-bff/v1",
+  "operator_api": "araf-bff/v1",
+  "auth_session": "araf-oidc-session/v1",
+  "deployment": "araf-release-compose/v1",
+  "state": "araf-encrypted-session-and-compatibility-journal/v1",
+  "fixture_mode_allowed": false,
+  "production_certified": false,
+  "ha_certified": false
+}

@@ -60,6 +60,7 @@ if command -v helm >/dev/null 2>&1; then
     --set frontendImage.tenant.digest=sha256:"$(printf '%064d' 0)" \
     --set frontendImage.operator.digest=sha256:"$(printf '%064d' 0)" \
     --set backend.o3kUrl=https://o3k.example.invalid \
+    --set backend.o3kApiContract=o3k.io/v1 \
     --set oidc.tenantIssuerUrl=https://idp.example.invalid \
     --set oidc.tenantClientId=placeholder \
     --set oidc.tenantRedirectUri=https://tenant.example.invalid/callback \

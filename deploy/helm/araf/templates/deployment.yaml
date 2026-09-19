@@ -25,10 +25,6 @@ spec:
               value: production
             - name: ARAF_UPSTREAM_ADAPTER
               value: {{ $.Values.upstreamAdapter | quote }}
-            - name: ARAF_VERSION
-              value: {{ $.Values.version | quote }}
-            - name: ARAF_GIT_SHA
-              value: {{ $.Values.gitSha | quote }}
             - name: ARAF_SESSION_STORE_PATH
               value: /var/lib/araf/sessions.json
             - name: ARAF_SESSION_STORE_KEY
@@ -42,6 +38,8 @@ spec:
               value: {{ if eq $surface "tenant" }}{{ $.Values.tenant.trustedOrigins | quote }}{{ else }}{{ $.Values.operator.trustedOrigins | quote }}{{ end }}
             - name: O3K_URL
               value: {{ $.Values.backend.o3kUrl | quote }}
+            - name: ARAF_O3K_API_CONTRACT
+              value: {{ required "backend.o3kApiContract is required" $.Values.backend.o3kApiContract | quote }}
             - name: O3K_TOKEN
               valueFrom:
                 secretKeyRef:
