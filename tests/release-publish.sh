@@ -172,4 +172,72 @@ grep -q 'araf-operator-console-${RELEASE_VERSION}.oci.tar' "$workflow" \
 grep -q 'araf-${RELEASE_VERSION}-oci-tarballs.sha256' "$workflow" \
   || fail "workflow must upload the OCI tarball checksum manifest"
 
+# --------------------------------------------- version-derived GitHub prerelease flag
+# The workflow must derive --prerelease from the prerelease policy
+# ^v[0-9]+\.[0-9]+\.[0-9]+-(rc|alpha|beta)\.[0-9]+$ (case-insensitive on the
+# suffix word) instead of never passing the flag: v1.0.0-rc.12 shipped with
+# prerelease:false because the published release carries no --prerelease.
+grep -q 'Derive GitHub prerelease flag' "$workflow" \
+  || fail "workflow must have an explicit prerelease-flag derivation step"
+grep -qF '^v[0-9]+\.[0-9]+\.[0-9]+-(rc|alpha|beta)\.[0-9]+$' "$workflow" \
+  || fail "workflow must encode the prerelease policy regex"
+# (single quotes are intentional: the workflow YAML carries the literal
+#  ${RELEASE_VERSION,,} expression, so shellcheck SC2016 is a false positive)
+# shellcheck disable=SC2016
+grep -qF '${RELEASE_VERSION,,}' "$workflow" \
+  || fail "workflow must match the policy case-insensitively (lowercased version)"
+grep -q 'PRERELEASE_FLAG=' "$workflow" \
+  || fail "workflow must export the derived flag for the create step"
+grep -q 'prerelease decision' "$workflow" \
+  || fail "workflow must log the prerelease decision in the job log"
+# (single quotes are intentional: the workflow consumes the literal
+#  $PRERELEASE_FLAG variable name, so shellcheck SC2016 is a false positive)
+# shellcheck disable=SC2016
+grep -q '\$PRERELEASE_FLAG' "$workflow" \
+  || fail "workflow must consume the derived flag when creating the release"
+# The gh release create invocation itself must never hard-code --prerelease;
+# only the derivation step may mention it.
+create_line=$(grep 'gh release create' "$workflow" | head -n1)
+[[ -n "$create_line" ]] || fail "workflow must create the GitHub release"
+if grep -q -- '--prerelease' <<<"$create_line"; then
+  fail "gh release create must not hard-code --prerelease; it must come from PRERELEASE_FLAG"
+fi
+# publish-release.sh assembles assets only; GitHub release metadata (including
+# the prerelease flag) is the workflow's job and publish-release.sh must stay
+# free of release-mutating side effects.
+if grep -qE 'gh release (create|edit|delete)' "$script"; then
+  fail "publish-release.sh must not create or mutate GitHub releases"
+fi
+if grep -q -- '--prerelease' "$script"; then
+  fail "publish-release.sh must not carry the prerelease flag (unchanged behavior)"
+fi
+
+# Mirror of the workflow's "Derive GitHub prerelease flag" step. The grep
+# checks above pin the workflow to this exact policy regex and case logic.
+derive_prerelease_flag() {
+  local version=$1
+  if [[ "${version,,}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(rc|alpha|beta)\.[0-9]+$ ]]; then
+    printf '%s' '--prerelease'
+  else
+    printf '%s' ''
+  fi
+}
+
+expect_prerelease_flag() { # $1 version, $2 expected flag ('--prerelease' or '')
+  local got
+  got=$(derive_prerelease_flag "$1")
+  [[ "$got" == "$2" ]] \
+    || fail "prerelease flag for $1: expected '$2', got '$got'"
+}
+
+expect_prerelease_flag v1.0.0-rc.13 '--prerelease'
+expect_prerelease_flag v1.0.0 ''
+expect_prerelease_flag v2.0.0-beta.1 '--prerelease'
+expect_prerelease_flag v1.0.0-rc1 ''
+expect_prerelease_flag v1.0.0-RC.3 '--prerelease'
+expect_prerelease_flag v1.0.0-alpha.2 '--prerelease'
+expect_prerelease_flag v1.0.0-rc.0 '--prerelease'
+expect_prerelease_flag 1.0.0-rc.1 ''
+expect_prerelease_flag v1.0.0-rc.13.1 ''
+
 echo "release-publish guard-rail tests: PASS"

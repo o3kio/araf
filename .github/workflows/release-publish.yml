@@ -92,11 +92,29 @@ jobs:
             echo "Release notes: [\`docs/releases/${RELEASE_VERSION}.md\`](https://github.com/${{ github.repository }}/blob/main/docs/releases/${RELEASE_VERSION}.md)."
           } > "$body"
 
+      - name: Derive GitHub prerelease flag from the version policy
+        run: |
+          set -euo pipefail
+          # Prerelease policy: ^v[0-9]+\.[0-9]+\.[0-9]+-(rc|alpha|beta)\.[0-9]+$
+          # with the suffix word matched case-insensitively. Policy-matching
+          # versions must be published as GitHub prereleases; everything else
+          # (e.g. a stable v1.0.0) must NOT carry the flag. v1.0.0-rc.12 was
+          # published with prerelease:false because this derivation did not
+          # exist yet; keep the policy and tests/release-publish.sh in sync.
+          if [[ "${RELEASE_VERSION,,}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(rc|alpha|beta)\.[0-9]+$ ]]; then
+            flag="--prerelease"
+          else
+            flag=""
+          fi
+          echo "PRERELEASE_FLAG=${flag}" >> "$GITHUB_ENV"
+          echo "prerelease decision: ${RELEASE_VERSION} -> '${flag}'"
+
       - name: Create GitHub Release (verify tag, fail closed if release exists)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          echo "creating release ${RELEASE_VERSION} (prerelease flag: '${PRERELEASE_FLAG}')"
           if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
             echo "::error::release ${RELEASE_VERSION} already exists; refusing to mutate a published release"
             exit 1
@@ -113,8 +131,16 @@ jobs:
           )
           assets+=( dist/release/sbom/*-"${RELEASE_VERSION}".spdx.json )
           assets+=( dist/release/provenance/*-"${RELEASE_VERSION}".provenance.json )
+          release_args=(
+            --title "Araf $RELEASE_VERSION"
+            --notes-file dist/release/release-body.md
+            --verify-tag
+          )
+          # The derived flag is appended only when non-empty so a stable
+          # release never receives an empty argv element.
+          if [[ -n "$PRERELEASE_FLAG" ]]; then
+            release_args+=("$PRERELEASE_FLAG")
+          fi
           gh release create "$RELEASE_VERSION" \
-            --title "Araf $RELEASE_VERSION" \
-            --notes-file dist/release/release-body.md \
-            --verify-tag \
+            "${release_args[@]}" \
             "${assets[@]}"
