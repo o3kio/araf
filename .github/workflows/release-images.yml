@@ -44,6 +44,13 @@ jobs:
         run: |
           test "${{ github.ref_type }}" = tag
           test "$RELEASE_VERSION" = "${{ github.ref_name }}"
+          # RC-only identity gate: only vX.Y.Z-rc.N tags may publish. When a
+          # stable v1.0.0 tag is eventually allowed past this regex, the
+          # hard-coded --prerelease in the release-assets job below must
+          # become version-derived (policy: ^v[0-9]+\.[0-9]+\.[0-9]+-(rc|
+          # alpha|beta)\.[0-9]+$, case-insensitive) like
+          # .github/workflows/release-publish.yml, so stable releases are not
+          # marked as prereleases. Do not weaken this gate in the meantime.
           [[ "$RELEASE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]
           test "$(tr -d '\\n' < backend/RELEASE_VERSION)" = "$RELEASE_VERSION"
           test "$(git rev-parse HEAD)" = "$(git rev-list -n1 "$RELEASE_VERSION")"
@@ -212,6 +219,11 @@ jobs:
             node scripts/generate-release-manifest.mjs
           node scripts/validate-release-manifest.mjs release/manifest.json
       - name: Publish immutable GitHub prerelease
+        # --prerelease is hard-coded because the preflight regex admits
+        # RC-only tags. When stable tags are eventually allowed, derive this
+        # flag from the version policy exactly like
+        # .github/workflows/release-publish.yml (see the note in the
+        # release-preflight job).
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

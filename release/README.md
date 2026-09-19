@@ -23,7 +23,11 @@ replace an image or overwrite an asset. A partial failed publication consumes
 the version. Record the failure and publish a successor after fixing source.
 Only final reviewed source on protected main can be tagged. The release
 workflow rejects non-tag dispatch, repeat attempts, version mismatch, existing
-version images and existing GitHub Releases. Keep all GHCR packages public;
+version images and existing GitHub Releases. The GitHub prerelease flag is
+derived from the version policy (`^v[0-9]+\.[0-9]+\.[0-9]+-(rc|alpha|beta)\.[0-9]+$`,
+case-insensitive on the suffix word) by the release publication workflow, so
+policy-matching versions publish as GitHub prereleases and stable versions do
+not. Keep all GHCR packages public;
 anonymous verification is a release requirement, not optional documentation.
 
 Published BuildKit SPDX SBOM and SLSA provenance are attached to the OCI index.
