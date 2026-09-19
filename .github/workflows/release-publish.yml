@@ -1,0 +1,115 @@
+name: release-publish
+
+# Publishes the versioned GitHub Release for a tag whose images were already
+# built, scanned and attested by release-images. Fails closed: the tag must
+# exist, every image/attestation must resolve, and an existing release is
+# never mutated.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Existing release tag to publish (e.g. v1.0.0-rc.12); images must already exist"
+        required: true
+        type: string
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ${{ github.repository_owner }}
+  RELEASE_VERSION: ${{ inputs.release_version || github.ref_name }}
+
+jobs:
+  publish:
+    name: Assemble release bundle and publish GitHub Release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - name: Checkout release tag (fail closed on missing tag)
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ env.RELEASE_VERSION }}
+
+      - name: Verify tag exists and record source SHA
+        run: |
+          set -euo pipefail
+          if ! git rev-parse --verify --quiet "refs/tags/${RELEASE_VERSION}" >/dev/null; then
+            echo "::error::RELEASE_VERSION=${RELEASE_VERSION} is not an existing tag; refusing to publish"
+            exit 1
+          fi
+          echo "SOURCE_SHA=$(git rev-parse "${RELEASE_VERSION}^{commit}")" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run release-publish guard-rail tests
+        run: ./tests/release-publish.sh
+
+      - name: Assemble release assets from attested images
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: ./scripts/publish-release.sh
+
+      - name: Render release body
+        run: |
+          set -euo pipefail
+          body="dist/release/release-body.md"
+          {
+            echo "Araf ${RELEASE_VERSION} release bundle (PP demo release)."
+            echo
+            echo "Source: [\`${SOURCE_SHA}\`](https://github.com/${{ github.repository }}/tree/${SOURCE_SHA}) (tag \`${RELEASE_VERSION}\`)."
+            echo
+            echo "## Release images"
+            echo
+            echo "Pull and deploy by digest only — GHCR tags are mutable, digests are the only authority (cryptographically/policy immutable, not platform-enforced)."
+            echo
+            echo '| Component | Image |'
+            echo '| --- | --- |'
+            while read -r component ref; do
+              echo "| ${component} | \`${ref}\` |"
+            done < "dist/release/araf-${RELEASE_VERSION}-digests.txt"
+            echo
+            echo "## Assets"
+            echo
+            echo "- \`araf-${RELEASE_VERSION}-deploy.tar.gz\` — reference Compose deployment, environment schema, digests and verification guide."
+            echo "- \`araf-${RELEASE_VERSION}-digests.txt\` — immutable image digest pins."
+            echo "- \`*.spdx.json\` / \`araf-${RELEASE_VERSION}-sbom.sha256\` — SPDX SBOMs extracted from the image attestation manifests."
+            echo "- \`*.provenance.json\` / \`araf-${RELEASE_VERSION}-provenance.sha256\` — SLSA v1 provenance extracted from the image attestation manifests."
+            echo
+            echo "Release notes: [\`docs/releases/${RELEASE_VERSION}.md\`](https://github.com/${{ github.repository }}/blob/main/docs/releases/${RELEASE_VERSION}.md)."
+          } > "$body"
+
+      - name: Create GitHub Release (verify tag, fail closed if release exists)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
+            echo "::error::release ${RELEASE_VERSION} already exists; refusing to mutate a published release"
+            exit 1
+          fi
+          assets=(
+            "dist/release/araf-${RELEASE_VERSION}-deploy.tar.gz"
+            "dist/release/araf-${RELEASE_VERSION}-digests.txt"
+            "dist/release/araf-${RELEASE_VERSION}-sbom.sha256"
+            "dist/release/araf-${RELEASE_VERSION}-provenance.sha256"
+          )
+          assets+=( dist/release/sbom/*-"${RELEASE_VERSION}".spdx.json )
+          assets+=( dist/release/provenance/*-"${RELEASE_VERSION}".provenance.json )
+          gh release create "$RELEASE_VERSION" \
+            --title "Araf $RELEASE_VERSION" \
+            --notes-file dist/release/release-body.md \
+            --verify-tag \
+            "${assets[@]}"

@@ -56,7 +56,7 @@ print("docs link/path gate: PASS")
 PY
 
 # Commands and support tooling named by the operator entry point must exist.
-for script in tests/support-bundle.sh tests/support-bundle-security.sh tests/package-upgrade-rollback.sh tests/prometheus-observability.sh; do
+for script in tests/support-bundle.sh tests/support-bundle-security.sh tests/package-upgrade-rollback.sh tests/prometheus-observability.sh tests/release-publish.sh; do
   [[ -x "$root_dir/$script" ]] || { echo "missing executable: $script" >&2; exit 1; }
 done
 echo 'docs command gate: PASS'
