@@ -2,6 +2,7 @@
 name = "console-bff-core"
 version = "0.1.0"
 edition.workspace = true
+build = "build.rs"
 license.workspace = true
 rust-version.workspace = true
 description = "Shared BFF core for Araf console surfaces (routing, errors, sessions, upstream abstraction, fixtures)"

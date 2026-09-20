@@ -8,6 +8,7 @@
  */
 
 import Ajv from "ajv";
+import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
 export interface ValidationError {
@@ -42,6 +43,23 @@ const FORBIDDEN_SCHEMA_KEYWORDS = new Set([
 ]);
 
 const REMOTE_REF_PROTOCOLS = ["http:", "https:"];
+
+const JSON_SCHEMA_2020_12_DIALECTS = new Set([
+  "https://json-schema.org/draft/2020-12/schema",
+  "https://json-schema.org/draft/2020-12/schema#",
+  "http://json-schema.org/draft/2020-12/schema",
+  "http://json-schema.org/draft/2020-12/schema#",
+]);
+
+const LEGACY_SUPPORTED_DIALECTS = new Set([
+  "http://json-schema.org/draft-07/schema",
+  "http://json-schema.org/draft-07/schema#",
+  "https://json-schema.org/draft-07/schema",
+  "https://json-schema.org/draft-07/schema#",
+]);
+
+const CANONICAL_2020_12_DIALECT = "https://json-schema.org/draft/2020-12/schema";
+const CANONICAL_LEGACY_DIALECT = "http://json-schema.org/draft-07/schema#";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -105,6 +123,43 @@ function formatErrors(errors: Ajv["errors"]): ValidationError[] {
   }));
 }
 
+function unsupportedDialectResult(dialect: string): SchemaValidator {
+  return {
+    validate: () => ({
+      valid: false,
+      errors: [
+        {
+          instancePath: "",
+          schemaPath: "schema.$schema",
+          message: `Unsupported JSON Schema dialect: ${dialect}`,
+          keyword: "unsupportedDialect",
+        },
+      ],
+    }),
+  };
+}
+
+/**
+ * Pick the Ajv dialect implementation for a schema.
+ *
+ * Ajv's default export compiles draft-07 and *rejects* a schema that declares
+ * `$schema: https://json-schema.org/draft/2020-12/schema` ("no schema with key
+ * or ref"), which is the dialect O3K's native resource contracts publish. The
+ * 2020-12 entry point compiles those; schemas that do not declare a dialect
+ * keep the previous default behaviour.
+ */
+function newValidatorForSchema(schema: unknown): Ajv {
+  const declaredDialect = isPlainObject(schema) ? schema.$schema : undefined;
+  const AjvClass =
+    typeof declaredDialect === "string" && JSON_SCHEMA_2020_12_DIALECTS.has(declaredDialect)
+      ? Ajv2020
+      : Ajv;
+  const ajv = new AjvClass({ strict: true, allErrors: true });
+  ajv.addKeyword("x-araf");
+  addFormats(ajv);
+  return ajv;
+}
+
 /**
  * Create a synchronous, local JSON Schema 2020-12 validator.
  *
@@ -132,13 +187,30 @@ export function createSchemaValidator(schema: unknown): SchemaValidator {
     };
   }
 
-  const ajv = new Ajv({ strict: true, allErrors: true });
-  ajv.addKeyword("x-araf");
-  addFormats(ajv);
+  const declaredDialect = isPlainObject(schema) ? schema.$schema : undefined;
+  if (
+    typeof declaredDialect === "string" &&
+    !JSON_SCHEMA_2020_12_DIALECTS.has(declaredDialect) &&
+    !LEGACY_SUPPORTED_DIALECTS.has(declaredDialect)
+  ) {
+    return unsupportedDialectResult(declaredDialect);
+  }
+
+  const ajv = newValidatorForSchema(schema);
+
+  const normalizedSchema =
+    isPlainObject(schema) && typeof declaredDialect === "string"
+      ? {
+          ...schema,
+          $schema: JSON_SCHEMA_2020_12_DIALECTS.has(declaredDialect)
+            ? CANONICAL_2020_12_DIALECT
+            : CANONICAL_LEGACY_DIALECT,
+        }
+      : schema;
 
   let validateFn: ReturnType<typeof ajv.compile>;
   try {
-    validateFn = ajv.compile(schema as object);
+    validateFn = ajv.compile(normalizedSchema as object);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {

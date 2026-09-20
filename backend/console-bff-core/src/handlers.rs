@@ -174,8 +174,8 @@ pub async fn metrics() -> impl IntoResponse {
 
 pub async fn version(State(state): State<AppState>) -> impl IntoResponse {
     Json(serde_json::json!({
-        "version": std::env::var("ARAF_VERSION").unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_owned()),
-        "gitSha": std::env::var("ARAF_GIT_SHA").ok(),
+        "version": env!("ARAF_BUILD_VERSION"),
+        "gitSha": env!("ARAF_BUILD_GIT_SHA"),
         "service": state.upstream.surface(),
         "backend": state.upstream.backend_kind(),
     }))

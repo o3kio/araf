@@ -1,6 +1,6 @@
 # Reference deployment using pre-built, digest-pinned release artifacts.
-# Set ARAF_VERSION and image digests in an external .env file; this file never
-# contains OIDC or provider credentials.
+# Set image references and digests in an external .env file; this file never
+# contains OIDC or provider credentials. Artifact identity is baked into images.
 services:
   tenant-bff:
     image: ${ARAF_BFF_IMAGE:?set ARAF_BFF_IMAGE}@${ARAF_BFF_DIGEST:?set ARAF_BFF_DIGEST}
@@ -26,11 +26,17 @@ services:
     volumes:
       - tenant-session:/var/lib/araf
     read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 128
     stop_grace_period: 30s
     tmpfs: [/tmp]
-    ports: ["8080:8080"]
+    ports: ["127.0.0.1:8080:8080"]
     healthcheck:
-      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8080/readyz"]
+      test: ["CMD", "/busybox/wget", "--spider", "--quiet", "http://127.0.0.1:8080/readyz"]
   operator-bff:
     image: ${ARAF_BFF_IMAGE:?set ARAF_BFF_IMAGE}@${ARAF_BFF_DIGEST:?set ARAF_BFF_DIGEST}
     command: ["operator-bff"]
@@ -55,16 +61,28 @@ services:
     volumes:
       - operator-session:/var/lib/araf
     read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 128
     stop_grace_period: 30s
     tmpfs: [/tmp]
-    ports: ["8081:8081"]
+    ports: ["127.0.0.1:8081:8081"]
     healthcheck:
-      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8081/readyz"]
+      test: ["CMD", "/busybox/wget", "--spider", "--quiet", "http://127.0.0.1:8081/readyz"]
   tenant-console:
     image: ${ARAF_TENANT_CONSOLE_IMAGE:?set ARAF_TENANT_CONSOLE_IMAGE}@${ARAF_TENANT_CONSOLE_DIGEST:?set ARAF_TENANT_CONSOLE_DIGEST}
     environment:
       BFF_UPSTREAM: http://tenant-bff:8080
     read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 128
     # nginx-entrypoint renders BFF_UPSTREAM into conf.d at startup. Keep the
     # image root read-only while granting only that generated config directory
     # and nginx's runtime paths ephemeral write access.
@@ -73,7 +91,7 @@ services:
       - /var/cache/nginx
       - /var/run
       - /etc/nginx/conf.d:uid=101,gid=101,mode=755
-    ports: ["5173:8080"]
+    ports: ["127.0.0.1:5173:8080"]
     depends_on:
       tenant-bff: { condition: service_healthy }
     healthcheck:
@@ -83,12 +101,18 @@ services:
     environment:
       BFF_UPSTREAM: http://operator-bff:8081
     read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 128
     tmpfs:
       - /tmp
       - /var/cache/nginx
       - /var/run
       - /etc/nginx/conf.d:uid=101,gid=101,mode=755
-    ports: ["5174:8080"]
+    ports: ["127.0.0.1:5174:8080"]
     depends_on:
       operator-bff: { condition: service_healthy }
     healthcheck:

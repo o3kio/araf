@@ -8,6 +8,9 @@ install.
 
 - Kubernetes with an ingress controller and a TLS certificate, or Docker
   Compose plus an equivalent TLS reverse proxy.
+- The certified Compose preparation tuple is Docker Engine `29.8.0` with
+  Docker Compose `v5.5.1`. Older Docker versions and Podman are unsupported
+  until separately tested; this release path does not claim runtime breadth.
 - A secret manager (Kubernetes Secret, external-secrets controller, or an
   equivalent) and durable storage for each console surface.
 - DNS names and HTTPS origins for the Tenant and Operator consoles.
@@ -47,6 +50,10 @@ Versioned releases publish a signed-off bundle as GitHub Release assets:
   `ENVIRONMENT.md` (complete environment schema), `digests.txt` and
   `VERIFY.md`.
 - `araf-<version>-digests.txt` — the immutable image digest pins.
+- `araf-<version>-release-manifest.json` — schema-validated version, source
+  SHA, four runtime component identities, backend compatibility and security
+  contract. The Tenant and Operator BFF entries intentionally share the
+  canonical `araf-bff` image digest and select separate binaries at runtime.
 - `<component>-<version>.spdx.json` + `araf-<version>-sbom.sha256` — SPDX
   SBOMs extracted from the GHCR image attestation manifests.
 - `<component>-<version>.provenance.json` + `araf-<version>-provenance.sha256`
@@ -97,7 +104,7 @@ notes and known limitations.
 ## Helm path
 
 1. Create the reviewed values file from `deploy/helm/araf/values.yaml`.
-   Set both frontend digests, the BFF digest, `version`, `gitSha`, backend
+   Set both frontend digests, the BFF digest, backend
    endpoint, HTTPS origins, OIDC issuer/client IDs/redirect URIs, and the
    ingress TLS hosts. Keep secret values out of values and ConfigMaps.
 2. Create the referenced Kubernetes Secret with the keys listed in

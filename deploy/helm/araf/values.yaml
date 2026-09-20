@@ -30,8 +30,6 @@ ingress:
   annotations: {}
   hosts: []
   tls: []
-version: "0.0.0"
-gitSha: unknown
 upstreamAdapter: o3k
 tenant:
   publicUrl: https://tenant.example.invalid

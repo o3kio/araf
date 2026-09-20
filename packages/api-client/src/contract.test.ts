@@ -83,8 +83,14 @@ function startTenantBff(port: number): Promise<ChildProcess> {
 describe("tenant-bff fixture contract", () => {
   let port: number;
   let bff: ChildProcess | undefined;
+  const hadDocument = "document" in globalThis;
+  const originalDocument = (globalThis as typeof globalThis & { document?: unknown }).document;
 
   beforeAll(async () => {
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: { cookie: "araf_csrf=fixture-contract-token" },
+    });
     port = await getFreePort();
     bff = await startTenantBff(port);
   }, 15_000);
@@ -97,6 +103,14 @@ describe("tenant-bff fixture contract", () => {
           bff.kill("SIGKILL");
         }
       }, 2_000);
+    }
+    if (!hadDocument) {
+      Reflect.deleteProperty(globalThis, "document");
+    } else {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: originalDocument,
+      });
     }
   });
 

@@ -216,6 +216,9 @@ test.describe("operations UX prototype gate", () => {
   }) => {
     expect(tenantPreview).toBeDefined();
     const previewUrl = tenantPreview?.url ?? "";
+    await page
+      .context()
+      .addCookies([{ name: "araf_csrf", value: "fixture-e2e-csrf", url: previewUrl }]);
 
     await page.goto(`${previewUrl}/resources/compute.server`);
 
@@ -267,6 +270,9 @@ test.describe("operations UX prototype gate", () => {
   test("reload survival: operation detail survives a page reload", async ({ page }) => {
     expect(tenantPreview).toBeDefined();
     const previewUrl = tenantPreview?.url ?? "";
+    await page
+      .context()
+      .addCookies([{ name: "araf_csrf", value: "fixture-e2e-csrf", url: previewUrl }]);
 
     await page.goto(`${previewUrl}/resources/compute.server/create`);
 

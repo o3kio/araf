@@ -12,8 +12,13 @@ on:
         description: "Existing release tag to publish (e.g. v1.0.0-rc.12); images must already exist"
         required: true
         type: string
-  push:
-    tags: ["v*"]
+      release_run_id:
+        description: "Successful release-images workflow run that built this tag"
+        required: true
+        type: string
+  workflow_run:
+    workflows: [release-images]
+    types: [completed]
 
 permissions:
   contents: read
@@ -21,20 +26,53 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAMESPACE: ${{ github.repository_owner }}
-  RELEASE_VERSION: ${{ inputs.release_version || github.ref_name }}
+  RELEASE_VERSION: ${{ inputs.release_version || github.event.workflow_run.head_branch || github.ref_name }}
+  UPSTREAM_RUN_ID: ${{ inputs.release_run_id || github.event.workflow_run.id }}
 
 jobs:
   publish:
     name: Assemble release bundle and publish GitHub Release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v'))
     runs-on: ubuntu-24.04
     permissions:
       contents: write
       packages: read
     steps:
+      - name: Verify release-images run provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${UPSTREAM_RUN_ID}")"
+          workflow_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release-images.yml" --jq '.id')"
+          expected_sha="$(jq -r '.head_sha' <<<"${run_json}")"
+          jq -e \
+            --arg repository "${GITHUB_REPOSITORY}" \
+            --arg version "${RELEASE_VERSION}" \
+            --arg expected_sha "${expected_sha}" \
+            --argjson workflow_id "${workflow_id}" \
+            '.name == "release-images" and
+             .workflow_id == $workflow_id and
+             .conclusion == "success" and
+             .repository.full_name == $repository and
+             .head_repository.full_name == $repository and
+             .event == "push" and
+             .head_branch == $version and
+             .head_sha == $expected_sha' \
+            <<<"${run_json}" >/dev/null || {
+              echo "::error::upstream release-images run is not a successful same-repository push for ${RELEASE_VERSION}"
+              exit 1
+            }
+          echo "UPSTREAM_HEAD_SHA=${expected_sha}" >> "$GITHUB_ENV"
+
       - name: Checkout release tag (fail closed on missing tag)
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           ref: ${{ env.RELEASE_VERSION }}
+          fetch-depth: 0
 
       - name: Verify tag exists and record source SHA
         run: |
@@ -43,6 +81,15 @@ jobs:
             echo "::error::RELEASE_VERSION=${RELEASE_VERSION} is not an existing tag; refusing to publish"
             exit 1
           fi
+          tag_sha="$(git rev-parse "refs/tags/${RELEASE_VERSION}^{commit}")"
+          test "${tag_sha}" = "${UPSTREAM_HEAD_SHA}" || {
+            echo "::error::tag ${RELEASE_VERSION} resolves to ${tag_sha}, upstream run built ${UPSTREAM_HEAD_SHA}"
+            exit 1
+          }
+          test -s "docs/releases/${RELEASE_VERSION}.md" || {
+            echo "::error::missing release notes: docs/releases/${RELEASE_VERSION}.md"
+            exit 1
+          }
           echo "SOURCE_SHA=$(git rev-parse "${RELEASE_VERSION}^{commit}")" >> "$GITHUB_ENV"
 
       - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
@@ -84,6 +131,7 @@ jobs:
             echo "## Assets"
             echo
             echo "- \`araf-${RELEASE_VERSION}-deploy.tar.gz\` — reference Compose deployment, environment schema, digests and verification guide."
+            echo "- \`araf-${RELEASE_VERSION}-release-manifest.json\` — schema-validated source, artifact and backend compatibility tuple."
             echo "- \`araf-${RELEASE_VERSION}-digests.txt\` — immutable image digest pins."
             echo "- \`*.spdx.json\` / \`araf-${RELEASE_VERSION}-sbom.sha256\` — SPDX SBOMs extracted from the image attestation manifests."
             echo "- \`*.provenance.json\` / \`araf-${RELEASE_VERSION}-provenance.sha256\` — SLSA v1 provenance extracted from the image attestation manifests."
@@ -122,6 +170,7 @@ jobs:
           assets=(
             "dist/release/araf-${RELEASE_VERSION}-deploy.tar.gz"
             "dist/release/araf-${RELEASE_VERSION}-digests.txt"
+            "dist/release/araf-${RELEASE_VERSION}-release-manifest.json"
             "dist/release/araf-${RELEASE_VERSION}-sbom.sha256"
             "dist/release/araf-${RELEASE_VERSION}-provenance.sha256"
             "dist/release/araf-${RELEASE_VERSION}-oci-tarballs.sha256"

@@ -15,8 +15,13 @@ WORKDIR /build
 # Copy the entire backend workspace (Cargo.toml, Cargo.lock, all crates)
 COPY . .
 
-# Build both binaries
-RUN cargo build --release --bin tenant-bff --bin operator-bff && \
+# Build identity is compiled into both binaries. Runtime environment cannot
+# rewrite the identity returned by /version.
+ARG ARAF_VERSION=0.0.0-dev
+ARG ARAF_GIT_SHA=unknown
+ARG ARAF_RELEASE_BUILD=0
+ENV ARAF_VERSION=$ARAF_VERSION ARAF_GIT_SHA=$ARAF_GIT_SHA ARAF_RELEASE_BUILD=$ARAF_RELEASE_BUILD
+RUN cargo build --locked --release --bin tenant-bff --bin operator-bff && \
     cp target/release/tenant-bff /usr/local/bin/tenant-bff && \
     cp target/release/operator-bff /usr/local/bin/operator-bff
 
@@ -34,8 +39,6 @@ LABEL org.opencontainers.image.title="Araf BFF" \
 
 COPY --from=builder /usr/local/bin/tenant-bff /usr/local/bin/tenant-bff
 COPY --from=builder /usr/local/bin/operator-bff /usr/local/bin/operator-bff
-ENV ARAF_VERSION=$ARAF_VERSION ARAF_GIT_SHA=$ARAF_GIT_SHA
-
 # Seed the ownership of the durable state mount. Docker copies the image
 # directory metadata into a newly-created named volume, allowing the
 # non-root BFF (UID 65532) to initialize sessions and the compatibility

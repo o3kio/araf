@@ -187,6 +187,12 @@ test.describe("tenant governance", () => {
 
   test("creates an API credential and reveals the one-time secret", async ({ page }) => {
     expect(previewUrl).toBeDefined();
+    // Fixture mode does not run the interactive login callback that normally
+    // sets this readable double-submit cookie. Seed the browser cookie only;
+    // the production API client still reads and sends it itself.
+    await page
+      .context()
+      .addCookies([{ name: "araf_csrf", value: "fixture-e2e-csrf", url: previewUrl ?? "" }]);
 
     await page.goto(`${previewUrl ?? ""}/developer/api`);
     await expect(page.getByRole("heading", { name: "API Credentials", exact: true })).toBeVisible();

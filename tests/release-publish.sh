@@ -147,6 +147,29 @@ fi
 # ---------------------------------------------------------------- workflow pinning style
 workflow="$root_dir/.github/workflows/release-publish.yml"
 [[ -s "$workflow" ]] || fail "release-publish workflow is missing"
+images_workflow="$root_dir/.github/workflows/release-images.yml"
+[[ -s "$images_workflow" ]] || fail "release-images workflow is missing"
+if grep -qE 'gh release (create|edit|delete)' "$images_workflow"; then
+  fail "release-images must not publish or mutate GitHub Releases"
+fi
+grep -q 'workflow_run:' "$workflow" \
+  || fail "release-publish must wait for release-images workflow completion"
+grep -q 'release_run_id:' "$workflow" \
+  || fail "manual publication must identify the successful release-images run"
+grep -q 'Verify release-images run provenance' "$workflow" \
+  || fail "release-publish must verify workflow_run provenance"
+grep -q 'head_repository.full_name' "$workflow" \
+  || fail "release-publish must verify the upstream run repository"
+grep -q 'release-images.yml' "$workflow" \
+  || fail "release-publish must resolve the release-images workflow identity"
+grep -q 'UPSTREAM_HEAD_SHA' "$workflow" \
+  || fail "release-publish must bind the tag to the upstream run SHA"
+grep -q 'verify_image_identity_labels' "$script" \
+  || fail "release asset assembly must verify OCI identity labels"
+grep -q 'verify_provenance_identity' "$script" \
+  || fail "release asset assembly must verify provenance identity"
+grep -q 'Reject reuse of a published candidate identity' "$images_workflow" \
+  || fail "release-images must preflight candidate immutability"
 # Every actions/ use must be pinned by a full-length commit SHA, matching
 # release-images.yml (defense against tag-mutated action code).
 unpinned=$(grep -E 'uses: actions/' "$workflow" | grep -vE '@[0-9a-f]{40}' || true)

@@ -219,6 +219,9 @@ test.describe("generic resource runtime", () => {
 
   test("schema-driven create flow returns a Pending Operation", async ({ page }) => {
     expect(previewUrl).toBeDefined();
+    await page
+      .context()
+      .addCookies([{ name: "araf_csrf", value: "fixture-e2e-csrf", url: previewUrl ?? "" }]);
 
     await page.goto(`${previewUrl ?? ""}/resources/compute.server`);
 
@@ -234,14 +237,25 @@ test.describe("generic resource runtime", () => {
     await page.getByLabel("regionId").selectOption("eu-west");
     await page.getByLabel("projectId").selectOption("project-1");
 
-    // Submit and verify the Operation result shows Pending state.
+    // The production API client supplies the double-submit proof. The test
+    // observes the browser request and does not rewrite or repair it.
+    const createRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" && request.url().includes("/api/v1/resources/compute.server"),
+    );
     await page.getByRole("button", { name: "Create" }).click();
+    expect((await createRequest).headers()["x-csrf-token"]).toBe("fixture-e2e-csrf");
+
+    // Verify the Operation result shows Pending state.
     await expect(page.getByText(/Operation .+ is pending/)).toBeVisible();
     await expect(page.getByText(/Correlation ID:/)).toBeVisible();
   });
 
   test("schema-driven action with input returns a Pending Operation", async ({ page }) => {
     expect(previewUrl).toBeDefined();
+    await page
+      .context()
+      .addCookies([{ name: "araf_csrf", value: "fixture-e2e-csrf", url: previewUrl ?? "" }]);
 
     await page.goto(`${previewUrl ?? ""}/resources/storage.volume/volume-00000000`);
     await expect(page.getByRole("heading", { name: "fixture-volume-0" })).toBeVisible();
@@ -252,7 +266,13 @@ test.describe("generic resource runtime", () => {
     await expect(page.getByText(/Confirm attach for fixture-volume-0/)).toBeVisible();
 
     await page.getByLabel("serverId").fill("resource-0000000000");
+    const actionRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        request.url().includes("/api/v1/resources/storage.volume/volume-00000000/actions"),
+    );
     await page.getByRole("button", { name: "Confirm" }).click();
+    expect((await actionRequest).headers()["x-csrf-token"]).toBe("fixture-e2e-csrf");
 
     await expect(page.getByText(/Operation .+ is pending/)).toBeVisible();
   });

@@ -25,10 +25,6 @@ spec:
               value: production
             - name: ARAF_UPSTREAM_ADAPTER
               value: {{ $.Values.upstreamAdapter | quote }}
-            - name: ARAF_VERSION
-              value: {{ $.Values.version | quote }}
-            - name: ARAF_GIT_SHA
-              value: {{ $.Values.gitSha | quote }}
             - name: ARAF_SESSION_STORE_PATH
               value: /var/lib/araf/sessions.json
             - name: ARAF_SESSION_STORE_KEY
