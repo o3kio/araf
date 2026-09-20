@@ -8,6 +8,9 @@ install.
 
 - Kubernetes with an ingress controller and a TLS certificate, or Docker
   Compose plus an equivalent TLS reverse proxy.
+- The certified Compose preparation tuple is Docker Engine `29.8.0` with
+  Docker Compose `v5.5.1`. Older Docker versions and Podman are unsupported
+  until separately tested; this release path does not claim runtime breadth.
 - A secret manager (Kubernetes Secret, external-secrets controller, or an
   equivalent) and durable storage for each console surface.
 - DNS names and HTTPS origins for the Tenant and Operator consoles.
