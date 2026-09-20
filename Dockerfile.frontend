@@ -23,8 +23,13 @@ COPY apps/operator-console ./apps/operator-console
 # the deployment working from any host, not just localhost.
 FROM builder-common AS builder
 ARG APP
+ARG ARAF_VERSION=0.0.0-dev
+ARG ARAF_GIT_SHA=unknown
+ARG ARAF_RELEASE_BUILD=0
 # Keep the image build toolchain aligned with the repository lockfile and CI.
-RUN npm install -g pnpm@10.14.0 && pnpm install --frozen-lockfile && pnpm -F @araf/$APP build
+RUN npm install -g pnpm@10.14.0 && pnpm install --frozen-lockfile && pnpm -F @araf/$APP build && \
+    ARAF_VERSION="$ARAF_VERSION" ARAF_GIT_SHA="$ARAF_GIT_SHA" ARAF_RELEASE_BUILD="$ARAF_RELEASE_BUILD" APP="$APP" \
+    node -e 'const fs=require("fs"); const version=process.env.ARAF_VERSION; const sha=process.env.ARAF_GIT_SHA; const release=process.env.ARAF_RELEASE_BUILD === "1"; if (release && (!/^v[0-9A-Za-z.-]+$/.test(version) || !/^[a-f0-9]{40}$/.test(sha))) process.exit(1); fs.writeFileSync("apps/"+process.env.APP+"/dist/version.json", JSON.stringify({version, gitSha:sha, service:process.env.APP}));'
 
 # The unprivileged image listens on 8080 and runs nginx as uid 101. Keeping
 # the static console outside the root account is part of the release gate.

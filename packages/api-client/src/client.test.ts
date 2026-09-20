@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createArafClient,
   ArafApiError,
+  isStateChangingMethod,
   type ActionRequest,
   type HealthzResponse,
   type Operation,
@@ -12,13 +13,27 @@ import {
 describe("createArafClient", () => {
   const baseUrl = "http://localhost:9999";
   const originalFetch = globalThis.fetch;
+  const hadDocument = "document" in globalThis;
+  const originalDocument = (globalThis as typeof globalThis & { document?: unknown }).document;
 
   beforeEach(() => {
     globalThis.fetch = vi.fn();
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: { cookie: "araf_csrf=csrf%2Dtoken; araf_csrf_extra=spoof" },
+    });
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    if (!hadDocument) {
+      Reflect.deleteProperty(globalThis, "document");
+    } else {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: originalDocument,
+      });
+    }
   });
 
   function mockFetch(response: Response): void {
@@ -53,6 +68,67 @@ describe("createArafClient", () => {
     expect(headers.get("x-correlation-id")).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
     );
+    expect(headers.has("x-csrf-token")).toBe(false);
+  });
+
+  it.each([
+    ["POST", "create"],
+    ["PUT", "update"],
+    ["DELETE", "delete"],
+  ] as const)("sends the browser CSRF cookie for %s mutations", async (method, action) => {
+    mockFetch(
+      new Response(
+        JSON.stringify({
+          id: "op-csrf-1",
+          action,
+          state: "pending",
+          resourceId: "resource-1",
+          resourceType: "compute.server",
+          projectId: null,
+          regionId: null,
+          initiatedBy: null,
+          startedAt: null,
+          updatedAt: null,
+          correlationId: "corr-csrf-1",
+          error: null,
+          events: [],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const client = createArafClient(baseUrl);
+    if (method === "POST") {
+      await client.createResource("compute.server", { name: "created" });
+    } else if (method === "PUT") {
+      await client.updateResource("compute.server", "resource-1", { name: "updated" }, 1);
+    } else {
+      await client.deleteResource("compute.server", "resource-1", 1);
+    }
+
+    const { init } = lastCall();
+    const headers = new Headers(init?.headers);
+    expect(init?.method).toBe(method);
+    expect(headers.get("X-CSRF-Token")).toBe("csrf-token");
+    expect(init?.credentials).toBe("include");
+  });
+
+  it("recognizes PATCH as state-changing even when no current Araf endpoint uses it", () => {
+    expect(isStateChangingMethod("PATCH")).toBe(true);
+    expect(isStateChangingMethod("get")).toBe(false);
+  });
+
+  it("refuses a mutation when only a similarly named CSRF cookie exists", async () => {
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: { cookie: "araf_csrf_extra=spoof" },
+    });
+
+    const client = createArafClient(baseUrl);
+    await expect(client.createResource("compute.server", { name: "blocked" })).rejects.toThrow(
+      "CSRF token cookie is missing",
+    );
+    expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled();
   });
 
   it("serializes listResources query parameters in camelCase", async () => {

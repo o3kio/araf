@@ -582,6 +582,48 @@ function appendSearchParams(url: URL, params: Record<string, string | number | u
   }
 }
 
+const CSRF_COOKIE_NAME = "araf_csrf";
+const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/** Return whether a request changes server-side state and needs CSRF proof. */
+export function isStateChangingMethod(method: string): boolean {
+  return STATE_CHANGING_METHODS.has(method.toUpperCase());
+}
+
+/**
+ * Read the browser-readable double-submit token without touching web storage.
+ * The session credential remains an HttpOnly cookie and is sent by fetch.
+ */
+function readCsrfToken(): string {
+  if (typeof document === "undefined") {
+    throw new Error("CSRF token is unavailable outside a browser document");
+  }
+
+  const prefix = `${CSRF_COOKIE_NAME}=`;
+  const cookiePart = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
+  if (!cookiePart) {
+    throw new Error("CSRF token cookie is missing; refusing state-changing request");
+  }
+
+  const encodedToken = cookiePart.slice(prefix.length);
+  if (!encodedToken) {
+    throw new Error("CSRF token cookie is empty; refusing state-changing request");
+  }
+
+  try {
+    const token = decodeURIComponent(encodedToken);
+    if (!token) {
+      throw new Error("empty token");
+    }
+    return token;
+  } catch {
+    throw new Error("CSRF token cookie is malformed; refusing state-changing request");
+  }
+}
+
 async function parseJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
@@ -688,16 +730,24 @@ export function createArafClient(baseUrl: string | URL): ArafClient {
     const requestId = generateId();
     const correlationId = generateId();
 
+    const method = (options.method ?? "GET").toUpperCase();
+    const headers = new Headers({
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "x-request-id": requestId,
+      "x-correlation-id": correlationId,
+      ...options.headers,
+    });
+    if (isStateChangingMethod(method)) {
+      // Set after caller headers so an accidental/stale token cannot override
+      // the value paired with the browser's current CSRF cookie.
+      headers.set("X-CSRF-Token", readCsrfToken());
+    }
+
     const response = await fetch(url, {
-      method: options.method ?? "GET",
+      method,
       credentials: "include",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "x-request-id": requestId,
-        "x-correlation-id": correlationId,
-        ...options.headers,
-      },
+      headers,
       body: options.body,
     });
 

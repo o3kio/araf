@@ -266,6 +266,8 @@ write_verify_md() {
 - \`docker-compose.release.yml\` — the reference deployment, copied unmodified.
 - \`ENVIRONMENT.md\` — the complete environment variable schema.
 - \`digests.txt\` — the immutable image digest pins for this release.
+- \`release-manifest.json\` — source-bound component and compatibility metadata.
+- \`manifest.schema.json\` — schema for the machine-readable release manifest.
 - \`VERIFY.md\` — this file.
 
 The matching SBOM (\`*.spdx.json\`) and SLSA provenance
@@ -401,6 +403,20 @@ main() {
 
   validate_digests_file "$digests_file" || fail "generated digests file failed validation: $digests_file"
 
+  # Bind the four runtime components to the exact source and the immutable
+  # image indexes. The two BFF entries intentionally point at the one
+  # canonical multi-binary araf-bff image.
+  local source_sha="${SOURCE_SHA:-}"
+  if [[ -z "$source_sha" ]]; then
+    source_sha=$(git -C "$repo_root" rev-parse HEAD)
+  fi
+  SOURCE_SHA="$source_sha" RELEASE_VERSION="$version" \
+    ARAF_DIGESTS_PATH="$digests_file" \
+    ARAF_MANIFEST_PATH="$output_dir/araf-${version}-release-manifest.json" \
+    node "$repo_root/scripts/generate-release-manifest.mjs"
+  node "$repo_root/scripts/validate-release-manifest.mjs" \
+    "$output_dir/araf-${version}-release-manifest.json"
+
   (
     cd "$output_dir"
     sha256sum "sbom/"*"-${version}.spdx.json" >"araf-${version}-sbom.sha256"
@@ -412,17 +428,20 @@ main() {
 
   cp "$repo_root/deploy/docker-compose.release.yml" "$staging/docker-compose.release.yml"
   cp "$digests_file" "$staging/digests.txt"
+  cp "$output_dir/araf-${version}-release-manifest.json" "$staging/release-manifest.json"
+  cp "$repo_root/release/manifest.schema.json" "$staging/manifest.schema.json"
   write_environment_md "$staging/ENVIRONMENT.md" "$version"
   write_verify_md "$staging/VERIFY.md" "$version" "$digests_file"
 
   local tarball="$output_dir/araf-${version}-deploy.tar.gz"
   tar -C "$staging" -czf "$tarball" \
-    docker-compose.release.yml ENVIRONMENT.md digests.txt VERIFY.md
+    docker-compose.release.yml ENVIRONMENT.md digests.txt release-manifest.json manifest.schema.json VERIFY.md
   rm -rf "$staging"
   trap - EXIT
 
   echo "publish-release: wrote $tarball"
   echo "publish-release: wrote $digests_file"
+  echo "publish-release: wrote $output_dir/araf-${version}-release-manifest.json"
   echo "publish-release: wrote $output_dir/araf-${version}-sbom.sha256"
   echo "publish-release: wrote $output_dir/araf-${version}-provenance.sha256"
   echo "publish-release: wrote $output_dir/araf-${version}-oci-tarballs.sha256"

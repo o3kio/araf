@@ -10,8 +10,6 @@ omitted.
 | --- | --- | --- | --- | --- | --- |
 | `ARAF_RUNTIME_PROFILE` | yes | `production` | both | yes | `development`/`test` are fixture-only profiles. |
 | `ARAF_UPSTREAM_ADAPTER` | yes | `o3k` or `openstack` | both | yes | No implicit fallback. |
-| `ARAF_VERSION` | no | package version | both | yes | Release metadata only. |
-| `ARAF_GIT_SHA` | no | unset | both | yes | Release metadata only. |
 | `ARAF_PUBLIC_URL` | yes | HTTPS absolute URL | matching surface | yes | No credentials/query/fragment. |
 | `ARAF_TRUSTED_ORIGINS` | yes | comma-separated HTTPS origins | matching surface | yes | Origins have no path/query/fragment; controls CORS/CSRF trust. |
 | `ARAF_SESSION_STORE_PATH` | yes | writable durable path | matching surface | yes | Must be persistent; local-only storage is not HA-safe. |
@@ -43,3 +41,8 @@ catalog entries are ignored, and the adapter does not follow HTTP redirects.
 `ARAF_TRUSTED_ORIGINS` must contain origins, not callback paths. Changing any
 setting requires a controlled restart/rollout; changing the session key
 without restoring the matching old key invalidates encrypted sessions.
+
+Release version and source SHA are compiled into the BFF image and rendered
+into the console's `/version.json`; runtime environment variables cannot
+rewrite artifact identity. Read them from `/version`, `/version.json`, or the
+release manifest.

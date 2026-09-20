@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://araf.o3k.io/release/manifest.schema.json",
+  "type": "object",
+  "required": ["schema_version", "release", "artifacts", "deployment", "compatibility", "security"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "release": {
+      "type": "object",
+      "required": ["version", "source_sha"],
+      "properties": {
+        "version": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+-[A-Za-z0-9.-]+$" },
+        "source_sha": { "type": "string", "pattern": "^[a-f0-9]{40}$" }
+      },
+      "additionalProperties": false
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["tenant_console", "operator_console", "tenant_bff", "operator_bff"],
+      "patternProperties": {
+        "^(tenant_console|operator_console|tenant_bff|operator_bff)$": {
+          "type": "object",
+          "required": ["image", "tag", "digest", "source_sha", "platform"],
+          "properties": {
+            "image": { "type": "string", "pattern": "^ghcr\\.io/.+@sha256:[a-f0-9]{64}$" },
+            "tag": { "type": "string" },
+            "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+            "source_sha": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+            "platform": { "const": "linux/amd64" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "deployment": {
+      "type": "object",
+      "required": ["compose", "helm"],
+      "properties": {
+        "compose": { "const": "deploy/docker-compose.release.yml" },
+        "helm": { "const": "deploy/helm/araf" }
+      },
+      "additionalProperties": false
+    },
+    "compatibility": {
+      "type": "object",
+      "required": [
+        "supported_backend_modes",
+        "required_o3k_api_contract",
+        "tenant_bff_contract",
+        "operator_bff_contract",
+        "auth_session_contract",
+        "deployment_contract"
+      ],
+      "properties": {
+        "supported_backend_modes": {
+          "type": "array",
+          "items": { "enum": ["o3k", "openstack"] },
+          "minItems": 1
+        },
+        "required_o3k_api_contract": { "const": "o3k-native-v1" },
+        "tenant_bff_contract": { "const": "araf-tenant-bff-v1" },
+        "operator_bff_contract": { "const": "araf-operator-bff-v1" },
+        "auth_session_contract": { "const": "araf-session-csrf-v1" },
+        "deployment_contract": { "const": "compose-digest-v1" }
+      },
+      "additionalProperties": false
+    },
+    "security": {
+      "type": "object",
+      "required": ["fixture_mode_allowed"],
+      "properties": { "fixture_mode_allowed": { "const": false } },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

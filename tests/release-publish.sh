@@ -147,6 +147,15 @@ fi
 # ---------------------------------------------------------------- workflow pinning style
 workflow="$root_dir/.github/workflows/release-publish.yml"
 [[ -s "$workflow" ]] || fail "release-publish workflow is missing"
+images_workflow="$root_dir/.github/workflows/release-images.yml"
+[[ -s "$images_workflow" ]] || fail "release-images workflow is missing"
+if grep -qE 'gh release (create|edit|delete)' "$images_workflow"; then
+  fail "release-images must not publish or mutate GitHub Releases"
+fi
+grep -q 'workflow_run:' "$workflow" \
+  || fail "release-publish must wait for release-images workflow completion"
+grep -q 'Reject reuse of a published candidate identity' "$images_workflow" \
+  || fail "release-images must preflight candidate immutability"
 # Every actions/ use must be pinned by a full-length commit SHA, matching
 # release-images.yml (defense against tag-mutated action code).
 unpinned=$(grep -E 'uses: actions/' "$workflow" | grep -vE '@[0-9a-f]{40}' || true)

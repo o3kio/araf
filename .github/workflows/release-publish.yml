@@ -11,9 +11,10 @@ on:
       release_version:
         description: "Existing release tag to publish (e.g. v1.0.0-rc.12); images must already exist"
         required: true
-        type: string
-  push:
-    tags: ["v*"]
+      type: string
+  workflow_run:
+    workflows: [release-images]
+    types: [completed]
 
 permissions:
   contents: read
@@ -21,11 +22,15 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAMESPACE: ${{ github.repository_owner }}
-  RELEASE_VERSION: ${{ inputs.release_version || github.ref_name }}
+  RELEASE_VERSION: ${{ inputs.release_version || github.event.workflow_run.head_branch || github.ref_name }}
 
 jobs:
   publish:
     name: Assemble release bundle and publish GitHub Release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v'))
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -43,6 +48,10 @@ jobs:
             echo "::error::RELEASE_VERSION=${RELEASE_VERSION} is not an existing tag; refusing to publish"
             exit 1
           fi
+          test -s "docs/releases/${RELEASE_VERSION}.md" || {
+            echo "::error::missing release notes: docs/releases/${RELEASE_VERSION}.md"
+            exit 1
+          }
           echo "SOURCE_SHA=$(git rev-parse "${RELEASE_VERSION}^{commit}")" >> "$GITHUB_ENV"
 
       - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
@@ -84,6 +93,7 @@ jobs:
             echo "## Assets"
             echo
             echo "- \`araf-${RELEASE_VERSION}-deploy.tar.gz\` — reference Compose deployment, environment schema, digests and verification guide."
+            echo "- \`araf-${RELEASE_VERSION}-release-manifest.json\` — schema-validated source, artifact and backend compatibility tuple."
             echo "- \`araf-${RELEASE_VERSION}-digests.txt\` — immutable image digest pins."
             echo "- \`*.spdx.json\` / \`araf-${RELEASE_VERSION}-sbom.sha256\` — SPDX SBOMs extracted from the image attestation manifests."
             echo "- \`*.provenance.json\` / \`araf-${RELEASE_VERSION}-provenance.sha256\` — SLSA v1 provenance extracted from the image attestation manifests."
@@ -122,6 +132,7 @@ jobs:
           assets=(
             "dist/release/araf-${RELEASE_VERSION}-deploy.tar.gz"
             "dist/release/araf-${RELEASE_VERSION}-digests.txt"
+            "dist/release/araf-${RELEASE_VERSION}-release-manifest.json"
             "dist/release/araf-${RELEASE_VERSION}-sbom.sha256"
             "dist/release/araf-${RELEASE_VERSION}-provenance.sha256"
             "dist/release/araf-${RELEASE_VERSION}-oci-tarballs.sha256"
