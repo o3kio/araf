@@ -21,6 +21,7 @@ export interface ResourceCreatePageProps {
 
 interface FieldSpec {
   readonly key: string;
+  readonly schemaType: string | undefined;
   readonly label: string;
   readonly description: string | undefined;
   readonly helpText: string | undefined;
@@ -35,6 +36,11 @@ interface FieldSpec {
 interface FormFieldState {
   value: unknown;
   error: string | undefined;
+}
+
+interface PayloadBuildResult {
+  readonly payload: Record<string, unknown>;
+  readonly errors: Record<string, string>;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -71,7 +77,11 @@ function buildFieldSpecs(descriptor: ResourceDescriptor): FieldSpec[] {
     const widgetOverride = typeof xAraf.widget === "string" ? xAraf.widget : undefined;
 
     let widget: FieldSpec["widget"] = "text";
-    if (type === "boolean") {
+    if (type === "array") {
+      // Arrays use a JSON text representation so the schema, rather than a
+      // widget override or enum heuristic, determines the submitted type.
+      widget = "text";
+    } else if (type === "boolean") {
       widget = "boolean";
     } else if (enumValues !== undefined || widgetOverride === "select") {
       widget = "select";
@@ -84,6 +94,7 @@ function buildFieldSpecs(descriptor: ResourceDescriptor): FieldSpec[] {
 
     specs.push({
       key,
+      schemaType: type,
       label:
         typeof xAraf.label === "string"
           ? xAraf.label
@@ -141,17 +152,42 @@ function buildFormState(specs: FieldSpec[]): Record<string, FormFieldState> {
 function buildPayload(
   formState: Record<string, FormFieldState>,
   specs: FieldSpec[],
-): Record<string, unknown> {
+): PayloadBuildResult {
   const payload: Record<string, unknown> = {};
+  const errors: Record<string, string> = {};
   const specMap = new Map(specs.map((spec) => [spec.key, spec]));
   for (const [key, field] of Object.entries(formState)) {
     const spec = specMap.get(key);
     if (!spec?.required && field.value === "") {
       continue;
     }
+
+    if (spec?.schemaType === "array") {
+      if (typeof field.value !== "string") {
+        errors[key] = "Enter a JSON array.";
+        continue;
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(field.value) as unknown;
+      } catch {
+        errors[key] = "Enter a valid JSON array.";
+        continue;
+      }
+
+      if (!Array.isArray(parsed)) {
+        errors[key] = "Value must be a JSON array.";
+        continue;
+      }
+
+      payload[key] = parsed;
+      continue;
+    }
+
     payload[key] = field.value;
   }
-  return payload;
+  return { payload, errors };
 }
 
 function collectErrors(errors: readonly ValidationError[]): Record<string, string> {
@@ -236,7 +272,17 @@ export function ResourceCreatePage({ resourceType }: ResourceCreatePageProps) {
     setFieldErrors(Object.fromEntries(Object.keys(formState).map((key) => [key, undefined])));
     setSubmitError(undefined);
 
-    const payload = buildPayload(formState, specs);
+    const { payload, errors: conversionErrors } = buildPayload(formState, specs);
+    if (Object.keys(conversionErrors).length > 0) {
+      setFieldErrors(conversionErrors);
+      setSubmitError("Please correct the errors below.");
+      const firstKey = Object.keys(conversionErrors)[0];
+      if (firstKey) {
+        fieldRefs.current[firstKey]?.focus();
+      }
+      return;
+    }
+
     const errors = validateFormData(descriptor.createSchema, payload);
 
     if (errors.length > 0) {
