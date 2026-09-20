@@ -47,12 +47,15 @@ jobs:
         run: |
           set -euo pipefail
           run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${UPSTREAM_RUN_ID}")"
+          workflow_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release-images.yml" --jq '.id')"
           expected_sha="$(jq -r '.head_sha' <<<"${run_json}")"
           jq -e \
             --arg repository "${GITHUB_REPOSITORY}" \
             --arg version "${RELEASE_VERSION}" \
             --arg expected_sha "${expected_sha}" \
+            --argjson workflow_id "${workflow_id}" \
             '.name == "release-images" and
+             .workflow_id == $workflow_id and
              .conclusion == "success" and
              .repository.full_name == $repository and
              .head_repository.full_name == $repository and

@@ -160,6 +160,8 @@ grep -q 'Verify release-images run provenance' "$workflow" \
   || fail "release-publish must verify workflow_run provenance"
 grep -q 'head_repository.full_name' "$workflow" \
   || fail "release-publish must verify the upstream run repository"
+grep -q 'release-images.yml' "$workflow" \
+  || fail "release-publish must resolve the release-images workflow identity"
 grep -q 'UPSTREAM_HEAD_SHA' "$workflow" \
   || fail "release-publish must bind the tag to the upstream run SHA"
 grep -q 'verify_image_identity_labels' "$script" \
