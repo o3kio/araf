@@ -22,6 +22,6 @@ for (const component of ["tenant_console", "operator_console", "tenant_bff", "op
   if (artifact.platform !== "linux/amd64") fail(`${component} platform mismatch`);
 }
 if (manifest.security?.fixture_mode_allowed !== false) fail("fixture mode must be disabled");
-if (manifest.compatibility?.required_o3k_api_contract !== "o3k-native-v1")
+if (manifest.compatibility?.required_o3k_api_contract !== "o3k-native-iam-v1")
   fail("O3K contract mismatch");
 console.log(`release manifest valid: ${path}`);

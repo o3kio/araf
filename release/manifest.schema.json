@@ -58,7 +58,7 @@
           "items": { "enum": ["o3k", "openstack"] },
           "minItems": 1
         },
-        "required_o3k_api_contract": { "const": "o3k-native-v1" },
+        "required_o3k_api_contract": { "const": "o3k-native-iam-v1" },
         "tenant_bff_contract": { "const": "araf-tenant-bff-v1" },
         "operator_bff_contract": { "const": "araf-operator-bff-v1" },
         "auth_session_contract": { "const": "araf-session-csrf-v1" },

@@ -154,6 +154,18 @@ if grep -qE 'gh release (create|edit|delete)' "$images_workflow"; then
 fi
 grep -q 'workflow_run:' "$workflow" \
   || fail "release-publish must wait for release-images workflow completion"
+grep -q 'release_run_id:' "$workflow" \
+  || fail "manual publication must identify the successful release-images run"
+grep -q 'Verify release-images run provenance' "$workflow" \
+  || fail "release-publish must verify workflow_run provenance"
+grep -q 'head_repository.full_name' "$workflow" \
+  || fail "release-publish must verify the upstream run repository"
+grep -q 'UPSTREAM_HEAD_SHA' "$workflow" \
+  || fail "release-publish must bind the tag to the upstream run SHA"
+grep -q 'verify_image_identity_labels' "$script" \
+  || fail "release asset assembly must verify OCI identity labels"
+grep -q 'verify_provenance_identity' "$script" \
+  || fail "release asset assembly must verify provenance identity"
 grep -q 'Reject reuse of a published candidate identity' "$images_workflow" \
   || fail "release-images must preflight candidate immutability"
 # Every actions/ use must be pinned by a full-length commit SHA, matching

@@ -15,6 +15,7 @@ ARAF_DIGESTS_PATH="$work/digests.txt" \
 ARAF_MANIFEST_PATH="$work/manifest.json" \
 node "$root_dir/scripts/generate-release-manifest.mjs"
 node "$root_dir/scripts/validate-release-manifest.mjs" "$work/manifest.json"
+node -e 'const m=require(process.argv[1]); if(m.compatibility.required_o3k_api_contract!=="o3k-native-iam-v1") process.exit(1)' "$work/manifest.json"
 node -e 'const s=require(process.argv[1]); if(s.properties.schema_version.const!==1) process.exit(1)' "$root_dir/release/manifest.schema.json"
 node -e 'const fs=require("fs"); const p=process.argv[1]; const m=JSON.parse(fs.readFileSync(p)); m.artifacts.tenant_bff.tag="v1.0.0-rc.98"; fs.writeFileSync(p, JSON.stringify(m));' "$work/manifest.json"
 if node "$root_dir/scripts/validate-release-manifest.mjs" "$work/manifest.json" >/dev/null 2>&1; then

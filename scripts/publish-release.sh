@@ -148,6 +148,35 @@ saved_tar_config_hex() {
   fi
 }
 
+# Verify the build-bound OCI labels on the released platform config. Runtime
+# environment variables are not an identity authority; the published config
+# must carry the exact tag and source commit used for this release.
+verify_image_identity_labels() {
+  local config_json=$1 component=$2 version=$3 source_sha=$4
+  jq -e \
+    --arg version "$version" \
+    --arg source_sha "$source_sha" \
+    '.config.Labels["org.opencontainers.image.version"] == $version and
+     .config.Labels["org.opencontainers.image.revision"] == $source_sha' \
+    "$config_json" >/dev/null \
+    || fail "OCI labels do not bind ${component} to version ${version} and source ${source_sha}"
+}
+
+# Docker Buildx provenance is attached as an OCI attestation. Require the
+# extracted predicate to contain both exact build inputs before publishing the
+# release manifest; a provenance blob from another build must fail closed.
+verify_provenance_identity() {
+  local provenance_json=$1 component=$2 version=$3 source_sha=$4
+  jq -e \
+    --arg version "$version" \
+    --arg source_sha "$source_sha" \
+    '[.. | strings] as $values |
+     ($values | index($version)) != null and
+     ($values | index($source_sha)) != null' \
+    "$provenance_json" >/dev/null \
+    || fail "provenance for ${component} does not contain exact version ${version} and source ${source_sha}"
+}
+
 # Save <image-ref>@<digest> as a docker-save OCI tarball at $3 and verify the
 # config blob recorded in the tarball matches the registry config digest $2.
 # The ghcr.io packages require authentication to pull, so the tarball is the
@@ -329,6 +358,12 @@ main() {
   local repo_root output_dir
   repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
   output_dir=${OUTPUT_DIR:-"$repo_root/dist/release"}
+  local source_sha="${SOURCE_SHA:-}"
+  if [[ -z "$source_sha" ]]; then
+    source_sha=$(git -C "$repo_root" rev-parse HEAD)
+  fi
+  [[ "$source_sha" =~ ^[a-f0-9]{40}$ ]] \
+    || fail "SOURCE_SHA must be the 40-character source commit SHA"
   local staging="$output_dir/.staging-$version"
   rm -rf "$staging"
   mkdir -p "$staging" "$output_dir/sbom" "$output_dir/provenance"
@@ -346,7 +381,7 @@ main() {
   trap 'rm -rf "$staging"' EXIT
 
   local component repo image_ref digest index_json auth att_digest att_json sbom_layer prov_layer
-  local platform_digest platform_json config_digest oci_tar
+  local platform_digest platform_json config_digest config_json oci_tar provenance_json
   for component in "${components[@]}"; do
     repo=${image_repo[$component]}
     image_ref="${GHCR_REGISTRY}/${repo}:${version}"
@@ -371,6 +406,9 @@ main() {
     config_digest=$(jq -r '.config.digest' <<<"$platform_json")
     [[ "$config_digest" =~ ^sha256:[0-9a-f]{64}$ ]] \
       || fail "no config digest in platform manifest for $image_ref"
+    config_json="$staging/${component}-config.json"
+    fetch_blob "$repo" "$config_digest" "$config_json" "$auth"
+    verify_image_identity_labels "$config_json" "$component" "$version" "$source_sha"
     printf '%s-platform %s@%s\n' "$component" "$image_ref" "$platform_digest" >>"$digests_file"
     printf '%s-config %s\n' "$component" "$config_digest" >>"$digests_file"
 
@@ -396,8 +434,9 @@ main() {
 
     fetch_blob "$repo" "$sbom_layer" \
       "$output_dir/sbom/${component}-${version}.spdx.json" "$auth"
-    fetch_blob "$repo" "$prov_layer" \
-      "$output_dir/provenance/${component}-${version}.provenance.json" "$auth"
+    provenance_json="$output_dir/provenance/${component}-${version}.provenance.json"
+    fetch_blob "$repo" "$prov_layer" "$provenance_json" "$auth"
+    verify_provenance_identity "$provenance_json" "$component" "$version" "$source_sha"
     echo "publish-release: extracted SBOM + provenance for $component ($digest)"
   done
 
@@ -406,10 +445,6 @@ main() {
   # Bind the four runtime components to the exact source and the immutable
   # image indexes. The two BFF entries intentionally point at the one
   # canonical multi-binary araf-bff image.
-  local source_sha="${SOURCE_SHA:-}"
-  if [[ -z "$source_sha" ]]; then
-    source_sha=$(git -C "$repo_root" rev-parse HEAD)
-  fi
   SOURCE_SHA="$source_sha" RELEASE_VERSION="$version" \
     ARAF_DIGESTS_PATH="$digests_file" \
     ARAF_MANIFEST_PATH="$output_dir/araf-${version}-release-manifest.json" \

@@ -54,7 +54,7 @@ const manifest = {
   },
   compatibility: {
     supported_backend_modes: ["o3k", "openstack"],
-    required_o3k_api_contract: "o3k-native-v1",
+    required_o3k_api_contract: "o3k-native-iam-v1",
     tenant_bff_contract: "araf-tenant-bff-v1",
     operator_bff_contract: "araf-operator-bff-v1",
     auth_session_contract: "araf-session-csrf-v1",
