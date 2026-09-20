@@ -44,6 +44,23 @@ const FORBIDDEN_SCHEMA_KEYWORDS = new Set([
 
 const REMOTE_REF_PROTOCOLS = ["http:", "https:"];
 
+const JSON_SCHEMA_2020_12_DIALECTS = new Set([
+  "https://json-schema.org/draft/2020-12/schema",
+  "https://json-schema.org/draft/2020-12/schema#",
+  "http://json-schema.org/draft/2020-12/schema",
+  "http://json-schema.org/draft/2020-12/schema#",
+]);
+
+const LEGACY_SUPPORTED_DIALECTS = new Set([
+  "http://json-schema.org/draft-07/schema",
+  "http://json-schema.org/draft-07/schema#",
+  "https://json-schema.org/draft-07/schema",
+  "https://json-schema.org/draft-07/schema#",
+]);
+
+const CANONICAL_2020_12_DIALECT = "https://json-schema.org/draft/2020-12/schema";
+const CANONICAL_LEGACY_DIALECT = "http://json-schema.org/draft-07/schema#";
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -106,6 +123,22 @@ function formatErrors(errors: Ajv["errors"]): ValidationError[] {
   }));
 }
 
+function unsupportedDialectResult(dialect: string): SchemaValidator {
+  return {
+    validate: () => ({
+      valid: false,
+      errors: [
+        {
+          instancePath: "",
+          schemaPath: "schema.$schema",
+          message: `Unsupported JSON Schema dialect: ${dialect}`,
+          keyword: "unsupportedDialect",
+        },
+      ],
+    }),
+  };
+}
+
 /**
  * Pick the Ajv dialect implementation for a schema.
  *
@@ -116,9 +149,11 @@ function formatErrors(errors: Ajv["errors"]): ValidationError[] {
  * keep the previous default behaviour.
  */
 function newValidatorForSchema(schema: unknown): Ajv {
-  const declaredDialect =
-    isPlainObject(schema) && typeof schema.$schema === "string" ? schema.$schema : "";
-  const AjvClass = declaredDialect.includes("2020-12") ? Ajv2020 : Ajv;
+  const declaredDialect = isPlainObject(schema) ? schema.$schema : undefined;
+  const AjvClass =
+    typeof declaredDialect === "string" && JSON_SCHEMA_2020_12_DIALECTS.has(declaredDialect)
+      ? Ajv2020
+      : Ajv;
   const ajv = new AjvClass({ strict: true, allErrors: true });
   ajv.addKeyword("x-araf");
   addFormats(ajv);
@@ -152,11 +187,30 @@ export function createSchemaValidator(schema: unknown): SchemaValidator {
     };
   }
 
+  const declaredDialect = isPlainObject(schema) ? schema.$schema : undefined;
+  if (
+    typeof declaredDialect === "string" &&
+    !JSON_SCHEMA_2020_12_DIALECTS.has(declaredDialect) &&
+    !LEGACY_SUPPORTED_DIALECTS.has(declaredDialect)
+  ) {
+    return unsupportedDialectResult(declaredDialect);
+  }
+
   const ajv = newValidatorForSchema(schema);
+
+  const normalizedSchema =
+    isPlainObject(schema) && typeof declaredDialect === "string"
+      ? {
+          ...schema,
+          $schema: JSON_SCHEMA_2020_12_DIALECTS.has(declaredDialect)
+            ? CANONICAL_2020_12_DIALECT
+            : CANONICAL_LEGACY_DIALECT,
+        }
+      : schema;
 
   let validateFn: ReturnType<typeof ajv.compile>;
   try {
-    validateFn = ajv.compile(schema as object);
+    validateFn = ajv.compile(normalizedSchema as object);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {

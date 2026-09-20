@@ -164,6 +164,11 @@ const o3kComputeServerCreateSpec2020 = {
   additionalProperties: false,
 };
 
+const o3kComputeServerCreateSpec2020HttpVariant = {
+  ...o3kComputeServerCreateSpec2020,
+  $schema: "http://json-schema.org/draft/2020-12/schema#",
+};
+
 describe("createSchemaValidator (JSON Schema 2020-12)", () => {
   it("compiles an O3K-style 2020-12 create schema", () => {
     const validator = createSchemaValidator(o3kComputeServerCreateSpec2020);
@@ -181,5 +186,39 @@ describe("createSchemaValidator (JSON Schema 2020-12)", () => {
     const errors = validateFormData(o3kComputeServerCreateSpec2020, { name: "only-name" });
     expect(errors.length).toBeGreaterThan(0);
     expect(errors.some((e) => e.keyword === "required")).toBe(true);
+  });
+
+  it("accepts the canonical HTTP 2020-12 URI variant", () => {
+    const validator = createSchemaValidator(o3kComputeServerCreateSpec2020HttpVariant);
+    expect(
+      validator.validate({
+        name: "pp4-native",
+        image_id: "image-1",
+        flavor_id: "00000000-0000-0000-0000-000000000001",
+        network_ids: ["net-1"],
+      }).valid,
+    ).toBe(true);
+  });
+
+  it("preserves legacy behavior for a schema without $schema", () => {
+    const validator = createSchemaValidator({
+      type: "object",
+      required: ["name"],
+      properties: { name: { type: "string" } },
+    });
+    expect(validator.validate({}).valid).toBe(false);
+    expect(validator.validate({ name: "legacy" }).valid).toBe(true);
+  });
+
+  it("fails closed for an explicitly unsupported dialect", () => {
+    const validator = createSchemaValidator({
+      $schema: "https://example.com/unsupported-schema",
+      type: "object",
+    });
+    const result = validator.validate({});
+    expect(result.valid).toBe(false);
+    if (result.valid) throw new Error("expected invalid result");
+    expect(result.errors[0]?.keyword).toBe("unsupportedDialect");
+    expect(result.errors[0]?.message).toContain("https://example.com/unsupported-schema");
   });
 });
