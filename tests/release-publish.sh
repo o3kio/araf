@@ -168,6 +168,15 @@ grep -q 'verify_image_identity_labels' "$script" \
   || fail "release asset assembly must verify OCI identity labels"
 grep -q 'verify_provenance_identity' "$script" \
   || fail "release asset assembly must verify provenance identity"
+# GitHub Release assets are flat after download, so checksum manifests must
+# contain basenames rather than staged sbom/ or provenance/ paths.
+grep -q 'cd sbom' "$script" \
+  || fail "SBOM checksum generation must emit flat download names"
+grep -q 'cd provenance' "$script" \
+  || fail "provenance checksum generation must emit flat download names"
+if grep -q 'sha256sum "sbom/"' "$script" || grep -q 'sha256sum "provenance/"' "$script"; then
+  fail "checksum manifests must not contain staged directory prefixes"
+fi
 grep -q 'Reject reuse of a published candidate identity' "$images_workflow" \
   || fail "release-images must preflight candidate immutability"
 # Every actions/ use must be pinned by a full-length commit SHA, matching

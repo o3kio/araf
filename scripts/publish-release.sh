@@ -454,8 +454,18 @@ main() {
 
   (
     cd "$output_dir"
-    sha256sum "sbom/"*"-${version}.spdx.json" >"araf-${version}-sbom.sha256"
-    sha256sum "provenance/"*"-${version}.provenance.json" >"araf-${version}-provenance.sha256"
+    # GitHub Release assets are downloaded into one flat directory.  Emit
+    # basenames in these manifests so the documented `sha256sum -c` command
+    # works on the public release download (the source files remain staged in
+    # component directories until the assets are uploaded).
+    (
+      cd sbom
+      sha256sum *"-${version}.spdx.json"
+    ) >"araf-${version}-sbom.sha256"
+    (
+      cd provenance
+      sha256sum *"-${version}.provenance.json"
+    ) >"araf-${version}-provenance.sha256"
     sha256sum "araf-bff-${version}.oci.tar" \
       "araf-tenant-console-${version}.oci.tar" \
       "araf-operator-console-${version}.oci.tar" >"araf-${version}-oci-tarballs.sha256"
